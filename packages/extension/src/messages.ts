@@ -1,4 +1,4 @@
-import { Agent, AgentInput, Flow, FlowRunState, Skill, SkillInput } from '@ai-stepflow/core';
+import { Agent, AgentInput, Flow, FlowRunState, Skill, SkillInput, isFlowShape, isFlowRunStateShape } from '@ai-stepflow/core';
 
 export interface HumanReview {
   decision: 'approved' | 'rejected';
@@ -37,9 +37,12 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 const isString = (value: unknown): value is string => typeof value === 'string';
 
-/** Looks like a flow object the handlers can safely touch (id/sourcePath drive file ops). */
-const isFlowLike = (value: unknown): boolean =>
-  isObject(value) && isString(value.id) && isString(value.sourcePath) && Array.isArray(value.steps);
+/**
+ * Looks like a flow object the handlers can safely touch (id/sourcePath drive file ops).
+ * Delegates to the core Zod shape guard so the `steps` array is validated element-deep,
+ * not just "is an array".
+ */
+const isFlowLike = (value: unknown): boolean => isFlowShape(value);
 
 const isAgentLike = (value: unknown): boolean => isObject(value) && isString(value.name);
 const isSkillLike = (value: unknown): boolean => isObject(value) && isString(value.name);
@@ -51,7 +54,7 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   importSkillFile: () => true,
   verifyRun: () => true,
   exportRunReport: () => true,
-  loadFlow: m => isFlowLike(m.flow),
+  loadFlow: m => isFlowLike(m.flow) && (m.runState === undefined || isFlowRunStateShape(m.runState)),
   openFile: m => isString(m.path),
   saveFlow: m => isFlowLike(m.flow),
   createAgent: m => isAgentLike(m.agent),
@@ -61,8 +64,10 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   deleteFlow: m => isObject(m.flow) && isString(m.flow.sourcePath),
   deleteAgent: m => isObject(m.agent) && isString(m.agent.sourcePath),
   deleteSkill: m => isObject(m.skill) && isString(m.skill.sourcePath),
-  updateRunState: m => isObject(m.runState),
-  runStep: m => isString(m.stepId),
+  updateRunState: m => isFlowRunStateShape(m.runState),
+  runStep: m => isString(m.stepId)
+    && (m.flow === undefined || isFlowLike(m.flow))
+    && (m.runState === undefined || isFlowRunStateShape(m.runState)),
   cancelStep: m => isString(m.stepId),
   runAgent: m => isAgentLike(m.agent),
   runSkill: m => isSkillLike(m.skill),

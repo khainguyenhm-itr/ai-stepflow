@@ -42,7 +42,11 @@ Each skill in a step is invoked as its own `claude -p "/skill-name <input>"`
 process in the project directory. Steps run their skills sequentially and stop on
 the first non-zero exit code. Headless runs use the `acceptEdits` permission mode
 so a non-interactive run does not stall waiting for a prompt that cannot be
-answered. Ad-hoc **Run agent** / **Run skill** actions instead open an interactive
+answered. **⚠ This means a headless (AI-reviewed) step can create or modify files
+in your project without asking for confirmation** — run flows you trust, and review
+the diff afterwards. A hung run is killed after `ai-stepflow.run.timeoutSeconds`
+(default 600s; set to 0 to disable), and you can stop one early with the **Cancel**
+button. Ad-hoc **Run agent** / **Run skill** actions instead open an interactive
 Claude session in the integrated terminal.
 
 ## Commands

@@ -188,6 +188,11 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
             {isLocked && <button className="btn" disabled title="Complete the steps this one depends on first">Locked</button>}
           </div>
         </div>
+        {isHeadless && (
+          <div className="small muted" title="Headless AI-reviewed steps run with --permission-mode acceptEdits">
+            ⚠ Runs headless — Claude may create or edit files automatically without confirmation (acceptEdits).
+          </div>
+        )}
         <div className="runner-meta">
           <div className="meta-group">
             <span className="muted small">agent</span>
