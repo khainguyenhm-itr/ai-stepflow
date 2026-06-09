@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { 
   Flow,
-  initRunState, applyDependencyLocks, markRunning, markCompleted, markFailed,
+  initRunState, applyDependencyLocks, markRunning, markCompleted, markFailed, markCancelled,
   applyAiReview, applyHumanReview, markDone, doneStepIds
 } from '@ai-stepflow/core';
 
@@ -44,6 +44,20 @@ test('markFailed transitions status', () => {
   st = markFailed(st, flow, 'a', { output: 'error' });
   assert.equal(st.steps.a.executionStatus, 'failed');
   assert.equal(st.steps.a.output, 'error');
+});
+
+test('markCancelled marks the attempt cancelled and stays re-runnable', () => {
+  let st = initRunState(flow, { runId: 'r1' });
+  st = markRunning(st, flow, 'a');
+  st = markCancelled(st, flow, 'a', { output: 'partial output' });
+  assert.equal(st.steps.a.executionStatus, 'cancelled');
+  assert.equal(st.steps.a.output, 'partial output');
+  assert.equal(st.steps.a.completionStatus, 'not_ready');
+  const entry = (st.steps.a.history ?? []).find(h => h.status === 'cancelled');
+  assert.ok(entry, 'expected a cancelled history entry');
+  // A cancelled step can be re-run.
+  st = markRunning(st, flow, 'a');
+  assert.equal(st.steps.a.executionStatus, 'running');
 });
 
 test('applyHumanReview transitions status', () => {

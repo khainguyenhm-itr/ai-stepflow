@@ -98,6 +98,11 @@ export function markFailed(state: FlowRunState, flow: Flow, stepId: string, metr
   return patchStep(state, flow, stepId, { executionStatus: 'failed', ...metrics }, { status: 'failed' });
 }
 
+/** A run the user cancelled mid-flight: terminal for this attempt, but the step can be re-run. */
+export function markCancelled(state: FlowRunState, flow: Flow, stepId: string, metrics: StepMetrics = {}): FlowRunState {
+  return patchStep(state, flow, stepId, { executionStatus: 'cancelled', ...metrics }, { status: 'cancelled' });
+}
+
 export function applyAiReview(state: FlowRunState, flow: Flow, stepId: string, status: 'ai_review_running' | 'approved' | 'rejected' | 'waiting_human', aiReviewOutput?: string): FlowRunState {
   const patch: Partial<StepRunState> = { reviewStatus: status };
   if (aiReviewOutput !== undefined) patch.aiReviewOutput = aiReviewOutput;

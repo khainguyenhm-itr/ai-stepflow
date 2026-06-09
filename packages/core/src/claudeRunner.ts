@@ -7,6 +7,8 @@ export interface ClaudeStreamingRunOptions {
   model?: string;
   projectPath: string;
   onText: (chunk: string) => void;
+  /** Kill the run and resolve as a failure after this many ms. 0/undefined = no limit. */
+  timeoutMs?: number;
 }
 
 export interface ClaudeStreamingRunResult {
@@ -16,7 +18,15 @@ export interface ClaudeStreamingRunResult {
   costUsd?: number;
   tokensUsed?: number;
   model?: string;
+  /** True when the run was killed because it exceeded {@link ClaudeStreamingRunOptions.timeoutMs}. */
+  timedOut?: boolean;
 }
+
+/** Exit code reported when a run is killed for exceeding its timeout (mirrors `timeout(1)`). */
+export const TIMEOUT_EXIT_CODE = 124;
+
+/** Spawn seam, so tests can inject a fake child process instead of launching `claude`. */
+export type SpawnFn = typeof spawn;
 
 export interface ClaudeStreamingRunHandle {
   child: ChildProcess;
@@ -36,13 +46,13 @@ export const defaultStepRunner: StepRunner = opts => runClaudeStreaming(opts).co
 export const HEADLESS_PERMISSION_MODE = 'acceptEdits';
 
 /** Headless Claude runner with NDJSON streaming output and final usage/cost capture. */
-export function runClaudeStreaming(opts: ClaudeStreamingRunOptions): ClaudeStreamingRunHandle {
+export function runClaudeStreaming(opts: ClaudeStreamingRunOptions, spawnFn: SpawnFn = spawn): ClaudeStreamingRunHandle {
   const args = ['--print', '--output-format', 'stream-json', '--verbose', '--permission-mode', HEADLESS_PERMISSION_MODE];
   if (opts.model) args.push('--model', opts.model);
   if (opts.systemPrompt) args.push('--append-system-prompt', opts.systemPrompt);
   args.push(opts.userMessage);
 
-  const child = spawn('claude', args, { cwd: opts.projectPath || undefined, env: process.env });
+  const child = spawnFn('claude', args, { cwd: opts.projectPath || undefined, env: process.env });
 
   const completed = new Promise<ClaudeStreamingRunResult>(resolve => {
     let buf = '';
@@ -50,6 +60,24 @@ export function runClaudeStreaming(opts: ClaudeStreamingRunOptions): ClaudeStrea
     let costUsd: number | undefined;
     let tokensUsed: number | undefined;
     let model: string | undefined;
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    // Resolve at most once and always clear the timeout, whether the run ends, errors, or times out.
+    const finish = (result: ClaudeStreamingRunResult) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolve(result);
+    };
+
+    if (opts.timeoutMs && opts.timeoutMs > 0) {
+      timer = setTimeout(() => {
+        child.kill();
+        opts.onText(`\n[run timed out after ${Math.round(opts.timeoutMs! / 1000)}s — killed]\n`);
+        finish({ success: false, exitCode: TIMEOUT_EXIT_CODE, resultText, costUsd, tokensUsed, model, timedOut: true });
+      }, opts.timeoutMs);
+    }
 
     const handleEvent = (evt: any) => {
       if (!evt || typeof evt !== 'object') return;
@@ -84,10 +112,10 @@ export function runClaudeStreaming(opts: ClaudeStreamingRunOptions): ClaudeStrea
     child.stderr?.on('data', d => opts.onText(d.toString()));
     child.on('close', code => {
       if (buf.length) consume(buf);
-      resolve({ success: code === 0, exitCode: code ?? 1, resultText, costUsd, tokensUsed, model });
+      finish({ success: code === 0, exitCode: code ?? 1, resultText, costUsd, tokensUsed, model });
     });
     child.on('error', () => {
-      resolve({ success: false, exitCode: 1, resultText, costUsd, tokensUsed, model });
+      finish({ success: false, exitCode: 1, resultText, costUsd, tokensUsed, model });
     });
   });
 
