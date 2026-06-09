@@ -53,6 +53,10 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   const reviewStatus = activeStepState?.reviewStatus;
   const reviewRequired = !!activeStep?.review.required;
   const aiReviewing = reviewStatus === 'ai_review_running';
+  // AI-reviewed steps run headless (a tracked `claude` child), so their in-flight run can be
+  // cancelled; interactive steps run in the terminal and have no child to kill.
+  const isHeadless = reviewRequired && (activeStep?.review.type === 'ai' || !!activeStep?.review.reviewers?.some(r => r.type === 'ai'));
+  const canCancel = isHeadless && activeStepState?.executionStatus === 'running';
   // In the interactive-terminal model the human watches the run and decides, so
   // any review-required step shows Approve/Reject until a decision is recorded.
   const reviewDecided = reviewStatus === 'approved' || reviewStatus === 'rejected';
@@ -148,6 +152,10 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
           </div>
           <div className="runner-detail-actions">
             {aiReviewing && <span className="small muted">AI reviewing…</span>}
+
+            {canCancel && (
+              <button className="btn danger" title="Stop this headless run" onClick={() => sendToVSCode('cancelStep', { stepId: activeStepId! })}>Cancel</button>
+            )}
 
             {showHumanReviewButtons && (
               <>

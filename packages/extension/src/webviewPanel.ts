@@ -9,7 +9,7 @@ import { validateMessage, WebviewMessage } from './messages.js';
 import { listConnectedMcpServers } from './mcp.js';
 import {
   Agent, Flow, FlowRunState, FlowStep, Skill,
-  runClaudeStreaming, composeSystemPrompt,
+  runClaudeStreaming, ClaudeStreamingRunOptions, ClaudeStreamingRunResult, composeSystemPrompt,
   validateProduces, validateRequires,
   renderRunReport,
   pickAutoAdvanceStep,
@@ -36,6 +36,10 @@ export class CockpitPanel {
   private _claudeExecution: vscode.TerminalShellExecution | undefined;
   /** Headless `claude -p` runs (AI-step execution + AI review) in flight, killed on dispose. */
   private _activeRuns = new Set<ChildProcess>();
+  /** The in-flight headless child per step, so a "Cancel" can kill exactly that run. */
+  private _runChildrenByStep = new Map<string, ChildProcess>();
+  /** Steps the user cancelled, so the resolving run handler skips its own failure transition. */
+  private _cancelledStepIds = new Set<string>();
   /** Steps already launched in the current run, so the DAG orchestrator never starts one twice. Reset when the runId changes. */
   private _startedStepIds = new Set<string>();
   private _bookkeepingRunId: string | undefined;
@@ -241,6 +245,9 @@ export class CockpitPanel {
         }
         await this._handleRunStep(message.stepId, message.description);
         return;
+      case 'cancelStep':
+        this._handleCancelStep(message.stepId);
+        return;
       case 'runAgent':
         await this._handleRunAgent(message.agent, message.description);
         return;
@@ -336,7 +343,12 @@ export class CockpitPanel {
 
     await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Drafting ${kind}...` }, () => new Promise<void>(resolve => {
       execFile('claude', ['-p', metaPrompt], { cwd: this.configManager.getProjectPath() || undefined }, (error, stdout) => {
-        if (!error) this.postMessage({ type: 'draftGenerated', kind, content: stdout.trim() });
+        if (error) {
+          console.error('AI StepFlow: draft generation failed', error);
+          vscode.window.showErrorMessage(`AI StepFlow: could not draft ${kind} — ${error.message}`);
+        } else {
+          this.postMessage({ type: 'draftGenerated', kind, content: stdout.trim() });
+        }
         resolve();
       });
     }));
@@ -462,10 +474,14 @@ export class CockpitPanel {
       const result = await this._spawnClaudeStreaming({
         systemPrompt, userMessage, model: agent.model, projectPath,
         onText: chunk => { output += chunk; this.postMessage({ type: 'stepUpdate', stepId, append: true, output: chunk }); }
-      });
+      }, stepId);
+      // The user cancelled this run: _handleCancelStep already moved the step to 'cancelled',
+      // so don't also record a failure for the kill that cancel triggered.
+      if (this._cancelledStepIds.delete(stepId)) return;
       const metrics: machine.StepMetrics = { modelUsed: result.model, tokensUsed: result.tokensUsed, costUsd: result.costUsd, output };
       if (!result.success) {
-        this._setRunState(machine.markFailed(this._runState, flow, stepId, { ...metrics, output: output + `\n[step failed: claude exited ${result.exitCode}]\n` }), { stepId, status: 'failed', message: 'Run failed' });
+        const why = result.timedOut ? 'run timed out' : `claude exited ${result.exitCode}`;
+        this._setRunState(machine.markFailed(this._runState, flow, stepId, { ...metrics, output: output + `\n[step failed: ${why}]\n` }), { stepId, status: 'failed', message: result.timedOut ? 'Run timed out' : 'Run failed' });
         return;
       }
       const prod = this._validateProduces(step);
@@ -575,17 +591,37 @@ export class CockpitPanel {
     if (result.status === 'approved') this._advanceReadySteps();
   }
 
-  /** Run `claude` headless with stream-json output, tracking the child so it is killed on dispose. */
-  private _spawnClaudeStreaming(opts: {
-    systemPrompt: string;
-    userMessage: string;
-    model?: string;
-    projectPath: string;
-    onText: (chunk: string) => void;
-  }): Promise<{ success: boolean; exitCode: number; resultText: string; costUsd?: number; tokensUsed?: number; model?: string }> {
-    const handle = runClaudeStreaming(opts);
+  /** Configured per-run timeout in ms (0 = no limit). */
+  private _runTimeoutMs(): number {
+    const seconds = vscode.workspace.getConfiguration('ai-stepflow').get<number>('run.timeoutSeconds', 600);
+    return seconds > 0 ? seconds * 1000 : 0;
+  }
+
+  /**
+   * Run `claude` headless with stream-json output. The child is tracked in `_activeRuns`
+   * (killed on dispose) and, when a `stepId` is given, in `_runChildrenByStep` so a user
+   * "Cancel" can kill exactly that run. A configured per-run timeout caps a hung run.
+   */
+  private _spawnClaudeStreaming(opts: ClaudeStreamingRunOptions, stepId?: string): Promise<ClaudeStreamingRunResult> {
+    const handle = runClaudeStreaming({ ...opts, timeoutMs: opts.timeoutMs ?? this._runTimeoutMs() });
     this._activeRuns.add(handle.child);
-    return handle.completed.finally(() => { this._activeRuns.delete(handle.child); });
+    if (stepId) this._runChildrenByStep.set(stepId, handle.child);
+    return handle.completed.finally(() => {
+      this._activeRuns.delete(handle.child);
+      if (stepId && this._runChildrenByStep.get(stepId) === handle.child) this._runChildrenByStep.delete(stepId);
+    });
+  }
+
+  /** Kill the in-flight headless run for a step and record it as cancelled. No-op for terminal runs. */
+  private _handleCancelStep(stepId: string): void {
+    const child = this._runChildrenByStep.get(stepId);
+    if (!child) return;
+    this._cancelledStepIds.add(stepId);
+    child.kill();
+    this.postMessage({ type: 'stepUpdate', stepId, append: true, output: '\n[run cancelled by user]\n' });
+    if (this._currentFlow && this._runState) {
+      this._setRunState(machine.markCancelled(this._runState, this._currentFlow, stepId), { stepId, status: 'cancelled', message: 'Cancelled by user' });
+    }
   }
 
   private _validateRequires(step: FlowStep): { ok: boolean; message?: string } {

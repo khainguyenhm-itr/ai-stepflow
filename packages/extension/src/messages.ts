@@ -21,6 +21,7 @@ export type WebviewMessage =
   | { type: 'deleteSkill'; skill: Skill }
   | { type: 'updateRunState'; runState: FlowRunState; historyEvent?: { timestamp: string; status: string; message?: string; stepId: string } }
   | { type: 'runStep'; stepId: string; flow?: Flow; runState?: FlowRunState; description?: string; historyEvent?: { timestamp: string; status: string; message?: string } }
+  | { type: 'cancelStep'; stepId: string }
   | { type: 'runAgent'; agent: Agent; description?: string }
   | { type: 'runSkill'; skill: Skill; description?: string }
   | { type: 'submitHumanReview'; stepId: string; review: HumanReview; historyEvent?: { timestamp: string; status: string; message?: string } }
@@ -62,6 +63,7 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   deleteSkill: m => isObject(m.skill) && isString(m.skill.sourcePath),
   updateRunState: m => isObject(m.runState),
   runStep: m => isString(m.stepId),
+  cancelStep: m => isString(m.stepId),
   runAgent: m => isAgentLike(m.agent),
   runSkill: m => isSkillLike(m.skill),
   submitHumanReview: m =>

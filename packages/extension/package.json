@@ -96,6 +96,12 @@
           "default": 5,
           "minimum": 1,
           "description": "How long to wait after a source file save before re-indexing the AST graph."
+        },
+        "ai-stepflow.run.timeoutSeconds": {
+          "type": "number",
+          "default": 600,
+          "minimum": 0,
+          "description": "Kill a headless step/AI-review run that exceeds this many seconds (it is marked failed). Set to 0 to disable the timeout."
         }
       }
     }
