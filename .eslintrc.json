@@ -14,5 +14,5 @@
     "eqeqeq": ["warn", "smart"],
     "no-throw-literal": "warn"
   },
-  "ignorePatterns": ["out", "node_modules", "packages/webview/dist", "scripts"]
+  "ignorePatterns": ["out", "out-itest", "node_modules", "packages/webview/dist", "scripts"]
 }
