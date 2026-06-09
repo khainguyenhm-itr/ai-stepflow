@@ -83,6 +83,42 @@ export function parseFlow(data: unknown, fallbackId: string, sourcePath: string)
   };
 }
 
+/**
+ * Permissive shape guards for payloads the webview posts to the host. Unlike {@link parseFlow}
+ * (which normalizes), these only *validate* deeply and never mutate or strip fields: they use
+ * `.passthrough()` so unknown keys survive and the handler still receives the original object.
+ * They go one level deeper than a bare `typeof === 'object'` check — asserting `steps` are
+ * objects with an `id`, and a run state's `steps` map carries the three status strings — so a
+ * malformed message can't reach a file write or a state transition.
+ */
+const flowShapeSchema = z.object({
+  id: z.string(),
+  sourcePath: z.string(),
+  steps: z.array(z.object({ id: z.string() }).passthrough())
+}).passthrough();
+
+const stepRunStateShapeSchema = z.object({
+  executionStatus: z.string(),
+  reviewStatus: z.string(),
+  completionStatus: z.string()
+}).passthrough();
+
+const flowRunStateShapeSchema = z.object({
+  flowId: z.string(),
+  runId: z.string(),
+  steps: z.record(z.string(), stepRunStateShapeSchema)
+}).passthrough();
+
+/** True when `value` is a structurally valid {@link Flow} the host can safely persist/run. */
+export function isFlowShape(value: unknown): boolean {
+  return flowShapeSchema.safeParse(value).success;
+}
+
+/** True when `value` is a structurally valid {@link FlowRunState} the host can safely persist/drive. */
+export function isFlowRunStateShape(value: unknown): boolean {
+  return flowRunStateShapeSchema.safeParse(value).success;
+}
+
 /** A one-line, human-readable rendering of a validation failure for logs/messages. */
 export function formatFlowError(error: unknown): string {
   if (error instanceof z.ZodError) {
