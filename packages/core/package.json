@@ -1,0 +1,27 @@
+{
+  "name": "@ai-stepflow/core",
+  "version": "0.0.7",
+  "description": "Core engine for AI StepFlow - State machine, runners, and library loader.",
+  "main": "./out/index.js",
+  "types": "./out/index.d.ts",
+  "exports": {
+    ".": "./out/index.js",
+    "./types": "./out/types.js",
+    "./runStateMachine": "./out/runStateMachine.js"
+  },
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "dependencies": {
+    "gray-matter": "^4.0.3",
+    "yaml": "^2.9.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.130",
+    "typescript": "^5.3.3"
+  }
+}

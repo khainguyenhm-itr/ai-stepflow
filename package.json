@@ -1,0 +1,45 @@
+{
+  "name": "ai-stepflow-monorepo",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "description": "Orchestrate Claude agents, skills & workflows for structured AI development.",
+  "version": "0.0.7",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/khainguyen/ai-stepflow"
+  },
+  "scripts": {
+    "compile": "npm run compile --workspaces && node scripts/bundle-extension.mjs",
+    "compile-all": "npm run build-webview && npm run compile",
+    "package": "npm run package:vsix",
+    "package:vsix": "npm run compile-all && node scripts/package-vsix.mjs",
+    "watch": "npm run watch --workspaces & node scripts/bundle-extension.mjs --watch",
+    "build-webview": "node scripts/build-webview.mjs",
+    "preview:webview": "npm run build-webview && node scripts/serve-webview.mjs",
+    "watch-webview": "node scripts/build-webview.mjs --watch",
+    "cli": "node packages/extension/out/cli.js",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint packages/*/src packages/core/test --ext ts",
+    "compile:test": "rm -rf packages/core/out/test && tsc -p packages/core/test/tsconfig.json",
+    "test:unit": "npm run compile && npm run compile:test && node --test packages/core/out/test/test/*.test.js",
+    "test": "npm run test:unit",
+    "vscode:uninstall": "node packages/extension/out/uninstall.js"
+  },
+  "devDependencies": {
+    "@types/glob": "^8.1.0",
+    "@types/mocha": "^10.0.6",
+    "@types/node": "18.x",
+    "@types/vscode": "~1.93.0",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
+    "@vscode/test-electron": "^2.3.8",
+    "esbuild": "^0.28.0",
+    "eslint": "^8.56.0",
+    "glob": "^10.3.10",
+    "typescript": "^5.3.3"
+  }
+}

@@ -1,0 +1,119 @@
+{
+  "name": "ai-stepflow",
+  "displayName": "AI StepFlow",
+  "publisher": "khainguyen",
+  "version": "0.0.7",
+  "description": "Orchestrate Claude agents, skills & workflows for structured AI development.",
+  "icon": "resources/icon.png",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/khainguyen/ai-stepflow"
+  },
+  "engines": {
+    "vscode": "^1.93.0"
+  },
+  "categories": [
+    "AI",
+    "Other"
+  ],
+  "keywords": [
+    "claude",
+    "claude code",
+    "ai",
+    "workflow",
+    "agents",
+    "skills",
+    "orchestration"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:ai-stepflow-home",
+    "onCommand:ai-stepflow.openOverview",
+    "onCommand:ai-stepflow.refreshAll",
+    "onCommand:ai-stepflow.installDefaults",
+    "onWebviewPanel:aiStepFlowCockpit"
+  ],
+  "main": "./out/extension.js",
+  "bin": {
+    "ai-stepflow": "./out/cli.js"
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ai-stepflow",
+          "title": "AI StepFlow",
+          "icon": "resources/activity-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "ai-stepflow": [
+        {
+          "id": "ai-stepflow-home",
+          "name": "Overview",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "ai-stepflow.openOverview",
+        "title": "Open AI StepFlow",
+        "icon": "$(rocket)"
+      },
+      {
+        "command": "ai-stepflow.refreshAll",
+        "title": "Refresh All",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "ai-stepflow.installDefaults",
+        "title": "Install Default Agents & Skills",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "ai-stepflow.astGraph.rescan",
+        "title": "AI StepFlow: Rescan AST Graph",
+        "icon": "$(type-hierarchy)"
+      },
+      {
+        "command": "ai-stepflow.astGraph.reregisterMcp",
+        "title": "AI StepFlow: Re-register AST Graph MCP Server"
+      }
+    ],
+    "configuration": {
+      "title": "AI StepFlow",
+      "properties": {
+        "ai-stepflow.astGraph.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Index the workspace with ast-graph and expose it to Claude as an MCP server, so step runs answer structural code questions with a cheap graph query instead of grep+read."
+        },
+        "ai-stepflow.astGraph.autoRescanDebounceSeconds": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "description": "How long to wait after a source file save before re-indexing the AST graph."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "@ai-stepflow/core": "^0.0.7"
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.130",
+    "@types/vscode": "~1.93.0"
+  },
+  "files": [
+    "out",
+    "resources",
+    "LICENSE"
+  ]
+}

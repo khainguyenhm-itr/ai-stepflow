@@ -1,0 +1,1329 @@
+/* ------------------------------------------------------------------ */
+/* AI StepFlow — minimal VS Code-native theme.                         */
+/* Every color/font comes from VS Code theme variables, with dark      */
+/* fallbacks so the browser preview still looks like VS Code Dark+.    */
+/* ------------------------------------------------------------------ */
+
+:root {
+  --bg: var(--vscode-editor-background, #1e1e1e);
+  --fg: var(--vscode-editor-foreground, #cccccc);
+  --muted: var(--vscode-descriptionForeground, #9d9d9d);
+  --border: var(--vscode-panel-border, #3c3c3c);
+  --panel: var(--vscode-sideBar-background, #252526);
+  --panel-2: var(--vscode-editorWidget-background, #252526);
+  --input-bg: var(--vscode-input-background, #3c3c3c);
+  --input-fg: var(--vscode-input-foreground, #cccccc);
+  --input-border: var(--vscode-input-border, #3c3c3c);
+  --focus: var(--vscode-focusBorder, #007fd4);
+  --btn-bg: var(--vscode-button-background, #0e639c);
+  --btn-fg: var(--vscode-button-foreground, #ffffff);
+  --btn-hover: var(--vscode-button-hoverBackground, #1177bb);
+  --btn-2-bg: var(--vscode-button-secondaryBackground, #3a3d41);
+  --btn-2-fg: var(--vscode-button-secondaryForeground, #cccccc);
+  --btn-2-hover: var(--vscode-button-secondaryHoverBackground, #45494e);
+  --hover: var(--vscode-list-hoverBackground, #2a2d2e);
+  --active-sel: var(--vscode-list-activeSelectionBackground, #094771);
+  --link: var(--vscode-textLink-foreground, #3794ff);
+  --error: var(--vscode-errorForeground, #f48771);
+  --warn: var(--vscode-editorWarning-foreground, #cca700);
+  --success: var(--vscode-testing-iconPassed, #73c991);
+  --running: var(--vscode-charts-blue, #3794ff);
+  --badge-bg: var(--vscode-badge-background, #4d4d4d);
+  --badge-fg: var(--vscode-badge-foreground, #ffffff);
+  /* Outline for secondary buttons. Derived from the foreground color because
+     themes like Dark+ set --vscode-input-border to transparent, which made
+     outlined buttons look flat/borderless. */
+  --btn-outline: color-mix(in srgb, var(--fg) 40%, transparent);
+  --font: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", sans-serif);
+  --mono: var(--vscode-editor-font-family, "SF Mono", Monaco, Menlo, Consolas, "Courier New", monospace);
+  --font-size: var(--vscode-font-size, 13px);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  /* VS Code's default webview stylesheet injects `body { padding: 0 20px }`;
+     reset it so the cockpit spans the full panel width. */
+  padding: 0;
+  overflow: hidden;
+  color: var(--fg);
+  background: var(--bg);
+  font-family: var(--font);
+  font-size: var(--font-size);
+  line-height: 1.4;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* VS Code-style scrollbars: thin thumb on a transparent track. */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7));
+}
+
+::-webkit-scrollbar-thumb:active {
+  background: var(--vscode-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.4));
+}
+
+.tab-bar::-webkit-scrollbar {
+  height: 3px;
+}
+
+/* Force a thin, consistent scrollbar on textareas and the console. The VS Code
+   extension host (Electron) and the browser preview otherwise render very
+   different default scrollbars for form controls. */
+textarea.input,
+.console {
+  scrollbar-width: thin;
+  scrollbar-color: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4)) transparent;
+}
+
+textarea.input::-webkit-scrollbar,
+.console::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+textarea.input::-webkit-scrollbar-track,
+.console::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+textarea.input::-webkit-scrollbar-thumb,
+.console::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background-clip: padding-box;
+  background-color: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+}
+
+textarea.input::-webkit-scrollbar-thumb:hover,
+.console::-webkit-scrollbar-thumb:hover {
+  background-color: var(--vscode-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7));
+}
+
+.mono { font-family: var(--mono); }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.success-text { color: var(--success); }
+.pad-sm { padding: 8px; }
+
+/* ------------------------------ tabs ------------------------------ */
+
+.tab-bar {
+  display: flex;
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.tab {
+  padding: 12px 14px;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  color: var(--muted);
+  background: transparent;
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tab:hover {
+  color: var(--fg);
+}
+
+.tab.active {
+  color: var(--fg);
+  border-bottom-color: var(--focus);
+}
+
+.tab-count {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 9px;
+  color: var(--badge-fg);
+  background: var(--badge-bg);
+  font-size: 10px;
+  line-height: 15px;
+}
+
+/* ------------------------------ page ------------------------------ */
+
+.page {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.page-head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.page-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px 20px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 4px;
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--muted);
+  opacity: 0.8;
+}
+
+.empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.empty-text {
+  max-width: 280px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stack.tight {
+  gap: 6px;
+}
+
+.inline-row {
+  display: flex;
+  gap: 6px;
+}
+
+.inline-row .input {
+  flex: 1;
+}
+
+.section-label {
+  margin-top: 2px;
+  font-weight: 600;
+}
+
+/* ---------------------------- controls ---------------------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px;
+  /* Secondary buttons are outlined so Details / popup actions stay consistent. */
+  border: 1px solid var(--btn-outline);
+  border-radius: 2px;
+  color: var(--btn-2-fg);
+  background: transparent;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 1.4;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.btn.primary {
+  border-color: var(--btn-bg);
+  color: var(--btn-fg);
+  background: var(--btn-bg);
+}
+
+.btn.primary:hover:not(:disabled) {
+  border-color: var(--btn-hover);
+  background: var(--btn-hover);
+}
+
+.btn.danger {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.btn.danger:hover:not(:disabled) {
+  border-color: var(--error);
+}
+
+.btn.block {
+  justify-content: center;
+  width: 100%;
+}
+
+/* SVG glyphs sit below the text baseline; center them with flex. */
+.btn-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* The plus sign in dashed buttons. */
+.btn-glyph.plus {
+  margin-top: 0;
+}
+
+/* Dashed variant for "add" affordances like the Add Step button. */
+.btn.dashed {
+  border-style: dashed;
+  color: var(--muted);
+}
+
+.btn.dashed:hover:not(:disabled) {
+  color: var(--fg);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.btn:focus-visible,
+.icon-btn:focus-visible,
+.tab:focus-visible,
+.input:focus,
+.select:focus {
+  outline: 1px solid var(--focus);
+  outline-offset: -1px;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  color: var(--muted);
+  background: transparent;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  color: var(--fg);
+  background: var(--hover);
+}
+
+.icon-btn.danger:hover {
+  color: var(--error);
+}
+
+/* Boxed icon buttons (step list edit/remove): equal size, visible border. */
+.icon-btn.boxed {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--btn-outline);
+  border-radius: 2px;
+  line-height: 1;
+}
+
+.input,
+.select {
+  padding: 4px 8px;
+  border: 1px solid var(--input-border);
+  border-radius: 2px;
+  color: var(--input-fg);
+  background: var(--input-bg);
+  font-family: inherit;
+  font-size: inherit;
+}
+
+textarea.input {
+  resize: vertical;
+  font-family: inherit;
+}
+
+/* AI-draft icon overlaid in the top-right corner of a textarea. */
+.textarea-wrap {
+  position: relative;
+}
+
+.textarea-wrap textarea.input {
+  width: 100%;
+  padding-right: 30px;
+}
+
+.icon-btn.ai-draft {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--accent, var(--vscode-textLink-foreground, #4daafc));
+  background: var(--vscode-editor-background, var(--vscode-input-background, #1e1e1e));
+  font-size: 13px;
+  line-height: 1;
+  transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+
+.icon-btn.ai-draft:hover:not(:disabled) {
+  border-color: var(--accent, var(--vscode-textLink-foreground, #4daafc));
+  background: var(--vscode-list-hoverBackground, rgba(120, 170, 255, 0.14));
+}
+
+.icon-btn.ai-draft:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.icon-btn.ai-draft.loading {
+  cursor: default;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Instant custom tooltip (the native title delay made it feel missing). */
+.icon-btn.ai-draft[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  width: max-content;
+  max-width: 230px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--vscode-editorHoverWidget-background, #252526);
+  color: var(--vscode-editorHoverWidget-foreground, var(--fg));
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: left;
+  white-space: normal;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-2px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.icon-btn.ai-draft[data-tooltip]:hover::after,
+.icon-btn.ai-draft[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.input::placeholder {
+  color: var(--vscode-input-placeholderForeground, #818181);
+}
+
+.select {
+  cursor: pointer;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field-label {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.field-hint {
+  opacity: 0.8;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 12px;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.check-row.disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.check-row input {
+  margin: 0;
+  accent-color: var(--btn-bg);
+}
+
+.capability-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 9px 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 5px;
+  background: var(--input-bg);
+}
+
+.capability-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.capability-chip.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.capability-chip input {
+  margin: 0;
+  accent-color: var(--btn-bg);
+}
+
+.dep-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 140px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--input-border);
+  border-radius: 2px;
+  background: var(--input-bg);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 9px;
+  color: var(--badge-fg);
+  background: var(--badge-bg);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+/* Scope badges (global/repo) are informational only — keep them neutral
+   instead of the theme's accent badge color. */
+.badge.scope {
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--btn-outline);
+  line-height: 14px;
+}
+
+.badge.success { color: var(--bg); background: var(--success); }
+.badge.error { color: var(--bg); background: var(--error); }
+.badge.warn { color: var(--bg); background: var(--warn); }
+.badge.running { color: var(--bg); background: var(--running); }
+
+.error-banner {
+  padding: 6px 10px;
+  border: 1px solid var(--error);
+  border-radius: 2px;
+  color: var(--error);
+  font-size: 12px;
+}
+
+.progress {
+  width: 90px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--btn-2-bg);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--vscode-progressBar-background, #0e70c0);
+  transition: width 0.2s ease;
+}
+
+.kv-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.kv-table td {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+}
+
+.kv-table td:first-child {
+  width: 110px;
+  color: var(--muted);
+  background: var(--panel);
+}
+
+/* ----------------------------- cards ------------------------------ */
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 180px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--panel);
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.card-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Keep the scope badge tight to the title; push the edit button to the right edge. */
+.card-head .badge {
+  flex: 0 0 auto;
+}
+
+.card-head .icon-btn {
+  margin-left: auto;
+}
+
+.card-description {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  flex: 0 0 48px;
+  height: 48px;
+  margin: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+
+/* ----------------------------- panels ----------------------------- */
+
+.panel {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-head-info {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.panel-title {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+/* --------------------------- flow canvas -------------------------- */
+
+.flow-canvas {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 18px;
+}
+
+.flow-track {
+  display: flex;
+  align-items: center;
+  min-width: max-content;
+}
+
+.flow-stage {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+}
+
+.flow-connector {
+  position: relative;
+  flex: 0 0 56px;
+  height: 2px;
+  background: var(--border);
+}
+
+.flow-connector::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: -1px;
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 8px solid var(--border);
+  transform: translateY(-50%);
+}
+
+.flow-step-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 240px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+}
+
+.flow-step-card.editable {
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.flow-step-card.editable:hover,
+.flow-step-card.editable:focus-visible {
+  border-color: var(--vscode-focusBorder, var(--accent, #0e639c));
+  background: var(--vscode-list-hoverBackground, var(--bg));
+  outline: none;
+}
+
+.flow-step-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Edit + remove actions: hidden until the card is hovered/focused. */
+.flow-step-actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.flow-step-card.editable:hover .flow-step-actions,
+.flow-step-card.editable:focus-within .flow-step-actions {
+  opacity: 1;
+}
+
+.flow-step-actions .icon-btn.sm {
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+}
+
+/* The gear glyph renders smaller than ✕ at the same size; nudge it up to match. */
+.flow-step-actions .icon-btn.gear {
+  font-size: 14px;
+}
+
+.flow-step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.flow-step-title {
+  overflow: hidden;
+  font-weight: 600;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-step-sub {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-step-card .badge {
+  align-self: flex-start;
+}
+
+/* Review indicator on a step card: a small yellow pill with an icon (person =
+   human review, robot = auto review) plus its label. */
+.flow-step-review {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px 1px 5px;
+  border-radius: 2px;
+  color: var(--bg);
+  background: var(--warn);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.flow-step-review svg {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.flow-add-node {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  margin-left: 16px;
+  border: 1px dashed var(--border);
+  border-radius: 50%;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.flow-add-node:hover {
+  border-color: var(--focus);
+  color: var(--fg);
+}
+
+/* ----------------------------- runner ----------------------------- */
+
+.runner {
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.runner-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.runner-head-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.runner-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.runner-strip {
+  display: flex;
+  align-items: center;
+  padding: 12px 14px 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.strip-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--muted);
+  background: var(--panel);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.strip-step:hover {
+  border-color: var(--focus);
+  color: var(--fg);
+}
+
+.strip-step.active {
+  border-color: var(--focus);
+  color: var(--fg);
+  background: var(--active-sel);
+}
+
+.strip-step.done {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.strip-step.locked {
+  opacity: 0.45;
+  border-style: dashed;
+}
+
+.strip-connector {
+  flex: 0 0 22px;
+  height: 1px;
+  background: var(--border);
+}
+
+.runner-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 14px;
+}
+
+.runner-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.runner-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.runner-detail-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Grouped action buttons (e.g. Done / Limit / Cancel) need their own spacing
+   since the wrapper's gap only applies between direct children. */
+.btn-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.runner-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.meta-group {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 3px 12px;
+  align-content: start;
+  align-items: center;
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--panel);
+}
+
+.step-actors {
+  margin: 0;
+}
+
+.step-actors .sep {
+  margin: 0 6px;
+}
+
+.placeholder {
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.command-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.icon-btn.sm {
+  width: 18px;
+  height: 18px;
+  font-size: 12px;
+}
+
+.console {
+  max-height: 200px;
+  min-height: 60px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: auto;
+  color: var(--fg);
+  background: var(--vscode-terminal-background, var(--vscode-editor-background, #1e1e1e));
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The automated-review transcript, shown beneath the run output. */
+.console.ai-review {
+  margin-top: 4px;
+  max-height: 160px;
+  border-style: dashed;
+}
+
+.runner-costs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--panel);
+}
+
+.runner-costs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.runner-cost-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.runner-cost-table th,
+.runner-cost-table td {
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+  text-align: left;
+}
+
+.runner-cost-table th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.runner-cost-table tr.active {
+  background: color-mix(in srgb, var(--active-sel) 35%, transparent);
+}
+
+.error-text { color: var(--error, var(--vscode-errorForeground, #f48771)); }
+
+.step-history {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.history-run-group + .history-run-group {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+
+.history-run-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-message {
+  opacity: 0.8;
+}
+
+/* --------------------------- step builder ------------------------- */
+
+.step-list {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.step-list-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  cursor: grab;
+}
+
+.step-list-item + .step-list-item {
+  border-top: 1px solid var(--border);
+}
+
+.step-list-item:hover {
+  background: var(--hover);
+}
+
+.drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.step-list-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.step-list-title {
+  font-weight: 600;
+}
+
+.input-def-row {
+  display: grid;
+  grid-template-columns: minmax(80px, auto) 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.input-def-row code {
+  color: var(--link);
+  font-size: 12px;
+}
+
+/* ----------------------------- modals ----------------------------- */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 48px 16px;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 96px);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--panel-2);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 0 0 auto;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-title {
+  font-weight: 600;
+}
+
+.modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px;
+}
+
+.modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+}
+
+/* --------------------------- responsive --------------------------- */
+
+@media (max-width: 1280px) {
+  .card-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 960px) {
+  .card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .page-head,
+  .panel-head,
+  .runner-head,
+  .runner-detail-head {
+    flex-wrap: wrap;
+  }
+
+  .page {
+    padding: 10px;
+  }
+
+  .card-grid {
+    grid-template-columns: 1fr;
+  }
+}

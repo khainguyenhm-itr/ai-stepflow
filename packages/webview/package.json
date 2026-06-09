@@ -1,0 +1,23 @@
+{
+  "name": "@ai-stepflow/webview",
+  "version": "0.0.7",
+  "private": true,
+  "type": "module",
+  "description": "Webview UI for AI StepFlow",
+  "license": "MIT",
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "dependencies": {
+    "@ai-stepflow/core": "^0.0.7",
+    "lucide-react": "^1.17.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.16",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^5.3.3"
+  }
+}
