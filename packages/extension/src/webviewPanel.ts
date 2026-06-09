@@ -504,13 +504,6 @@ export class CockpitPanel {
   }
 
   /**
-   * Gate a finished step when the user clicks "Mark step done". In the interactive model the
-   * run's conversation lives in the terminal, so review judges the produced artifacts rather
-   * than a captured transcript: a deterministic validator when one is configured, otherwise a
-   * human decision via the approve/reject buttons. `requires`/`produces` are already validated
-   * by the caller, so this only runs the validator and applies its verdict.
-   */
-  /**
    * Gate a step finished via the interactive path (clicked "Mark step done"). AI-type reviews
    * run the two-layer automated review; a step with an explicit `validatorPath` runs that
    * validator; everything else waits for a human decision.

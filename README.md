@@ -31,8 +31,8 @@ the Claude CLI without leaving the editor.
 
 ## Getting started
 
-1. Open the **AI StepFlow** icon in the activity bar, or run **AI StepFlow: Open
-   Dashboard** from the command palette.
+1. Open the **AI StepFlow** icon in the activity bar, or run **Open AI StepFlow**
+   from the command palette.
 2. Pick a workflow and press **Run**, or create a new one with **New Flow**.
 3. Run each step from the runner panel and review the streamed output.
 
@@ -49,8 +49,11 @@ Claude session in the integrated terminal.
 
 | Command | Description |
 | --- | --- |
-| `AI StepFlow: Open Dashboard` | Open the cockpit |
-| `AI StepFlow: Refresh All` | Reload agents, skills, and flows from disk |
+| `Open AI StepFlow` | Open the cockpit |
+| `Refresh All` | Reload agents, skills, and flows from disk |
+| `Install Default Agents & Skills` | Install the bundled SDLC agents, skills, and Karpathy rules into `~/.claude` |
+| `AI StepFlow: Rescan AST Graph` | Re-index the workspace with `ast-graph` |
+| `AI StepFlow: Re-register AST Graph MCP Server` | Re-register the `ast-graph` MCP server with Claude |
 
 ## License
 

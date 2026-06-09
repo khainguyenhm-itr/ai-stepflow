@@ -22,7 +22,7 @@ This project follows **Karpathy's Rules** for high-standard engineering and agen
 
 ---
 
-*Note: These rules are also hard-coded into the extension's prompt execution logic in `src/webviewPanel.ts` to ensure that all workflows triggered via AI StepFlow follow these same standards.*
+*Note: When the default library is installed, the extension (`ConfigManager.ensureProjectClaudeMd` in `packages/extension/src/configManager.ts`) merges these rules into the project's `CLAUDE.md` inside `ai-stepflow:karpathy` markers, so every Claude Code run in the project — including steps launched from AI StepFlow — picks them up.*
 
 ## Engineering Discipline (Karpathy Rules)
 - **Think Before Coding**: State assumptions and tradeoffs explicitly before implementation.
