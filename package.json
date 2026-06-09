@@ -10,7 +10,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/khainguyen/ai-stepflow"
+    "url": "https://github.com/khainguyenhm-itr/ai-stepflow"
   },
   "scripts": {
     "compile": "npm run compile --workspaces && node scripts/bundle-extension.mjs",
