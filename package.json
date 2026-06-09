@@ -25,7 +25,9 @@
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint packages/*/src packages/core/test --ext ts",
     "compile:test": "rm -rf packages/core/out/test && tsc -p packages/core/test/tsconfig.json",
+    "compile:itest": "rm -rf packages/extension/out-itest && tsc -p packages/extension/test/tsconfig.json",
     "test:unit": "npm run compile && npm run compile:test && node --test packages/core/out/test/test/*.test.js",
+    "test:integration": "npm run compile && npm run compile:itest && node packages/extension/out-itest/test/runIntegration.js",
     "test": "npm run test:unit",
     "vscode:uninstall": "node packages/extension/out/uninstall.js"
   },
@@ -40,6 +42,7 @@
     "esbuild": "^0.28.0",
     "eslint": "^8.56.0",
     "glob": "^10.3.10",
+    "mocha": "^10.8.2",
     "typescript": "^5.3.3"
   }
 }

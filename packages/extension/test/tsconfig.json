@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "outDir": "../out-itest",
+    "composite": false,
+    "noEmit": false,
+    "types": ["node", "mocha"]
+  },
+  "include": ["./**/*.ts"],
+  "exclude": ["../node_modules", "../out", "../out-itest"]
+}
