@@ -1,0 +1,120 @@
+import * as vscode from 'vscode';
+import { Agent } from '@ai-stepflow/core';
+import { ConfigManager } from './configManager.js';
+
+/**
+ * Owns the single interactive `claude` terminal and its lifecycle, extracted from the
+ * cockpit panel so the tricky shell-integration timing lives in one place. The panel
+ * delegates ad-hoc agent/skill runs and the interactive (non-headless) step path here;
+ * headless `claude -p` runs are unrelated and stay in the panel.
+ */
+export class TerminalManager {
+  private _terminal: vscode.Terminal | undefined;
+  /** Whether an interactive `claude` session is live in our terminal. */
+  private _running = false;
+  /** The shell execution that launched claude, so we can tell when it exits. */
+  private _execution: vscode.TerminalShellExecution | undefined;
+  /** The name of the agent currently running in our terminal, if any. */
+  private _currentAgentName: string | undefined;
+  private _disposables: vscode.Disposable[] = [];
+
+  constructor(private readonly configManager: ConfigManager) {
+    this._disposables.push(
+      vscode.window.onDidEndTerminalShellExecution(event => {
+        if (event.execution === this._execution) this._reset();
+      }),
+      vscode.window.onDidCloseTerminal(terminal => {
+        if (terminal === this._terminal) this._reset();
+      })
+    );
+  }
+
+  private _reset(): void {
+    this._running = false;
+    this._execution = undefined;
+    this._currentAgentName = undefined;
+  }
+
+  /**
+   * Open (or reuse) the interactive `claude` terminal for an ad-hoc or step run.
+   * When `submit` is false the prompt is typed into the chat box but NOT sent, so the
+   * user can review the agent/skill/model context and press Enter to start the run.
+   */
+  public async runInTerminal(prompt: string, projectPath: string, agent?: Agent | string, submit = true): Promise<void> {
+    const terminal = this._getTerminal(projectPath);
+    terminal.show();
+
+    const agentName = typeof agent === 'string' ? agent : agent?.name;
+    if (this._running && agentName !== this._currentAgentName) {
+      this._terminal?.dispose();
+      this._terminal = undefined;
+      this._running = false;
+      return this.runInTerminal(prompt, projectPath, agent, submit);
+    }
+
+    if (this._running) {
+      if (prompt) terminal.sendText(prompt, submit);
+      return;
+    }
+
+    const shellIntegration = await this._waitForShellIntegration(terminal);
+    this._running = true;
+    this._currentAgentName = agentName;
+
+    const agentObj = typeof agent === 'string' ? (await this.configManager.loadAgents()).find(a => a.name === agent) : agent;
+    const launchArgs = this._constructClaudeArgs(agentObj);
+    // Auto-submitted runs bake the prompt into the launch command. For a pre-fill (submit=false)
+    // we launch claude bare, then type the prompt unsent once the REPL has come up.
+    if (prompt && submit) launchArgs.push(prompt);
+
+    if (shellIntegration) {
+      this._execution = shellIntegration.executeCommand(this._shellQuoteArgs(launchArgs));
+    } else {
+      terminal.sendText(this._shellQuoteArgs(launchArgs), true);
+    }
+
+    if (prompt && !submit) {
+      setTimeout(() => { try { terminal.sendText(prompt, false); } catch { /* terminal closed */ } }, 1500);
+    }
+  }
+
+  private _constructClaudeArgs(agent?: Agent): string[] {
+    const args = ['claude'];
+    if (agent) {
+      args.push('--agent', agent.name);
+      if (agent.model) args.push('--model', agent.model);
+    }
+    return args;
+  }
+
+  private _shellQuoteArgs(args: string[]): string {
+    return args.map(arg => {
+      if (arg.includes(' ') || arg.includes('"') || arg.includes("'") || arg.startsWith('/')) {
+        return process.platform === 'win32' ? `"${arg.replace(/"/g, '""')}"` : `'${arg.replace(/'/g, "'\\''")}'`;
+      }
+      return arg;
+    }).join(' ');
+  }
+
+  private async _waitForShellIntegration(terminal: vscode.Terminal, timeoutMs = 3000): Promise<vscode.TerminalShellIntegration | undefined> {
+    if (terminal.shellIntegration) return terminal.shellIntegration;
+    return new Promise(resolve => {
+      const timer = setTimeout(() => { listener.dispose(); resolve(undefined); }, timeoutMs);
+      const listener = vscode.window.onDidChangeTerminalShellIntegration(event => {
+        if (event.terminal === terminal) { clearTimeout(timer); listener.dispose(); resolve(event.shellIntegration); }
+      });
+    });
+  }
+
+  private _getTerminal(projectPath: string): vscode.Terminal {
+    if (!this._terminal || this._terminal.exitStatus) {
+      this._running = false;
+      this._terminal = vscode.window.createTerminal({ name: 'AI StepFlow Claude', cwd: projectPath || undefined });
+    }
+    return this._terminal;
+  }
+
+  public dispose(): void {
+    while (this._disposables.length) this._disposables.pop()?.dispose();
+  }
+}

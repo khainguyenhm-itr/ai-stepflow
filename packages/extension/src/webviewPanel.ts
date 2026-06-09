@@ -5,6 +5,7 @@ import * as crypto from 'crypto';
 import { execFile, ChildProcess } from 'child_process';
 import { ConfigManager } from './configManager.js';
 import { StateManager } from './stateManager.js';
+import { TerminalManager } from './terminalManager.js';
 import { validateMessage, WebviewMessage } from './messages.js';
 import { listConnectedMcpServers } from './mcp.js';
 import {
@@ -27,13 +28,8 @@ export class CockpitPanel {
   private _disposables: vscode.Disposable[] = [];
   private _currentFlow: Flow | undefined;
   private _runState: FlowRunState | undefined;
-  private _claudeTerminal: vscode.Terminal | undefined;
-  /** The name of the agent currently running in our interactive terminal, if any. */
-  private _currentAgentName: string | undefined;
-  /** Whether an interactive `claude` session is live in our terminal (ad-hoc agent/skill runs). */
-  private _claudeRunning = false;
-  /** The shell execution that launched claude, so we can tell when it exits. */
-  private _claudeExecution: vscode.TerminalShellExecution | undefined;
+  /** Owns the interactive `claude` terminal for ad-hoc and non-headless step runs. */
+  private readonly _terminals: TerminalManager;
   /** Headless `claude -p` runs (AI-step execution + AI review) in flight, killed on dispose. */
   private _activeRuns = new Set<ChildProcess>();
   /** The in-flight headless child per step, so a "Cancel" can kill exactly that run. */
@@ -92,6 +88,7 @@ export class CockpitPanel {
   ) {
     this._panel = panel;
     this._extensionUri = extensionUri;
+    this._terminals = new TerminalManager(configManager);
 
     this._update();
 
@@ -104,26 +101,6 @@ export class CockpitPanel {
       }),
       null,
       this._disposables
-    );
-
-    this._disposables.push(
-      vscode.window.onDidEndTerminalShellExecution(event => {
-        if (event.execution === this._claudeExecution) {
-          this._claudeRunning = false;
-          this._claudeExecution = undefined;
-          this._currentAgentName = undefined;
-        }
-      })
-    );
-
-    this._disposables.push(
-      vscode.window.onDidCloseTerminal(terminal => {
-        if (terminal === this._claudeTerminal) {
-          this._claudeRunning = false;
-          this._claudeExecution = undefined;
-          this._currentAgentName = undefined;
-        }
-      })
     );
   }
 
@@ -503,7 +480,7 @@ export class CockpitPanel {
 
     this._setRunState(machine.markRunning(this._runState, flow, stepId), { stepId, status: 'running', message: 'Opened in Claude — press Enter to run' });
     this.postMessage({ type: 'stepUpdate', stepId, append: true, output: `\n[opened in the Claude terminal — review the pre-filled message, press Enter to run, then click "Mark step done"]\n` });
-    await this._runInTerminal(message, projectPath, agent, false);
+    await this._terminals.runInTerminal(message, projectPath, agent, false);
   }
 
   /**
@@ -677,100 +654,22 @@ export class CockpitPanel {
     this._startedStepIds = this._runState ? seedStartedSteps(this._runState.steps) : new Set<string>();
   }
 
-  private _constructClaudeArgs(agent?: Agent): string[] {
-    const args = ['claude'];
-    if (agent) {
-      args.push('--agent', agent.name);
-      if (agent.model) args.push('--model', agent.model);
-    }
-    return args;
-  }
-
-  private _shellQuoteArgs(args: string[]): string {
-    return args.map(arg => {
-      if (arg.includes(' ') || arg.includes('"') || arg.includes("'") || arg.startsWith('/')) {
-        return process.platform === 'win32' ? `"${arg.replace(/"/g, '""')}"` : `'${arg.replace(/'/g, "'\\''")}'`;
-      }
-      return arg;
-    }).join(' ');
-  }
-
   private async _handleRunAgent(agent: Agent | undefined, description?: string) {
-    if (agent) await this._runInTerminal(description?.trim() || '', this.configManager.getProjectPath() || '', agent);
+    if (agent) await this._terminals.runInTerminal(description?.trim() || '', this.configManager.getProjectPath() || '', agent);
   }
 
   private async _handleRunSkill(skill: Skill | undefined, description?: string) {
-    if (skill) await this._runInTerminal(this._buildCommandPrompt(skill.name, description), this.configManager.getProjectPath() || '');
+    if (skill) await this._terminals.runInTerminal(this._buildCommandPrompt(skill.name, description), this.configManager.getProjectPath() || '');
   }
 
   private _buildCommandPrompt(commandName: string, description?: string): string {
     return description?.trim() ? `/${commandName} ${description.trim()}` : `/${commandName}`;
   }
 
-  /**
-   * Open (or reuse) the interactive `claude` terminal for an ad-hoc or step run.
-   * When `submit` is false the prompt is typed into the chat box but NOT sent, so the
-   * user can review the agent/skill/model context and press Enter to start the run.
-   */
-  private async _runInTerminal(prompt: string, projectPath: string, agent?: Agent | string, submit = true): Promise<void> {
-    const terminal = this._getClaudeTerminal(projectPath);
-    terminal.show();
-
-    const agentName = typeof agent === 'string' ? agent : agent?.name;
-    if (this._claudeRunning && agentName !== this._currentAgentName) {
-      this._claudeTerminal?.dispose();
-      this._claudeTerminal = undefined;
-      this._claudeRunning = false;
-      return this._runInTerminal(prompt, projectPath, agent, submit);
-    }
-
-    if (this._claudeRunning) {
-      if (prompt) terminal.sendText(prompt, submit);
-      return;
-    }
-
-    const shellIntegration = await this._waitForShellIntegration(terminal);
-    this._claudeRunning = true;
-    this._currentAgentName = agentName;
-
-    const agentObj = typeof agent === 'string' ? (await this.configManager.loadAgents()).find(a => a.name === agent) : agent;
-    const launchArgs = this._constructClaudeArgs(agentObj);
-    // Auto-submitted runs bake the prompt into the launch command. For a pre-fill (submit=false)
-    // we launch claude bare, then type the prompt unsent once the REPL has come up.
-    if (prompt && submit) launchArgs.push(prompt);
-
-    if (shellIntegration) {
-      this._claudeExecution = shellIntegration.executeCommand(this._shellQuoteArgs(launchArgs));
-    } else {
-      terminal.sendText(this._shellQuoteArgs(launchArgs), true);
-    }
-
-    if (prompt && !submit) {
-      setTimeout(() => { try { terminal.sendText(prompt, false); } catch { /* terminal closed */ } }, 1500);
-    }
-  }
-
-  private async _waitForShellIntegration(terminal: vscode.Terminal, timeoutMs = 3000): Promise<vscode.TerminalShellIntegration | undefined> {
-    if (terminal.shellIntegration) return terminal.shellIntegration;
-    return new Promise(resolve => {
-      const timer = setTimeout(() => { listener.dispose(); resolve(undefined); }, timeoutMs);
-      const listener = vscode.window.onDidChangeTerminalShellIntegration(event => {
-        if (event.terminal === terminal) { clearTimeout(timer); listener.dispose(); resolve(event.shellIntegration); }
-      });
-    });
-  }
-
-  private _getClaudeTerminal(projectPath: string): vscode.Terminal {
-    if (!this._claudeTerminal || this._claudeTerminal.exitStatus) {
-      this._claudeRunning = false;
-      this._claudeTerminal = vscode.window.createTerminal({ name: 'AI StepFlow Claude', cwd: projectPath || undefined });
-    }
-    return this._claudeTerminal;
-  }
-
   public dispose() {
     CockpitPanel.currentPanel = undefined;
     for (const child of this._activeRuns) child.kill();
+    this._terminals.dispose();
     this._panel.dispose();
     while (this._disposables.length) {
       const x = this._disposables.pop();
