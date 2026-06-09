@@ -3,6 +3,8 @@
  * can be unit-tested in plain Node and later reused outside the extension host.
  */
 
+import type { StepRunState } from './types.js';
+
 export interface ReadyStepInput {
   id: string;
   dependsOn?: string[];
@@ -26,6 +28,36 @@ export function computeReadySteps(
     if (deps.every(d => done.has(d))) ready.push(step.id);
   }
   return ready;
+}
+
+/**
+ * The auto-advance decision: return the single dependent step to launch next, or
+ * `undefined` when zero or several are ready. Interactive runs open a terminal and
+ * wait for the user, so the orchestrator only auto-prefills when the path is
+ * unambiguous; when several unlock at once it leaves them for the user to launch so
+ * prefills don't pile into one chat box.
+ */
+export function pickAutoAdvanceStep(
+  steps: ReadyStepInput[],
+  done: ReadonlySet<string>,
+  started: ReadonlySet<string>
+): string | undefined {
+  const ready = computeReadySteps(steps, done, started);
+  return ready.length === 1 ? ready[0] : undefined;
+}
+
+/**
+ * Seed the "already started" set when adopting a restored run, so it never auto-re-runs
+ * a step that already ran (e.g. one parked at a review gate). A step is treated as
+ * started once it has moved past its pristine ready/locked + not_ready state.
+ */
+export function seedStartedSteps(steps: Record<string, StepRunState>): Set<string> {
+  const started = new Set<string>();
+  for (const [id, s] of Object.entries(steps)) {
+    const pristine = (s.executionStatus === 'ready' || s.executionStatus === 'locked') && s.completionStatus === 'not_ready';
+    if (!pristine) started.add(id);
+  }
+  return started;
 }
 
 /** Pull a {decision, reason} verdict out of an automated reviewer's reply. */

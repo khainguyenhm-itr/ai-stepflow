@@ -12,7 +12,8 @@ import {
   runClaudeStreaming, composeSystemPrompt,
   validateProduces, validateRequires,
   renderRunReport,
-  computeReadySteps,
+  pickAutoAdvanceStep,
+  seedStartedSteps,
   runValidator,
   renderVerifyReportMarkdown, verifyRun
 } from '@ai-stepflow/core';
@@ -629,27 +630,15 @@ export class CockpitPanel {
     if (!this._currentFlow || !this._runState) return;
     this._resetBookkeepingIfNewRun();
     const done = machine.doneStepIds(this._runState);
-    const ready = computeReadySteps(this._currentFlow.steps, done, this._startedStepIds);
-    // Interactive runs open a terminal and wait for the user, so only auto-prefill the next
-    // step when the path is unambiguous (a single ready dependent). When several are ready at
-    // once, leave them for the user to launch so prefills don't pile into one chat box.
-    if (ready.length === 1) void this._handleRunStep(ready[0]);
+    const next = pickAutoAdvanceStep(this._currentFlow.steps, done, this._startedStepIds);
+    if (next) void this._handleRunStep(next);
   }
 
   private _resetBookkeepingIfNewRun(): void {
     const runId = this._runState?.runId;
     if (runId === this._bookkeepingRunId) return;
     this._bookkeepingRunId = runId;
-    this._startedStepIds.clear();
-    // Seed from the run state so a restored run never auto-re-runs steps that already
-    // ran (e.g. one sitting at a review gate): anything past its pristine ready/locked
-    // state counts as started.
-    if (this._runState) {
-      for (const [id, s] of Object.entries(this._runState.steps)) {
-        const pristine = (s.executionStatus === 'ready' || s.executionStatus === 'locked') && s.completionStatus === 'not_ready';
-        if (!pristine) this._startedStepIds.add(id);
-      }
-    }
+    this._startedStepIds = this._runState ? seedStartedSteps(this._runState.steps) : new Set<string>();
   }
 
   private _constructClaudeArgs(agent?: Agent): string[] {
