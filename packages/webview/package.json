@@ -1,6 +1,6 @@
 {
   "name": "@ai-stepflow/webview",
-  "version": "0.0.7",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Webview UI for AI StepFlow",
@@ -10,7 +10,7 @@
     "watch": "tsc -watch -p ./"
   },
   "dependencies": {
-    "@ai-stepflow/core": "^0.0.7",
+    "@ai-stepflow/core": "^0.1.0",
     "lucide-react": "^1.17.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"

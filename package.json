@@ -6,7 +6,7 @@
     "packages/*"
   ],
   "description": "Orchestrate Claude agents, skills & workflows for structured AI development.",
-  "version": "0.0.7",
+  "version": "0.1.0",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -17,6 +17,7 @@
     "compile-all": "npm run build-webview && npm run compile",
     "package": "npm run package:vsix",
     "package:vsix": "npm run compile-all && node scripts/package-vsix.mjs",
+    "publish:marketplace": "npm run package:vsix && vsce publish --packagePath ai-stepflow.vsix",
     "watch": "npm run watch --workspaces & node scripts/bundle-extension.mjs --watch",
     "build-webview": "node scripts/build-webview.mjs",
     "preview:webview": "npm run build-webview && node scripts/serve-webview.mjs",
@@ -39,6 +40,7 @@
     "@typescript-eslint/eslint-plugin": "^6.15.0",
     "@typescript-eslint/parser": "^6.15.0",
     "@vscode/test-electron": "^2.3.8",
+    "@vscode/vsce": "^3.9.2",
     "esbuild": "^0.28.0",
     "eslint": "^8.56.0",
     "glob": "^10.3.10",

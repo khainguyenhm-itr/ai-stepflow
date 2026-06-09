@@ -1,6 +1,6 @@
 {
   "name": "@ai-stepflow/core",
-  "version": "0.0.7",
+  "version": "0.1.0",
   "description": "Core engine for AI StepFlow - State machine, runners, and library loader.",
   "main": "./out/index.js",
   "types": "./out/index.d.ts",

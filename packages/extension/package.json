@@ -2,7 +2,7 @@
   "name": "ai-stepflow",
   "displayName": "AI StepFlow",
   "publisher": "khainguyen",
-  "version": "0.0.7",
+  "version": "0.1.0",
   "description": "Orchestrate Claude agents, skills & workflows for structured AI development.",
   "icon": "resources/icon.png",
   "license": "MIT",
@@ -10,6 +10,21 @@
     "type": "git",
     "url": "https://github.com/khainguyenhm-itr/ai-stepflow"
   },
+  "homepage": "https://github.com/khainguyenhm-itr/ai-stepflow#readme",
+  "bugs": {
+    "url": "https://github.com/khainguyenhm-itr/ai-stepflow/issues"
+  },
+  "galleryBanner": {
+    "color": "#1e1e2e",
+    "theme": "dark"
+  },
+  "badges": [
+    {
+      "url": "https://github.com/khainguyenhm-itr/ai-stepflow/actions/workflows/ci.yml/badge.svg",
+      "href": "https://github.com/khainguyenhm-itr/ai-stepflow/actions/workflows/ci.yml",
+      "description": "CI status"
+    }
+  ],
   "engines": {
     "vscode": "^1.93.0"
   },
@@ -107,7 +122,7 @@
     }
   },
   "dependencies": {
-    "@ai-stepflow/core": "^0.0.7"
+    "@ai-stepflow/core": "^0.1.0"
   },
   "scripts": {
     "compile": "tsc -p ./",
