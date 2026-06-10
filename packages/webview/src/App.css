@@ -596,7 +596,40 @@ textarea.input {
   line-height: 14px;
 }
 
-.badge.success { color: var(--bg); background: var(--success); }
+.capability-chip.add-new {
+  color: var(--link);
+  font-weight: 500;
+  border: 1px dashed var(--link);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.capability-chip.add-new:hover {
+  background: var(--hover);
+  border-style: solid;
+}
+
+.flex-row {
+  display: flex;
+  flex-direction: row;
+}
+
+.gap-4 { gap: 4px; }
+.gap-8 { gap: 8px; }
+.justify-between { justify-content: space-between; }
+.items-center { align-items: center; }
+.mb-4 { margin-bottom: 4px; }
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-group .label {
+  color: var(--muted);
+  font-size: 12px;
+}
 .badge.error { color: var(--bg); background: var(--error); }
 .badge.warn { color: var(--bg); background: var(--warn); }
 .badge.running { color: var(--bg); background: var(--running); }

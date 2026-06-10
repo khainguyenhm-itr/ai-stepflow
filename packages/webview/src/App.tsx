@@ -12,6 +12,7 @@ import { SkillsTab } from './tabs/SkillsTab';
 import { DetailModal } from './modals/DetailModal';
 import { AgentModal } from './modals/AgentModal';
 import { SkillModal } from './modals/SkillModal';
+import { ConnectMcpModal } from './modals/ConnectMcpModal';
 import { RunInputsModal } from './modals/RunInputsModal';
 import { FlowBuilderModal } from './modals/FlowBuilderModal';
 import { StepModal } from './modals/StepModal';
@@ -44,6 +45,7 @@ const App: React.FC = () => {
     detailItem, setDetailItem,
     agentModalOpen, setAgentModalOpen,
     skillModalOpen, setSkillModalOpen,
+    connectMcpModalOpen, setConnectMcpModalOpen,
     editingSkillSource, setEditingSkillSource,
     editingAgentSource, setEditingAgentSource,
     agentForm, setAgentForm,
@@ -58,6 +60,7 @@ const App: React.FC = () => {
     startOrResumeRun,
     emptyAgentForm, emptySkillForm,
     submitAgentModal, openAgentEditor, submitSkillModal, openSkillEditor,
+    submitConnectMcp,
     submitRunInputs, runActiveStep, saveEditingFlow, saveStepEdit
   } = logic;
 
@@ -247,6 +250,7 @@ const App: React.FC = () => {
         draftLoading={draftLoading === 'agent'}
         connectedMcpServers={connectedMcpServers}
         onClose={() => { setAgentModalOpen(false); setEditingAgentSource(null); }}
+        onConnectMcp={() => setConnectMcpModalOpen(true)}
         onChange={patch => setAgentForm(prev => ({ ...prev, ...patch }))}
         onSubmit={submitAgentModal}
         onGenerateDraft={() => {
@@ -270,6 +274,12 @@ const App: React.FC = () => {
           setSkillFormError(null);
           sendToVSCode('generateDraft', { kind: 'skill', name: skillForm.name.trim(), description: skillForm.description });
         }}
+      />
+
+      <ConnectMcpModal
+        open={connectMcpModalOpen}
+        onClose={() => setConnectMcpModalOpen(false)}
+        onSubmit={submitConnectMcp}
       />
 
       <StandaloneRunModal

@@ -7,7 +7,7 @@ import { StateManager } from './stateManager.js';
 import { TerminalManager } from './terminalManager.js';
 import { RunOrchestrator } from './runOrchestrator.js';
 import { validateMessage, WebviewMessage, HostMessage } from './messages.js';
-import { listConnectedMcpServers } from './mcp.js';
+import { listConnectedMcpServers, addMcpServer } from './mcp.js';
 import { Agent, Skill } from '@ai-stepflow/core';
 
 export class CockpitPanel {
@@ -214,6 +214,23 @@ export class CockpitPanel {
         return;
       case 'generateDraft':
         await this._handleGenerateDraft(message.kind, message.name, message.description);
+        return;
+      case 'connectMcpServer':
+        try {
+          const res = await addMcpServer({
+            ...message.config,
+            cwd: this.configManager.getProjectPath()
+          });
+          if (res.ok) {
+            vscode.window.showInformationMessage(`AI StepFlow: MCP server '${message.config.name}' connected.`);
+            const connectedMcpServers = await listConnectedMcpServers(this.configManager.getProjectPath());
+            this.postMessage({ type: 'mcpServers', connectedMcpServers });
+          } else {
+            vscode.window.showErrorMessage(`AI StepFlow: failed to connect MCP server. ${res.error}`);
+          }
+        } catch (e) {
+          vscode.window.showErrorMessage(`AI StepFlow: failed to connect MCP server. ${e instanceof Error ? e.message : String(e)}`);
+        }
         return;
       case 'alert':
         vscode.window.showErrorMessage(message.text);

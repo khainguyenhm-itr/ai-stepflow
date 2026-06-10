@@ -3,12 +3,11 @@ import * as crypto from 'node:crypto';
 import { ConfigManager } from './configManager.js';
 import { StateManager } from './stateManager.js';
 import { listConnectedMcpServers } from './mcp.js';
+import { listPlugins, togglePlugin, installPlugin } from './plugins.js';
 
 /**
  * Renders the activity-bar sidebar as a compact dashboard: the active run, library
- * counts, connected MCP servers, and the run files this extension generated in the
- * repo. Fast local reads paint immediately; the MCP probe (which spawns the CLI)
- * is fetched off the critical path and pushed in once it resolves.
+ * counts, connected MCP servers, Claude plugins, and the run files this extension generated.
  */
 export class SidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'ai-stepflow-home';
@@ -32,7 +31,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       };
       view.webview.html = this._getHtml(view.webview);
 
-      view.webview.onDidReceiveMessage(async (message: { type?: string; path?: string }) => {
+      view.webview.onDidReceiveMessage(async (message: { type?: string; path?: string; pluginName?: string; enable?: boolean }) => {
         try {
           switch (message?.type) {
             case 'openOverview':
@@ -49,6 +48,34 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
               return;
             case 'installDefaults':
               await vscode.commands.executeCommand('ai-stepflow.installDefaults');
+              return;
+            case 'togglePlugin':
+              if (message.pluginName && typeof message.enable === 'boolean') {
+                const res = await togglePlugin(message.pluginName, message.enable);
+                if (res.ok) {
+                  vscode.window.showInformationMessage(`AI StepFlow: plugin '${message.pluginName}' ${message.enable ? 'enabled' : 'disabled'}.`);
+                  await this.refresh(false);
+                } else {
+                  vscode.window.showErrorMessage(`AI StepFlow: failed to toggle plugin. ${res.error}`);
+                }
+              }
+              return;
+            case 'installPlugin':
+              if (message.pluginName) {
+                await vscode.window.withProgress({
+                  location: vscode.ProgressLocation.Notification,
+                  title: `Installing plugin '${message.pluginName}'...`,
+                  cancellable: false
+                }, async () => {
+                  const res = await installPlugin(message.pluginName!);
+                  if (res.ok) {
+                    vscode.window.showInformationMessage(`AI StepFlow: plugin '${message.pluginName}' installed.`);
+                    await this.refresh(false);
+                  } else {
+                    vscode.window.showErrorMessage(`AI StepFlow: failed to install plugin. ${res.error}`);
+                  }
+                });
+              }
               return;
           }
         } catch (e) {
@@ -69,15 +96,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     if (!this._view) return;
 
     try {
-      const [flows, agents, skills, runFiles, activeRun, defaultsInstalled] = await Promise.all([
+      const [flows, agents, skills, runFiles, activeRun, globalInstalled, projectInstalled, plugins] = await Promise.all([
         this.configManager.loadFlows().catch(() => []),
         this.configManager.loadAgents().catch(() => []),
         this.configManager.loadSkills().catch(() => []),
         this.stateManager.listRunFiles().catch(() => []),
         this.stateManager.loadLatestRun().catch(() => undefined),
-        this.configManager.isDefaultLibraryInstalled().catch(() => false)
+        this.configManager.isDefaultLibraryInstalled('global').catch(() => false),
+        this.configManager.isDefaultLibraryInstalled('project').catch(() => false),
+        listPlugins().catch(() => [])
       ]);
 
+      const defaultsInstalled = globalInstalled || projectInstalled;
       const flowName = (id: string) => flows.find(f => f.id === id)?.name || id;
 
       let active: any = null;
@@ -106,6 +136,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         defaultsInstalled,
         activeRun: active,
         mcp: this._cachedMcp,
+        plugins,
         runFiles: runFiles.slice(0, 8).map(file => ({
           flowName: flowName(file.flowId),
           runId: file.runId,
@@ -126,7 +157,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       }
     } catch (e) {
       console.error('AI StepFlow: sidebar refresh failed', e);
-      // Fallback: send empty data so the UI doesn't stay in "Loading" state if it had one.
       if (this._view) {
         this._view.webview.postMessage({
           type: 'data',
@@ -134,6 +164,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           defaultsInstalled: false,
           activeRun: null,
           mcp: [],
+          plugins: [],
           runFiles: [],
           totalRunFiles: 0
         });
@@ -185,7 +216,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     button.action.secondary:hover { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground)); }
     .footer { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--vscode-panel-border, var(--vscode-input-border)); font-size: 10px; opacity: .5; text-align: center; letter-spacing: .03em; }
     .section { margin-bottom: 16px; }
-    .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; opacity: .7; margin-bottom: 6px; }
+    .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; opacity: .7; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
     .card { border: 1px solid var(--vscode-panel-border, var(--vscode-input-border)); border-radius: 6px; padding: 10px; background: var(--vscode-editorWidget-background, transparent); }
     .stats { display: flex; gap: 6px; }
     .stat { flex: 1; text-align: center; border: 1px solid var(--vscode-panel-border, var(--vscode-input-border)); border-radius: 6px; padding: 8px 4px; cursor: pointer; }
@@ -218,6 +249,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .del:hover { opacity: 1; color: var(--vscode-errorForeground, #f14c4c); }
     .muted { opacity: .6; font-size: 11px; }
     .empty { opacity: .6; font-size: 12px; font-style: italic; }
+    
+    /* Mini tabs for Plugins */
+    .mini-tabs { display: flex; gap: 8px; }
+    .mini-tab { font-size: 10px; padding: 2px 4px; cursor: pointer; opacity: .5; border-bottom: 1px solid transparent; text-transform: none; font-weight: normal; }
+    .mini-tab:hover { opacity: 1; }
+    .mini-tab.active { opacity: 1; border-bottom-color: var(--vscode-focusBorder); font-weight: 600; }
   </style>
 </head>
 <body>
@@ -240,6 +277,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     </div>
 
     <div class="section">
+      <div class="section-title">
+        <span>Claude Plugins</span>
+        <div class="mini-tabs" id="plugin-tabs">
+          <div class="mini-tab active" data-tab="installed">Installed</div>
+          <div class="mini-tab" data-tab="marketplace">Marketplace</div>
+        </div>
+      </div>
+      <div class="card" id="plugins"><span class="muted">Checking…</span></div>
+    </div>
+
+    <div class="section">
       <div class="section-title">MCP Servers</div>
       <div class="card" id="mcp"><span class="muted">Checking…</span></div>
     </div>
@@ -258,6 +306,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const fmtTime = iso => { const d = new Date(iso); return !isNaN(d.getTime()) ? d.toLocaleString() : esc(iso); };
+
+    let activePluginTab = 'installed';
+    let currentPlugins = [];
+    const KNOWN_MARKETPLACE = ['web-search', 'figma', 'skill-creator', 'jira', 'slack', 'notion', 'google-drive', 'linear'];
+
+    document.querySelectorAll('#plugin-tabs .mini-tab').forEach(n => {
+      n.onclick = () => {
+        document.querySelectorAll('#plugin-tabs .mini-tab').forEach(t => t.classList.remove('active'));
+        n.classList.add('active');
+        activePluginTab = n.getAttribute('data-tab');
+        renderPlugins(currentPlugins);
+      };
+    });
 
     function renderActive(run) {
       const el = document.getElementById('active');
@@ -282,8 +343,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     function renderDefaults(installed) {
       const el = document.getElementById('defaults');
       if (!installed) {
-        el.innerHTML = '<button class="action" id="init-def">Install Default Library</button>' +
-          '<div class="muted" style="margin-top:6px">Adds the built-in agents and skills to ~/.claude when you need them.</div>';
+        el.innerHTML = '<button class="action" id="init-def">Install Professional Library</button>' +
+          '<div class="muted" style="margin-top:6px">Adds professional SDLC agents & skills to ~/.claude or your project .claude folder.</div>';
         const btn = document.getElementById('init-def');
         if (btn) btn.onclick = () => vscode.postMessage({ type: 'installDefaults' });
       } else {
@@ -291,10 +352,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           '<div class="library-status-main">' +
           '<span class="dot"></span>' +
           '<div class="library-status-copy">' +
-          '<div class="library-status-title">Default Library</div>' +
+          '<div class="library-status-title">Professional Library</div>' +
           '<div class="library-status-sub">Built-in agents and skills are installed.</div>' +
           '</div></div>' +
-          '<button class="action secondary" id="reinit-def">Reinstall</button>' +
+          '<button class="action secondary" id="reinit-def">Manage / Reinstall</button>' +
           '</div>';
         const btn = document.getElementById('reinit-def');
         if (btn) btn.onclick = () => vscode.postMessage({ type: 'installDefaults' });
@@ -307,6 +368,34 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       el.innerHTML = '<div class="list">' + list.map(name =>
         '<div class="row"><span class="dot"></span><span class="label">' + esc(name) + '</span></div>'
       ).join('') + '</div>';
+    }
+
+    function renderPlugins(list) {
+      currentPlugins = list || [];
+      const el = document.getElementById('plugins');
+      
+      if (activePluginTab === 'installed') {
+        if (!list || !list.length) { el.innerHTML = '<span class="empty">No plugins installed</span>'; return; }
+        el.innerHTML = '<div class="list">' + list.map(p =>
+          '<div class="row">' +
+          '<span class="dot" style="background:' + (p.enabled ? 'var(--vscode-charts-green)' : 'var(--vscode-charts-red, #f14c4c)') + '"></span>' +
+          '<span class="label" title="' + esc(p.version) + '">' + esc(p.name.split('@')[0]) + '</span>' +
+          '<button class="del" style="opacity: .8" title="' + (p.enabled ? 'Disable' : 'Enable') + '" onclick="vscode.postMessage({ type: \'togglePlugin\', pluginName: \'' + esc(p.name) + '\', enable: ' + !p.enabled + ' })">' +
+          (p.enabled ? 'OFF' : 'ON') + '</button></div>'
+        ).join('') + '</div>';
+      } else {
+        const installedNames = new Set(list.map(p => p.name.split('@')[0].toLowerCase()));
+        const available = KNOWN_MARKETPLACE.filter(name => !installedNames.has(name.toLowerCase()));
+        
+        if (!available.length) { el.innerHTML = '<span class="empty">All known plugins installed</span>'; return; }
+        el.innerHTML = '<div class="list">' + available.map(name =>
+          '<div class="row">' +
+          '<span class="dot" style="background:var(--vscode-descriptionForeground); opacity:.3"></span>' +
+          '<span class="label">' + esc(name) + '</span>' +
+          '<button class="del" style="opacity: .8" title="Install" onclick="vscode.postMessage({ type: \'installPlugin\', pluginName: \'' + esc(name) + '\' })">' +
+          'INSTALL</button></div>'
+        ).join('') + '</div>';
+      }
     }
 
     function renderFiles(files, total) {
@@ -334,6 +423,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         renderStats(m.stats);
         renderDefaults(m.defaultsInstalled);
         renderMcp(m.mcp);
+        renderPlugins(m.plugins);
         renderFiles(m.runFiles, m.totalRunFiles);
       } else if (m.type === 'mcp') {
         renderMcp(m.mcp);

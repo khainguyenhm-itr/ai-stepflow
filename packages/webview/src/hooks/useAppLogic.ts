@@ -57,6 +57,7 @@ export const useAppLogic = () => {
 
   const [agentModalOpen, setAgentModalOpen] = useState(false);
   const [skillModalOpen, setSkillModalOpen] = useState(false);
+  const [connectMcpModalOpen, setConnectMcpModalOpen] = useState(false);
   const [editingSkillSource, setEditingSkillSource] = useState<string | null>(null);
   const [editingAgentSource, setEditingAgentSource] = useState<string | null>(null);
 
@@ -337,6 +338,11 @@ export const useAppLogic = () => {
     setSkillModalOpen(true);
   };
 
+  const submitConnectMcp = (config: { name: string; scope: 'global' | 'local'; command: string; args: string[]; env?: Record<string, string> }) => {
+    sendToVSCode('connectMcpServer', { config });
+    setConnectMcpModalOpen(false);
+  };
+
   const submitRunInputs = () => {
     if (!runInputsTarget) return;
     initRunState(runInputsTarget, runInputValues);
@@ -492,6 +498,7 @@ export const useAppLogic = () => {
     detailItem, setDetailItem,
     agentModalOpen, setAgentModalOpen,
     skillModalOpen, setSkillModalOpen,
+    connectMcpModalOpen, setConnectMcpModalOpen,
     editingSkillSource, setEditingSkillSource,
     editingAgentSource, setEditingAgentSource,
     agentForm, setAgentForm,
@@ -507,6 +514,7 @@ export const useAppLogic = () => {
     startFreshRun,
     emptyAgentForm, emptySkillForm,
     submitAgentModal, openAgentEditor, submitSkillModal, openSkillEditor,
+    submitConnectMcp,
     submitRunInputs, runActiveStep, saveEditingFlow, saveStepEdit
   };
 };

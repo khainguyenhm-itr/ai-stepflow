@@ -69,6 +69,7 @@ export type WebviewMessage =
   | { type: 'importAgentFile' }
   | { type: 'importSkillFile' }
   | { type: 'generateDraft'; kind: 'agent' | 'skill'; name: string; description?: string }
+  | { type: 'connectMcpServer'; config: { name: string; scope: 'global' | 'local'; command: string; args: string[]; env?: Record<string, string> } }
   | { type: 'alert'; text: string };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -116,6 +117,7 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
     (m.review.decision === 'approved' || m.review.decision === 'rejected'),
   markStepDone: m => isString(m.stepId),
   generateDraft: m => (m.kind === 'agent' || m.kind === 'skill') && isString(m.name),
+  connectMcpServer: m => isObject(m.config) && isString(m.config.name) && isString(m.config.command),
   alert: m => isString(m.text)
 };
 
