@@ -12,6 +12,7 @@ interface StepModalProps {
   error: string | null;
   agents: Agent[];
   skills: Skill[];
+  flowSteps: FlowStep[];
   onClose: () => void;
   onSave: () => void;
   onChange: (patch: Partial<FlowStep>) => void;
@@ -26,6 +27,7 @@ export const StepModal: React.FC<StepModalProps> = ({
   error,
   agents,
   skills,
+  flowSteps,
   onClose,
   onSave,
   onChange,
@@ -85,6 +87,26 @@ export const StepModal: React.FC<StepModalProps> = ({
                   onChange={isChecked => {
                     const values = isChecked ? [...selected, skill.name] : selected.filter(name => name !== skill.name);
                     onChange({ skills: values, skill: values[0] || '' });
+                  }}
+                />
+              );
+            })}
+          </div>
+        </Field>
+        <Field label="Dependencies" hint="steps that must be done before this one can run">
+          <div className="dep-list">
+            {flowSteps.filter(candidate => candidate.id !== step.id).length === 0 && <span className="muted">No other steps available.</span>}
+            {flowSteps.filter(candidate => candidate.id !== step.id).map(candidate => {
+              const selected = step.dependsOn || [];
+              const checked = selected.includes(candidate.id);
+              return (
+                <CheckRow
+                  key={candidate.id}
+                  label={candidate.title || candidate.id}
+                  checked={checked}
+                  onChange={isChecked => {
+                    const values = isChecked ? [...selected, candidate.id] : selected.filter(id => id !== candidate.id);
+                    onChange({ dependsOn: values });
                   }}
                 />
               );
@@ -153,7 +175,7 @@ export const StepModal: React.FC<StepModalProps> = ({
             </Field>
           </>
         )}
-        <Field label="Review file" hint="optional — file the review is based on; leave empty to review the step output">
+        <Field label="Review file" hint="optional — artifact file the review is based on after this step runs. Use Requires for files that must exist before the step starts.">
           <input
             className="input"
             placeholder="e.g. docs/PLAN.md"

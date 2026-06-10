@@ -75,11 +75,25 @@ function installDir(context: vscode.ExtensionContext): string {
 /**
  * Return the path to the cached `ast-graph` binary, downloading and extracting it on first
  * call. Idempotent. Throws on unsupported platform, network failure, or checksum mismatch.
+ *
+ * When `overridePath` names an existing executable it is used verbatim — no download, no
+ * checksum check. This is the supported escape hatch for platforms upstream ships no prebuilt
+ * binary for (e.g. Linux arm64): install `ast-graph` yourself and point the setting at it.
  */
 export async function ensureAstGraphBinary(
   context: vscode.ExtensionContext,
   output: vscode.OutputChannel,
+  overridePath?: string,
 ): Promise<BinaryResolution> {
+  const override = overridePath?.trim();
+  if (override) {
+    if (!(await isFileReady(override))) {
+      throw new Error(`ast-graph: configured binaryPath does not point at a file: ${override}`);
+    }
+    output.appendLine(`ast-graph: using configured binaryPath ${override} (download skipped)`);
+    return { path: override, version: 'override' };
+  }
+
   const target = detectTarget();
   const spec = TARGETS[target];
   const dir = installDir(context);

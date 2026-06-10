@@ -114,7 +114,13 @@ export function runClaudeStreaming(opts: ClaudeStreamingRunOptions, spawnFn: Spa
       if (buf.length) consume(buf);
       finish({ success: code === 0, exitCode: code ?? 1, resultText, costUsd, tokensUsed, model });
     });
-    child.on('error', () => {
+    child.on('error', (err: NodeJS.ErrnoException) => {
+      // A spawn failure (most often ENOENT: `claude` not on PATH) otherwise surfaces as a bare
+      // "exited 1" — name the real cause in the streamed output so the user can act on it.
+      const why = err?.code === 'ENOENT'
+        ? "claude CLI not found on PATH — install Claude Code or make sure `claude` is on your PATH"
+        : `failed to launch claude: ${err?.message ?? 'unknown error'}`;
+      opts.onText(`\n[${why}]\n`);
       finish({ success: false, exitCode: 1, resultText, costUsd, tokensUsed, model });
     });
   });

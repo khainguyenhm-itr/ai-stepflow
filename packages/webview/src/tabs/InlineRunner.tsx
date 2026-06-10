@@ -48,8 +48,11 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   const canRunStep = !!activeStepState
     && !isLocked
     && activeStepState.executionStatus !== 'running'
-    && activeStepState.completionStatus !== 'done';
-  const isRerun = activeStepState?.executionStatus === 'completed' || activeStepState?.executionStatus === 'failed' || activeStepState?.executionStatus === 'cancelled';
+    && activeStepState.reviewStatus !== 'ai_review_running';
+  const isRerun = activeStepState?.completionStatus === 'done'
+    || activeStepState?.executionStatus === 'completed'
+    || activeStepState?.executionStatus === 'failed'
+    || activeStepState?.executionStatus === 'cancelled';
   const reviewStatus = activeStepState?.reviewStatus;
   const reviewRequired = !!activeStep?.review.required;
   const aiReviewing = reviewStatus === 'ai_review_running';

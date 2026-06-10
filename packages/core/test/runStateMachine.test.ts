@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { 
+import {
   Flow,
-  initRunState, applyDependencyLocks, markRunning, markCompleted, markFailed, markCancelled,
-  applyAiReview, applyHumanReview, markDone, doneStepIds
+  initRunState, markRunning, markCompleted, markFailed, markCancelled,
+  applyHumanReview, markDone, doneStepIds, lockStatesEqual
 } from '@ai-stepflow/core';
 
 function step(id: string, extra: Record<string, unknown> = {}) {
@@ -101,8 +101,33 @@ test('markRunning tracks revision and records reruns in history', () => {
   st = markCompleted(st, flow, 'a');
   st = markRunning(st, flow, 'a');
   assert.equal(st.steps.a.revision, 2);
+  assert.equal(st.steps.a.completionStatus, 'not_ready');
   const rerun = (st.steps.a.history ?? []).find(h => h.message === 'rerun #2');
   assert.ok(rerun, 'expected a rerun history entry');
+});
+
+test('rerunning a done step invalidates dependent steps', () => {
+  const threeStepFlow: Flow = {
+    id: 'f2', name: 'f2', description: '', inputs: {}, sourcePath: '/f2.yaml',
+    steps: [
+      step('a'),
+      step('b', { dependsOn: ['a'] }),
+      step('c', { dependsOn: ['b'] })
+    ]
+  };
+  let st = initRunState(threeStepFlow, { runId: 'r1' });
+  st = markCompleted(markRunning(st, threeStepFlow, 'a'), threeStepFlow, 'a');
+  st = markCompleted(markRunning(st, threeStepFlow, 'b'), threeStepFlow, 'b');
+  st = markCompleted(markRunning(st, threeStepFlow, 'c'), threeStepFlow, 'c');
+  assert.deepEqual([...doneStepIds(st)].sort(), ['a', 'b', 'c']);
+
+  st = markRunning(st, threeStepFlow, 'a');
+  assert.equal(st.steps.a.executionStatus, 'running');
+  assert.equal(st.steps.a.completionStatus, 'not_ready');
+  assert.equal(st.steps.b.executionStatus, 'locked');
+  assert.equal(st.steps.b.completionStatus, 'not_ready');
+  assert.equal(st.steps.c.executionStatus, 'locked');
+  assert.equal(st.steps.c.completionStatus, 'not_ready');
 });
 
 test('human review records the decision and comment in history', () => {
@@ -124,4 +149,22 @@ test('doneStepIds returns the set of completed steps', () => {
   const done = doneStepIds(st);
   assert.ok(done.has('a'));
   assert.ok(!done.has('b'));
+});
+
+test('lockStatesEqual detects executionStatus changes and ignores key order', () => {
+  const st = initRunState(flow, { runId: 'r1' });
+  // 'b' depends on 'a', so it starts locked; re-locking the same state is a no-op.
+  assert.equal(lockStatesEqual(st.steps, st.steps), true);
+
+  // Same statuses, different key insertion order → still equal.
+  const reordered = { b: st.steps.b, a: st.steps.a };
+  assert.equal(lockStatesEqual(st.steps, reordered), true);
+
+  // Flip b from locked → ready: now they differ.
+  const unlocked = { ...st.steps, b: { ...st.steps.b, executionStatus: 'ready' as const } };
+  assert.equal(lockStatesEqual(st.steps, unlocked), false);
+
+  // A different set of step ids → not equal.
+  const fewer = { a: st.steps.a };
+  assert.equal(lockStatesEqual(st.steps, fewer), false);
 });

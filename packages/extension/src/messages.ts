@@ -1,10 +1,48 @@
-import { Agent, AgentInput, Flow, FlowRunState, Skill, SkillInput, isFlowShape, isFlowRunStateShape } from '@ai-stepflow/core';
+import { Agent, AgentInput, Flow, FlowRunState, Skill, SkillInput, isFlowShape, isFlowRunStateShape, isAgentInputShape, isSkillInputShape } from '@ai-stepflow/core';
 
 export interface HumanReview {
   decision: 'approved' | 'rejected';
   comment?: string;
   checklist?: Record<string, boolean>;
 }
+
+/** One timestamped transition in a run's audit trail (as stored/loaded by StateManager). */
+export interface AuditEntry {
+  timestamp: string;
+  status: string;
+  stepId: string;
+  message?: string;
+  runId?: string;
+}
+
+/** A historyEvent attached to an authoritative state broadcast. */
+export interface HistoryEvent {
+  timestamp: string;
+  status: string;
+  stepId: string;
+  message?: string;
+}
+
+/** Every message the extension host is allowed to post back to the webview. */
+export type HostMessage =
+  | {
+      type: 'loadData';
+      flows: Flow[];
+      agents: Agent[];
+      skills: Skill[];
+      connectedMcpServers: string[];
+      auditLogs: Record<string, AuditEntry[]>;
+      globalPath: string;
+      projectPath: string;
+    }
+  | { type: 'mcpServers'; connectedMcpServers: string[] }
+  | { type: 'restoreRun'; flow: Flow; runState: FlowRunState }
+  | { type: 'stepUpdate'; stepId: string; output: string; append?: boolean }
+  | { type: 'aiReviewUpdate'; stepId: string; output: string; append?: boolean }
+  | { type: 'runStateChanged'; runState: FlowRunState; historyEvent?: HistoryEvent }
+  | { type: 'fileImported'; kind: 'agent'; item: { name: string; description: string; model: string; tools: string; systemPrompt: string } }
+  | { type: 'fileImported'; kind: 'skill'; item: { name: string; description: string; instructions: string } }
+  | { type: 'draftGenerated'; kind: 'agent' | 'skill'; content?: string; error?: string };
 
 /** Every message the webview is allowed to send to the extension host. */
 export type WebviewMessage =
@@ -44,8 +82,9 @@ const isString = (value: unknown): value is string => typeof value === 'string';
  */
 const isFlowLike = (value: unknown): boolean => isFlowShape(value);
 
-const isAgentLike = (value: unknown): boolean => isObject(value) && isString(value.name);
-const isSkillLike = (value: unknown): boolean => isObject(value) && isString(value.name);
+/** Deep guards: assert every field the save/update handlers read is present and well-typed. */
+const isAgentLike = (value: unknown): boolean => isAgentInputShape(value);
+const isSkillLike = (value: unknown): boolean => isSkillInputShape(value);
 
 /** Per-type predicate; returns true only when the fields each handler reads are present and well-typed. */
 const validators: Record<string, (m: Record<string, unknown>) => boolean> = {

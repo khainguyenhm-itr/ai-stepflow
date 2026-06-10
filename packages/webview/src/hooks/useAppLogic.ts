@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Flow, FlowStep, FlowRunState, StepRunState, Agent, Skill } from '@ai-stepflow/core/types';
-import { isVSCodeWebview, getVSCodeApi, sendToVSCode } from '../vscode';
+import { isVSCodeWebview, sendToVSCode } from '../vscode';
 import { 
   getStepSkills, 
   applyDependencyLocks, 
@@ -376,8 +376,8 @@ export const useAppLogic = () => {
       output: `Preview mode: simulating Claude output...\n\nRun description:\n${runDescription || 'No run description.'}\n`
     });
     window.setTimeout(() => {
-      updateRunState(activeStepId!, () => {
-        const step = activeFlowRef.current?.steps.find(s => s.id === activeStepId);
+      updateRunState(stepId, () => {
+        const step = activeFlowRef.current?.steps.find(s => s.id === stepId);
         const updates: Partial<StepRunState> = {
           executionStatus: 'completed',
           output: 'Preview mode: simulated step completed successfully.\n\nInstall the VSIX or run the extension host to execute Claude for real.'

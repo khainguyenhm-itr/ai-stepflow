@@ -112,6 +112,11 @@
           "minimum": 1,
           "description": "How long to wait after a source file save before re-indexing the AST graph."
         },
+        "ai-stepflow.astGraph.binaryPath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to an ast-graph executable to use instead of downloading the bundled build. Set this on platforms with no prebuilt binary (e.g. Linux arm64) after installing ast-graph yourself. When set, the download and checksum verification are skipped."
+        },
         "ai-stepflow.run.timeoutSeconds": {
           "type": "number",
           "default": 600,

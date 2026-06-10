@@ -30,16 +30,34 @@ test('validator reject short-circuits before the LLM', async () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('deep=false approves on the validator alone (no LLM)', async () => {
+test('deep=false approves when the validator passes (no LLM)', async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-review-'));
   let llmCalled = false;
-  const result = await reviewStepArtifacts({
-    workspaceRoot: '/tmp', step: step(), runState, deep: false,
-    reviewKit: 'kit', artifacts: { text: 'x', count: 1 },
-    runner: async () => { llmCalled = true; return { success: true, exitCode: 0, resultText: '' }; }
-  });
-  assert.equal(result.status, 'approved');
-  assert.equal(result.source, 'validator-only');
-  assert.equal(llmCalled, false);
+  try {
+    writeFileSync(path.join(dir, 'pass.mjs'), "export default () => ({ decision: 'pass', reason: 'ok' });", 'utf8');
+    const result = await reviewStepArtifacts({
+      workspaceRoot: dir, step: step({ validatorPath: 'pass.mjs' }), runState, deep: false,
+      reviewKit: 'kit', artifacts: { text: 'x', count: 1 },
+      runner: async () => { llmCalled = true; return { success: true, exitCode: 0, resultText: '' }; }
+    });
+    assert.equal(result.status, 'approved');
+    assert.equal(result.source, 'validator-only');
+    assert.equal(llmCalled, false);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('validator-only review waits for a human when the default validator is missing', async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-review-'));
+  try {
+    const result = await reviewStepArtifacts({
+      workspaceRoot: dir, step: step(), runState, deep: false,
+      reviewKit: 'kit', artifacts: { text: 'x', count: 1 },
+      runner: stubRunner('')
+    });
+    assert.equal(result.status, 'waiting_human');
+    assert.equal(result.source, 'review-setup');
+    assert.match(result.note, /Validator-only review could not run/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('deep LLM review parses a pass verdict', async () => {
@@ -62,6 +80,26 @@ test('deep LLM review with an unparseable verdict waits for a human', async () =
   assert.equal(result.status, 'waiting_human');
 });
 
+test('deep review waits for a human when the review kit or artifacts are missing', async () => {
+  const missingKit = await reviewStepArtifacts({
+    workspaceRoot: '/tmp', step: step(), runState, deep: true,
+    reviewKit: '', artifacts: { text: 'content', count: 1 },
+    runner: stubRunner('{"decision":"pass"}')
+  });
+  assert.equal(missingKit.status, 'waiting_human');
+  assert.equal(missingKit.source, 'review-setup');
+  assert.match(missingKit.note, /review kit not installed/);
+
+  const missingArtifacts = await reviewStepArtifacts({
+    workspaceRoot: '/tmp', step: step(), runState, deep: true,
+    reviewKit: 'kit', artifacts: { text: '', count: 0 },
+    runner: stubRunner('{"decision":"pass"}')
+  });
+  assert.equal(missingArtifacts.status, 'waiting_human');
+  assert.equal(missingArtifacts.source, 'review-setup');
+  assert.match(missingArtifacts.note, /no produced artifacts/);
+});
+
 test('readProducedArtifacts enforces per-file and total caps', () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-artifacts-'));
   try {
@@ -71,6 +109,27 @@ test('readProducedArtifacts enforces per-file and total caps', () => {
     assert.equal(count, 1);
     assert.match(text, /…\[truncated\]/);
     assert.ok(text.length <= REVIEW_TOTAL_CHAR_CAP + 200, 'payload stays within the total cap (plus headers)');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('readProducedArtifacts prefers review.filePath even when produces is empty', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-review-artifact-'));
+  try {
+    const filePath = path.join(dir, 'docs', 'EPIC-1', 'review.md');
+    mkdirSync(path.dirname(filePath), { recursive: true });
+    writeFileSync(filePath, 'review me', 'utf8');
+    const { text, count } = readProducedArtifacts(step({ filePath: 'docs/{ticket}/review.md' }), dir, { ticket: 'EPIC-1' });
+    assert.equal(count, 1);
+    assert.match(text, /review me/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('readProducedArtifacts de-duplicates review.filePath and produces', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-review-artifact-'));
+  try {
+    writeFileSync(path.join(dir, 'review.md'), 'same file', 'utf8');
+    const { count } = readProducedArtifacts(step({ filePath: 'review.md' }, { produces: ['review.md'] }), dir, {});
+    assert.equal(count, 1);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

@@ -119,6 +119,38 @@ export function isFlowRunStateShape(value: unknown): boolean {
   return flowRunStateShapeSchema.safeParse(value).success;
 }
 
+/**
+ * Shape guards for the agent/skill create/update payloads the webview posts. Like the flow
+ * guards above they `.passthrough()` so the handler still receives the original object, but
+ * they assert every field a handler reads is present and well-typed — `name` is a non-empty
+ * string, and any optional field, when present, has the right type. `tools` accepts either a
+ * string[] (the normal form payload) or a string (the comma-joined value an import populates),
+ * so tightening validation never regresses the existing save/import paths.
+ */
+const agentInputShapeSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  model: z.string().optional(),
+  tools: z.union([z.array(z.string()), z.string()]).optional(),
+  systemPrompt: z.string().optional()
+}).passthrough();
+
+const skillInputShapeSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  instructions: z.string().optional()
+}).passthrough();
+
+/** True when `value` is a well-typed {@link AgentInput} payload (name required, fields typed). */
+export function isAgentInputShape(value: unknown): boolean {
+  return agentInputShapeSchema.safeParse(value).success;
+}
+
+/** True when `value` is a well-typed {@link SkillInput} payload (name required, fields typed). */
+export function isSkillInputShape(value: unknown): boolean {
+  return skillInputShapeSchema.safeParse(value).success;
+}
+
 /** A one-line, human-readable rendering of a validation failure for logs/messages. */
 export function formatFlowError(error: unknown): string {
   if (error instanceof z.ZodError) {

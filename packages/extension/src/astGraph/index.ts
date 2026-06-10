@@ -184,15 +184,16 @@ export function registerAstGraph(context: vscode.ExtensionContext, output: vscod
 
   async function bootstrap(): Promise<void> {
     try {
+      const overridePath = cfg().get<string>('binaryPath', '').trim();
       const res = await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Window, title: 'Preparing AST graph CLI…' },
-        () => ensureAstGraphBinary(context, output),
+        () => ensureAstGraphBinary(context, output, overridePath),
       );
       binPath = res.path;
       output.appendLine(`AST graph: binary ready (v${res.version}) at ${res.path}`);
     } catch (err) {
       if (err instanceof UnsupportedPlatformError) {
-        output.appendLine(`AST graph: ${err.message}`);
+        output.appendLine(`AST graph: ${err.message} Set ai-stepflow.astGraph.binaryPath to a locally-installed ast-graph executable to use it anyway.`);
       } else {
         output.appendLine(`AST graph: binary install failed — ${err instanceof Error ? err.message : String(err)}`);
         void vscode.window.showWarningMessage(`AST graph: failed to install the bundled CLI. ${err instanceof Error ? err.message : String(err)}`);

@@ -50,3 +50,18 @@ test('validateProduces checks placeholder-resolved files and markers', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('validateProduces treats review.filePath as a required produced artifact', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'ai-stepflow-review-file-'));
+  try {
+    const step = makeStep({ review: { required: true, type: 'ai', filePath: 'docs/{ticket}/review.md' } });
+    assert.equal(validateProduces(step, dir, { ticket: 'EPIC-1' }).ok, false);
+
+    const filePath = path.join(dir, 'docs', 'EPIC-1', 'review.md');
+    mkdirSync(path.dirname(filePath), { recursive: true });
+    writeFileSync(filePath, 'review target', 'utf8');
+    assert.equal(validateProduces(step, dir, { ticket: 'EPIC-1' }).ok, true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

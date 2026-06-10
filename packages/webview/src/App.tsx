@@ -148,7 +148,16 @@ const App: React.FC = () => {
             setStepIsNew(false);
           }}
           onBoardStepAdder={flow => {
-            const newStep: FlowStep = { id: `step-${Date.now()}`, title: 'New Step', agent: '', skill: '', review: { required: false }, completion: { requireMarkDone: true } };
+            const previous = flow.steps[flow.steps.length - 1];
+            const newStep: FlowStep = {
+              id: `step-${Date.now()}`,
+              title: 'New Step',
+              agent: '',
+              skill: '',
+              dependsOn: previous ? [previous.id] : [],
+              review: { required: false },
+              completion: { requireMarkDone: true }
+            };
             setEditingFlow(JSON.parse(JSON.stringify(flow)));
             setEditingStep({ step: newStep, index: flow.steps.length });
             setEditingFlowScope(getFlowScope(flow));
@@ -156,9 +165,16 @@ const App: React.FC = () => {
             setStepIsNew(true);
           }}
           onRemoveStep={(flow, index) => {
+            const removed = flow.steps[index];
             const newSteps = [...flow.steps];
             newSteps.splice(index, 1);
-            const newFlow = { ...flow, steps: newSteps };
+            const newFlow = {
+              ...flow,
+              steps: newSteps.map(step => ({
+                ...step,
+                dependsOn: (step.dependsOn || []).filter(id => id !== removed?.id)
+              }))
+            };
             sendToVSCode('saveFlow', { flow: newFlow, isGlobal: getFlowScope(flow) === 'global' });
           }}
           onSetActiveStep={setActiveStepId}
@@ -287,7 +303,16 @@ const App: React.FC = () => {
         onNewInputNameChange={setNewInputName}
         onAddStep={() => {
           if (!editingFlow) return;
-          const newStep: FlowStep = { id: `step-${Date.now()}`, title: 'New Step', agent: '', skill: '', review: { required: false }, completion: { requireMarkDone: true } };
+          const previous = editingFlow.steps[editingFlow.steps.length - 1];
+          const newStep: FlowStep = {
+            id: `step-${Date.now()}`,
+            title: 'New Step',
+            agent: '',
+            skill: '',
+            dependsOn: previous ? [previous.id] : [],
+            review: { required: false },
+            completion: { requireMarkDone: true }
+          };
           setEditingStep({ step: newStep, index: editingFlow.steps.length });
           setStepIsNew(true);
           setStepEditFromBoard(false);
@@ -299,9 +324,16 @@ const App: React.FC = () => {
         }}
         onDeleteStep={index => {
           if (!editingFlow) return;
+          const removed = editingFlow.steps[index];
           const newSteps = [...editingFlow.steps];
           newSteps.splice(index, 1);
-          setEditingFlow({ ...editingFlow, steps: newSteps });
+          setEditingFlow({
+            ...editingFlow,
+            steps: newSteps.map(step => ({
+              ...step,
+              dependsOn: (step.dependsOn || []).filter(id => id !== removed?.id)
+            }))
+          });
         }}
         onDragStart={(_e, index) => { (window as any)._dragIndex = index; }}
         onDrop={(_e, index) => {
@@ -326,6 +358,7 @@ const App: React.FC = () => {
         error={stepError}
         agents={agents}
         skills={skills}
+        flowSteps={editingFlow?.steps || []}
         onClose={() => { setEditingStep(null); if (stepEditFromBoard) setEditingFlow(null); }}
         onSave={saveStepEdit}
         onChange={patch => setEditingStep(prev => prev ? ({ ...prev, step: { ...prev.step, ...patch } }) : null)}

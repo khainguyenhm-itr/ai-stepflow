@@ -12,8 +12,19 @@ describe('AI StepFlow integration (real VS Code host)', () => {
     assert.ok(ext!.isActive, 'extension should be active after activate()');
 
     const commands = await vscode.commands.getCommands(true);
-    for (const id of ['ai-stepflow.openOverview', 'ai-stepflow.refreshAll', 'ai-stepflow.installDefaults']) {
+    for (const id of [
+      'ai-stepflow.openOverview',
+      'ai-stepflow.refreshAll',
+      'ai-stepflow.installDefaults',
+      'ai-stepflow.astGraph.rescan',
+      'ai-stepflow.astGraph.reregisterMcp'
+    ]) {
       assert.ok(commands.includes(id), `command "${id}" should be registered`);
     }
+  });
+
+  it('opens the cockpit and refreshes without throwing', async () => {
+    await vscode.commands.executeCommand('ai-stepflow.openOverview');
+    await vscode.commands.executeCommand('ai-stepflow.refreshAll');
   });
 });

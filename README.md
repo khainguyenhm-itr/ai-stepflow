@@ -17,8 +17,13 @@ the Claude CLI without leaving the editor.
 - **Human and AI review** — gate a step on a human approve/reject, or on an
   automated AI review that reads the step output (or a configured review file
   and checklist) and returns a verdict.
+- **Artifact gates** — declare `requires`, `produces`, and `producesContains`
+  checks so a step cannot start or be marked done unless the expected files and
+  markers are present.
 - **Run persistence** — in-progress runs are saved per project and restored when
   you reopen the cockpit, so a window reload never loses your place.
+- **Headless CLI** — drive a flow from scripts or CI, including human-review
+  gates via `approve`, `reject`, and `mark-done`.
 - **Create from scratch or import** — author agents/skills in the UI, draft a
   system prompt or skill body with Claude, or import an existing markdown file.
 
@@ -48,6 +53,46 @@ the diff afterwards. A hung run is killed after `ai-stepflow.run.timeoutSeconds`
 (default 600s; set to 0 to disable), and you can stop one early with the **Cancel**
 button. Ad-hoc **Run agent** / **Run skill** actions instead open an interactive
 Claude session in the integrated terminal.
+
+Steps run only when every id in `dependsOn` is already `done`. New steps created
+from the UI depend on the previous step by default, and the step editor lets you
+adjust dependencies explicitly. When a step finishes and unlocks several dependents
+at once, every headless (AI-reviewed) branch auto-starts in parallel; interactive
+steps share one terminal, so the first opens and the rest wait for you to launch them.
+
+Before a step starts, every path in `requires` must exist. Put any markdown/spec
+file that the step must read before running in `requires`; mentioning a filename
+inside a prompt is not treated as a file gate. After a step finishes, every path
+in `produces` must exist, and each value in `producesContains` must be found in
+at least one produced file. A configured `review.filePath` is also checked as an
+expected post-run artifact. Paths may include run-input placeholders such as
+`{feature}`; placeholders are resolved from the inputs collected when the run
+starts.
+
+AI review uses two layers. First, a deterministic validator module checks the
+artifacts. Then, when `review.deep` is not `false`, Claude reviews the produced
+artifact text with the installed review kit. If the review kit, artifacts, or a
+validator-only setup are missing, the step waits for human review instead of being
+approved automatically.
+
+## CLI
+
+The packaged extension exposes an `ai-stepflow` command for headless runs:
+
+```sh
+ai-stepflow run --project . --flow .claude/flows/example.yaml --input feature=login
+ai-stepflow verify --project . --flow .claude/flows/example.yaml --run .claude-flow/runs/example-run.json
+ai-stepflow report --project . --flow .claude/flows/example.yaml --run .claude-flow/runs/example-run.json
+ai-stepflow approve --project . --flow .claude/flows/example.yaml --run .claude-flow/runs/example-run.json --step review --comment "Looks good"
+ai-stepflow reject --project . --flow .claude/flows/example.yaml --run .claude-flow/runs/example-run.json --step review --comment "Needs changes"
+ai-stepflow mark-done --project . --flow .claude/flows/example.yaml --run .claude-flow/runs/example-run.json --step implement
+```
+
+`run` exits `3` when it reaches a human gate that cannot be completed headlessly.
+`approve` records the human approval and marks the step done in one command.
+`verify` checks whether declared produced files and markers still match the saved
+run state. `report` writes a markdown report under `.claude-flow/reports` unless
+`--out` is provided.
 
 ## Commands
 
