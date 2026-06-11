@@ -16,6 +16,8 @@ export class CockpitPanel {
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
   private _disposables: vscode.Disposable[] = [];
+  private _isReady = false;
+  private _messageQueue: HostMessage[] = [];
   /** Owns the interactive `claude` terminal for ad-hoc and non-headless step runs. */
   private readonly _terminals: TerminalManager;
   /** Owns the run state machine and every transition that drives a flow run. */
@@ -74,7 +76,7 @@ export class CockpitPanel {
     this._runner = new RunOrchestrator(configManager, stateManager, this._terminals, msg => this.postMessage(msg));
 
     this._update();
-    // Send data immediately and also on 'ready' handshake
+    // Pre-fetch and queue initial data
     void this._sendAllData();
 
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
@@ -98,6 +100,15 @@ export class CockpitPanel {
   private async _dispatch(message: WebviewMessage): Promise<void> {
     switch (message.type) {
       case 'ready':
+        this._isReady = true;
+        console.log('AI StepFlow: webview is ready, flushing message queue...');
+        while (this._messageQueue.length > 0) {
+          const msg = this._messageQueue.shift();
+          if (msg) {
+            console.log(`AI StepFlow: flushing queued message of type ${msg.type}`);
+            this._panel.webview.postMessage(msg);
+          }
+        }
         await this._sendAllData();
         await this._runner.restore();
         return;
@@ -389,6 +400,11 @@ export class CockpitPanel {
   }
 
   public postMessage(message: HostMessage) {
+    if (!this._isReady) {
+      console.log(`AI StepFlow: webview not ready, queuing message of type ${message.type}`);
+      this._messageQueue.push(message);
+      return;
+    }
     if (!this._panel.webview) return;
     this._panel.webview.postMessage(message);
   }
