@@ -12,12 +12,6 @@ export function activate(context: vscode.ExtensionContext) {
     const stateManager = new StateManager(context);
     const output = vscode.window.createOutputChannel('AI StepFlow');
 
-    // Initialize the project's CLAUDE.md. The default agent/skill library is NOT installed
-    // automatically — the user opts in via the sidebar "Initialize" button (ai-stepflow.installDefaults).
-    void configManager.ensureProjectClaudeMd().catch(err => {
-      console.error('AI StepFlow: failed to ensure CLAUDE.md', err);
-    });
-
     // Sidebar dashboard: active run, library counts, MCP servers, generated files.
     // Defensively handle version access
     const version = String(context.extension?.packageJSON?.version || '0.0.7');
