@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as crypto from 'node:crypto';
 import { ConfigManager } from './configManager.js';
+import type { BundledKind } from './configManager.js';
 import { StateManager } from './stateManager.js';
 import { listMcpServers, reconnectRemoteMcpServer } from './mcp.js';
 import type { McpServer } from './mcp.js';
@@ -36,7 +37,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       };
       view.webview.html = this._getHtml(view.webview);
 
-      view.webview.onDidReceiveMessage(async (message: { type?: string; path?: string; url?: string; pluginId?: string; pluginName?: string; enable?: boolean; mcpName?: string; mcpTarget?: string; tab?: string }) => {
+      view.webview.onDidReceiveMessage(async (message: { type?: string; path?: string; url?: string; pluginId?: string; pluginName?: string; enable?: boolean; mcpName?: string; mcpTarget?: string; tab?: string; kind?: BundledKind; filename?: string; isGlobal?: boolean }) => {
         try {
           switch (message?.type) {
             case 'openOverview':
@@ -60,6 +61,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
               return;
             case 'installDefaults':
               await vscode.commands.executeCommand('ai-stepflow.installDefaults');
+              return;
+            case 'installDefaultItem':
+              if (message.kind && message.filename) {
+                await this.configManager.installBundledItem(message.kind, message.filename, message.isGlobal !== false);
+                if (message.isGlobal !== false) await this.configManager.ensureGlobalClaudeMd();
+                await this.refresh(false);
+              }
+              return;
+            case 'uninstallDefaultItem':
+              if (message.kind && message.filename) {
+                await this.configManager.uninstallBundledItem(message.kind, message.filename);
+                await this.refresh(false);
+              }
               return;
             case 'openExternal':
               if (message.url) await vscode.env.openExternal(vscode.Uri.parse(message.url));
@@ -124,18 +138,34 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     if (!this._view) return;
 
     try {
-      const [flows, agents, skills, runFiles, activeRun, globalInstalled, projectInstalled] = await Promise.all([
+      const [flows, agents, skills, runFiles, activeRun, defaultItems] = await Promise.all([
         this.configManager.loadFlows().catch(() => []),
         this.configManager.loadAgents().catch(() => []),
         this.configManager.loadSkills().catch(() => []),
         this.stateManager.listRunFiles().catch(() => []),
         this.stateManager.loadLatestRun().catch(() => undefined),
-        this.configManager.isDefaultLibraryInstalled('global').catch(() => false),
-        this.configManager.isDefaultLibraryInstalled('project').catch(() => false)
+        this.configManager.listBundledDefaults().catch(() => [])
       ]);
-
-      const defaultsInstalled = globalInstalled || projectInstalled;
       const flowName = (id: string) => flows.find(f => f.id === id)?.name || id;
+
+      // Collect every agent/skill name referenced by any flow step (used for in-use guard).
+      const usedAgents = new Set<string>();
+      const usedSkills = new Set<string>();
+      for (const flow of flows) {
+        for (const step of flow.steps ?? []) {
+          if (step.agent) usedAgents.add(step.agent);
+          if (step.skill) usedSkills.add(step.skill);
+          for (const s of step.skills ?? []) usedSkills.add(s);
+          for (const r of step.review?.reviewers ?? []) {
+            if (r.agent) usedAgents.add(r.agent);
+            if (r.skill) usedSkills.add(r.skill);
+          }
+        }
+      }
+      const annotatedItems = defaultItems.map(item => ({
+        ...item,
+        inUse: item.kind === 'agents' ? usedAgents.has(item.name) : item.kind === 'skills' ? usedSkills.has(item.name) : false
+      }));
 
       let active: any = null;
       if (activeRun) {
@@ -160,7 +190,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       this._view.webview.postMessage({
         type: 'data',
         stats: { flows: flows.length, agents: agents.length, skills: skills.length },
-        defaultsInstalled,
+        defaultItems: annotatedItems,
         activeRun: active,
         mcp: this._cachedMcp,
         plugins: this._cachedPlugins,
@@ -198,7 +228,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         this._view.webview.postMessage({
           type: 'data',
           stats: { flows: 0, agents: 0, skills: 0 },
-          defaultsInstalled: false,
+          defaultItems: [],
           activeRun: null,
           mcp: [],
           plugins: [],
@@ -385,15 +415,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .stat-num { font-size: 18px; font-weight: 700; line-height: 1.1; }
     .stat-lbl { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-top: 2px; }
 
-    /* library status row */
-    .lib-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); }
-    .lib-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); flex: 0 0 auto; }
-    .lib-info { flex: 1; min-width: 0; }
-    .lib-title { font-size: 11.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .lib-sub { font-size: 10px; color: var(--muted); margin-top: 1px; }
-    .lib-hint { color: var(--muted); font-size: 10px; line-height: 1.4; margin-top: 5px; }
-    .btn-secondary { display: flex; align-items: center; justify-content: center; width: 100%; margin-top: 6px; padding: 4px 10px; border: 1px solid var(--border); border-radius: var(--r-sm); background: transparent; color: var(--vscode-foreground); font-size: 12px; font-weight: 600; }
-    .btn-secondary:hover { background: var(--hover); }
+    /* default library expandable */
+    .lib-toggle { display: flex; align-items: center; gap: 7px; margin-top: 6px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); cursor: pointer; width: 100%; text-align: left; font-family: inherit; color: var(--vscode-foreground); transition: background .1s; }
+    .lib-toggle:hover { background: var(--hover); }
+    .lib-caret { font-size: 9px; color: var(--muted); transition: transform .15s; flex: 0 0 auto; }
+    .lib-caret.open { transform: rotate(90deg); }
+    .lib-toggle-label { flex: 1; font-size: 11.5px; font-weight: 500; }
+    .lib-toggle-badge { display: inline-flex; align-items: center; height: 15px; padding: 0 5px; border-radius: 9px; font-size: 9px; font-weight: 700; color: var(--badge-fg); background: var(--success); flex: 0 0 auto; }
+    .lib-toggle-badge:empty { display: none; }
+    .lib-panel { margin-top: 2px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
+    .lib-tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 8px; background: var(--panel); gap: 0; }
+    .lib-tab { padding: 5px 8px 4px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 11px; font-weight: 600; cursor: pointer; line-height: 1.4; white-space: nowrap; font-family: inherit; }
+    .lib-tab:hover { color: var(--vscode-foreground); }
+    .lib-tab.active { color: var(--vscode-foreground); border-bottom-color: var(--focus); }
 
     /* ── box (bordered list container) ── */
     .box { border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
@@ -411,14 +445,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .search::placeholder { color: var(--vscode-input-placeholderForeground, #818181); }
 
     /* ── list items ── */
-    .item { position: relative; display: grid; grid-template-columns: 8px minmax(0,1fr) auto; align-items: center; gap: 8px; min-height: 36px; padding: 6px 8px 6px 10px; transition: background .1s; }
+    .item { position: relative; display: grid; grid-template-columns: 8px minmax(0,1fr) auto; align-items: center; gap: 6px; min-height: 36px; padding: 5px 8px 5px 10px; transition: background .1s; }
     .item + .item { border-top: 1px solid rgba(127,127,127,.07); }
     .item:hover { background: var(--hover); }
     .item-dot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
     .item-body { min-width: 0; }
-    .item-name { display: block; font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
-    .item-sub { display: block; font-size: 10.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; margin-top: 1px; }
-    .item-acts { display: flex; align-items: center; gap: 4px; }
+    .item-name { display: block; font-size: 11.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
+    .item-sub { display: block; font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; margin-top: 1px; }
+    /* action buttons: hidden until hover so narrow sidebars don't clip content */
+    .item-acts { display: flex; align-items: center; gap: 3px; opacity: 0; transition: opacity .1s; }
+    .item:hover .item-acts { opacity: 1; }
 
     /* ── pill action buttons ── */
     .pill { display: inline-flex; align-items: center; justify-content: center; height: 22px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--r-sm); background: transparent; color: var(--vscode-foreground); font-size: 10.5px; font-weight: 600; cursor: pointer; white-space: nowrap; font-family: inherit; transition: background .1s, border-color .1s; }
@@ -477,7 +513,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         <span class="sec-count" id="lib-count"></span>
       </div>
       <div class="stats" id="stats"></div>
-      <div id="defaults"></div>
+      <div id="defaults-toggle"></div>
+      <div id="defaults-panel" style="display:none"></div>
     </section>
 
     <!-- MCP connections -->
@@ -606,27 +643,85 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     document.getElementById('lib-count').textContent = total ? String(total) : '';
   }
 
-  function renderDefaults(installed) {
-    const el = document.getElementById('defaults');
-    if (!installed) {
-      el.innerHTML =
-        '<div class="lib-hint">Add professional SDLC agents &amp; skills to your workspace.</div>' +
-        '<button class="btn-secondary" id="init-def">Install Professional Library</button>';
-      const btn = document.getElementById('init-def');
-      if (btn) btn.onclick = () => vscode.postMessage({ type: 'installDefaults' });
-    } else {
-      el.innerHTML =
-        '<div class="lib-row">' +
-        '<span class="lib-dot"></span>' +
-        '<div class="lib-info">' +
-        '<div class="lib-title">Professional Library</div>' +
-        '<div class="lib-sub">Agents &amp; skills installed</div>' +
-        '</div>' +
-        '<button class="pill" id="reinit-def">Manage</button>' +
-        '</div>';
-      const btn = document.getElementById('reinit-def');
-      if (btn) btn.onclick = () => vscode.postMessage({ type: 'installDefaults' });
-    }
+  let defaultLibraryOpen = false;
+  let defaultItemsData = [];
+  let defaultLibTab = 'agents';
+  const LIB_TABS = [
+    { key: 'agents',     label: 'Agents' },
+    { key: 'skills',     label: 'Skills' },
+    { key: 'reviews',    label: 'Reviews' },
+    { key: 'validators', label: 'Validators' },
+  ];
+
+  function renderDefaults(items) {
+    defaultItemsData = items || [];
+    const installedCount = defaultItemsData.filter(i => i.installed).length;
+    const toggle = document.getElementById('defaults-toggle');
+    toggle.innerHTML =
+      '<button class="lib-toggle" id="lib-toggle-btn">' +
+      '<span class="lib-caret' + (defaultLibraryOpen ? ' open' : '') + '">&#9658;</span>' +
+      '<span class="lib-toggle-label">Default Library</span>' +
+      (installedCount ? '<span class="lib-toggle-badge">' + installedCount + ' installed</span>' : '') +
+      '</button>';
+    document.getElementById('lib-toggle-btn').onclick = () => {
+      defaultLibraryOpen = !defaultLibraryOpen;
+      renderDefaultsPanel();
+    };
+    renderDefaultsPanel();
+  }
+
+  function fmtDefaultName(name) {
+    return name.replace(/^aisf-(?:agent|skill|review|validator)?-?/, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  function renderDefaultsPanel() {
+    const panel = document.getElementById('defaults-panel');
+    const btn = document.getElementById('lib-toggle-btn');
+    if (btn) btn.querySelector('.lib-caret').className = 'lib-caret' + (defaultLibraryOpen ? ' open' : '');
+    if (!defaultLibraryOpen) { panel.style.display = 'none'; return; }
+    panel.style.display = '';
+
+    const tabsHtml = LIB_TABS.map(t => {
+      const count = defaultItemsData.filter(i => i.kind === t.key).length;
+      if (!count) return '';
+      return '<button class="lib-tab' + (defaultLibTab === t.key ? ' active' : '') + '" type="button" data-libtab="' + t.key + '">' + t.label + ' <span style="opacity:.6;font-weight:400">(' + count + ')</span></button>';
+    }).join('');
+
+    const items = defaultItemsData.filter(i => i.kind === defaultLibTab);
+    const itemsHtml = items.length
+      ? items.map(item =>
+          '<div class="item">' +
+          '<span class="item-dot" style="background:' + (item.installed ? 'var(--success)' : 'var(--badge)') + '"></span>' +
+          '<span class="item-body">' +
+            '<span class="item-name" title="' + esc(item.name) + '">' + esc(fmtDefaultName(item.name)) + '</span>' +
+            '<span class="item-sub" title="' + esc(item.description) + '">' + esc(item.description) + '</span>' +
+          '</span>' +
+          '<span class="item-acts">' +
+            (item.installed
+              ? (item.inUse
+                  ? '<button class="pill" type="button" disabled title="Used by a flow — remove from flows first">Remove</button>'
+                  : '<button class="pill danger" type="button" data-act="uninstallDefault" data-kind="' + esc(item.kind) + '" data-filename="' + esc(item.filename) + '">Remove</button>')
+              : '<button class="pill accent" type="button" data-act="installDefault" data-kind="' + esc(item.kind) + '" data-filename="' + esc(item.filename) + '">Install</button>') +
+          '</span>' +
+          '</div>'
+        ).join('')
+      : '<span class="empty">No items</span>';
+
+    panel.innerHTML = '<div class="lib-panel"><div class="lib-tabs" id="lib-tab-bar">' + tabsHtml + '</div>' + itemsHtml + '</div>';
+
+    panel.querySelectorAll('[data-libtab]').forEach(t => {
+      t.onclick = () => { defaultLibTab = t.getAttribute('data-libtab'); renderDefaultsPanel(); };
+    });
+    panel.querySelectorAll('button[data-act]').forEach(btn => {
+      btn.onclick = () => {
+        const act = btn.getAttribute('data-act');
+        const kind = btn.getAttribute('data-kind');
+        const filename = btn.getAttribute('data-filename');
+        btn.disabled = true;
+        btn.textContent = act === 'installDefault' ? 'Installing…' : 'Removing…';
+        vscode.postMessage({ type: act === 'installDefault' ? 'installDefaultItem' : 'uninstallDefaultItem', kind, filename });
+      };
+    });
   }
 
   const MCP_STATUS = {
@@ -804,7 +899,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       if (m.type === 'data') {
         renderActive(m.activeRun);
         renderStats(m.stats);
-        renderDefaults(m.defaultsInstalled);
+        renderDefaults(m.defaultItems || []);
         mcpReceived = true;
         pluginsReceived = true;
         setMcpData(m.mcp);

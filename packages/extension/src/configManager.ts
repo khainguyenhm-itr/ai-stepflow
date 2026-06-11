@@ -6,6 +6,8 @@ import { parse, parseDocument, Document, isMap } from 'yaml';
 import matter from 'gray-matter';
 import { Agent, Skill, Flow, parseFlow, formatFlowError, AgentInput, SkillInput } from '@ai-stepflow/core';
 
+export type BundledKind = 'agents' | 'skills' | 'reviews' | 'validators';
+
 export class ConfigManager {
   private readonly globalPath: string;
   /** Marker stamped on every file this extension installs, so updates never clobber user-authored files. */
@@ -42,6 +44,97 @@ export class ConfigManager {
         await fs.rm(skillDir, { recursive: true, force: true });
       }
     } catch { /* not present — nothing to remove */ }
+  }
+
+  /** Returns every bundled default item with name, description, and whether it is installed. */
+  public async listBundledDefaults(): Promise<Array<{ kind: BundledKind; filename: string; name: string; description: string; installed: boolean }>> {
+    if (!this.extensionPath) return [];
+    const result: Array<{ kind: BundledKind; filename: string; name: string; description: string; installed: boolean }> = [];
+    const KINDS: Array<{ kind: BundledKind; exts: string[] }> = [
+      { kind: 'agents', exts: ['.md'] },
+      { kind: 'skills', exts: ['.md'] },
+      { kind: 'reviews', exts: ['.md'] },
+      { kind: 'validators', exts: ['.mjs', '.js'] },
+    ];
+    for (const { kind, exts } of KINDS) {
+      const srcDir = path.join(this.extensionPath, 'resources', 'defaults', kind);
+      let files: string[];
+      try {
+        files = (await fs.readdir(srcDir)).filter(n => exts.some(e => n.endsWith(e)));
+      } catch { continue; }
+      for (const filename of files) {
+        try {
+          const content = await fs.readFile(path.join(srcDir, filename), 'utf8');
+          const installed = await this._isBundledItemInstalled(kind, filename);
+          let name: string, description: string;
+          if (filename.endsWith('.md')) {
+            const m = matter(content);
+            name = String(m.data.name || filename.replace('.md', ''));
+            description = String(m.data.description || this._firstHeading(content) || '');
+          } else {
+            name = filename.replace(/\.(mjs|js)$/, '');
+            description = this._firstJsComment(content);
+          }
+          result.push({ kind, filename, name, description, installed });
+        } catch { /* skip */ }
+      }
+    }
+    return result;
+  }
+
+  private _firstHeading(md: string): string {
+    const m = md.match(/^#{1,2}\s+(.+)/m);
+    return m ? m[1].trim() : '';
+  }
+
+  private _firstJsComment(js: string): string {
+    for (const line of js.split('\n')) {
+      const m = line.match(/^\/\/\s*(.+)/);
+      if (!m) continue;
+      const text = m[1].trim();
+      if (text.toLowerCase().startsWith('ai-stepflow')) continue;
+      return text;
+    }
+    return '';
+  }
+
+  private async _isBundledItemInstalled(kind: BundledKind, filename: string): Promise<boolean> {
+    const roots = [this.globalPath];
+    if (this.projectPath) roots.push(path.join(this.projectPath, '.claude'));
+    for (const base of roots) {
+      try {
+        const content = await fs.readFile(path.join(base, kind, filename), 'utf8');
+        if (content.includes(ConfigManager.BUILT_IN_MARKER)) return true;
+      } catch { /* not present */ }
+    }
+    return false;
+  }
+
+  /** Install a single bundled default item to global or project scope. */
+  public async installBundledItem(kind: BundledKind, filename: string, isGlobal: boolean = true): Promise<void> {
+    if (!this.extensionPath) return;
+    const srcPath = path.join(this.extensionPath, 'resources', 'defaults', kind, filename);
+    const targetBase = isGlobal ? this.globalPath : path.join(this.projectPath || '', '.claude');
+    if (!isGlobal && !this.projectPath) return;
+    const destPath = path.join(targetBase, kind, filename);
+    await fs.mkdir(path.dirname(destPath), { recursive: true });
+    const existing = await fs.readFile(destPath, 'utf8').catch(() => undefined);
+    if (existing !== undefined && !existing.includes(ConfigManager.BUILT_IN_MARKER)) return;
+    const content = await fs.readFile(srcPath, 'utf8');
+    await fs.writeFile(destPath, content, 'utf8');
+  }
+
+  /** Remove a single bundled default item from all scopes (only files we installed). */
+  public async uninstallBundledItem(kind: BundledKind, filename: string): Promise<void> {
+    const roots = [this.globalPath];
+    if (this.projectPath) roots.push(path.join(this.projectPath, '.claude'));
+    for (const base of roots) {
+      const destPath = path.join(base, kind, filename);
+      try {
+        const content = await fs.readFile(destPath, 'utf8');
+        if (content.includes(ConfigManager.BUILT_IN_MARKER)) await fs.unlink(destPath);
+      } catch { /* not present */ }
+    }
   }
 
   /** True if any of our marker-stamped default files are present in the given scope. */
