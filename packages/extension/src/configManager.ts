@@ -19,16 +19,18 @@ export class ConfigManager {
   }
 
   /**
-   * Install the bundled default library (SDLC agents + skills + karpathy) into ~/.claude.
+   * Install the bundled default library (SDLC agents + skills + karpathy) into ~/.claude or project .claude.
    * NOT run automatically — the user opts in via the sidebar "Initialize" button, and can
    * re-run it to repair corrupted/edited default files. Idempotent and marker-guarded.
    */
-  public async installDefaultLibrary(): Promise<void> {
-    await this.installBundledDefaults();
-    // The Karpathy discipline now lives in the project's CLAUDE.md (no separate global skill);
+  public async installDefaultLibrary(isGlobal: boolean = true): Promise<void> {
+    await this.installBundledDefaults(isGlobal);
+    // The Karpathy discipline now lives in the global CLAUDE.md (no separate global skill);
     // remove the legacy global skill we used to install, then merge the rules (idempotent).
-    await this.removeLegacyKarpathySkill();
-    await this.ensureProjectClaudeMd();
+    if (isGlobal) {
+      await this.removeLegacyKarpathySkill();
+      await this.ensureGlobalClaudeMd();
+    }
   }
 
   /** Remove the old global ~/.claude/skills/karpathy skill (superseded by the CLAUDE.md merge). */
@@ -42,10 +44,13 @@ export class ConfigManager {
     } catch { /* not present — nothing to remove */ }
   }
 
-  /** True if any of our marker-stamped default files are present in ~/.claude. */
-  public async isDefaultLibraryInstalled(): Promise<boolean> {
+  /** True if any of our marker-stamped default files are present in the given scope. */
+  public async isDefaultLibraryInstalled(scope: 'global' | 'project' = 'global'): Promise<boolean> {
+    const targetBase = scope === 'global' ? this.globalPath : path.join(this.projectPath || '', '.claude');
+    if (scope === 'project' && !this.projectPath) return false;
+
     for (const kind of ['agents', 'skills'] as const) {
-      const dir = path.join(this.globalPath, kind);
+      const dir = path.join(targetBase, kind);
       let files: string[];
       try {
         files = (await fs.readdir(dir)).filter(n => n.endsWith('.md'));
@@ -62,13 +67,11 @@ export class ConfigManager {
   }
 
   /**
-   * Merge the Karpathy engineering rules into the project's CLAUDE.md, wrapped in markers so
-   * uninstall can strip exactly what we added. Idempotent. Records the file path so the
-   * uninstall hook (which has no workspace context) knows which CLAUDE.md to clean up.
+   * Merge the Karpathy engineering rules into the global ~/.claude/CLAUDE.md, wrapped in markers.
+   * Idempotent.
    */
-  public async ensureProjectClaudeMd(): Promise<void> {
-    if (!this.projectPath) return;
-    const claudeMdPath = path.join(this.projectPath, 'CLAUDE.md');
+  public async ensureGlobalClaudeMd(): Promise<void> {
+    const claudeMdPath = path.join(this.globalPath, 'CLAUDE.md');
     const block = [
       ConfigManager.CLAUDE_MD_START,
       '## Engineering Discipline (Karpathy Rules)',
@@ -82,48 +85,29 @@ export class ConfigManager {
     try {
       const exists = await fs.access(claudeMdPath).then(() => true).catch(() => false);
       if (!exists) {
-        await fs.writeFile(claudeMdPath, `# Project Guidelines\n\n${block}\n`, 'utf8');
+        await fs.writeFile(claudeMdPath, `# Global Guidelines\n\n${block}\n`, 'utf8');
       } else {
         const content = await fs.readFile(claudeMdPath, 'utf8');
-        // Skip if already merged (marked) or if a pre-marker version of the section is present,
-        // so upgrading from an older build never produces a duplicate section.
+        // Skip if already merged (marked) or if a pre-marker version of the section is present.
         if (content.includes(ConfigManager.CLAUDE_MD_START) || content.includes('Engineering Discipline (Karpathy Rules)')) return;
         await fs.appendFile(claudeMdPath, `\n${block}\n`, 'utf8');
       }
-      await this.recordClaudeMdPath(claudeMdPath);
     } catch (e) {
-      console.error('AI StepFlow: failed to initialize CLAUDE.md', e);
-    }
-  }
-
-  /** Append a CLAUDE.md path to the tracking file the uninstall hook reads to clean up. */
-  private async recordClaudeMdPath(claudeMdPath: string): Promise<void> {
-    const trackPath = path.join(this.globalPath, '.ai-stepflow', 'claude-md-paths.json');
-    try {
-      await fs.mkdir(path.dirname(trackPath), { recursive: true });
-      let paths: string[] = [];
-      try { paths = JSON.parse(await fs.readFile(trackPath, 'utf8')); } catch { /* none yet */ }
-      if (!Array.isArray(paths)) paths = [];
-      if (!paths.includes(claudeMdPath)) {
-        paths.push(claudeMdPath);
-        await fs.writeFile(trackPath, JSON.stringify(paths, null, 2), 'utf8');
-      }
-    } catch (e) {
-      console.error('AI StepFlow: failed to record CLAUDE.md path', e);
+      console.error('AI StepFlow: failed to initialize global CLAUDE.md', e);
     }
   }
 
   /** Resolved lazily so workspace folder changes are always picked up. */
-  private get projectPath(): string | undefined {
+  public get projectPath(): string | undefined {
     return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   }
 
   /**
-   * Copy the bundled `resources/defaults/{agents,skills}` markdown into the user's global
-   * ~/.claude library. Idempotent: a target is (re)written only when it is missing or was
+   * Copy the bundled `resources/defaults/{agents,skills}` markdown into the target library.
+   * Idempotent: a target is (re)written only when it is missing or was
    * installed by us (carries {@link BUILT_IN_MARKER}); a user-authored file is left untouched.
    */
-  private async installBundledDefaults(): Promise<void> {
+  private async installBundledDefaults(isGlobal: boolean): Promise<void> {
     if (!this.extensionPath) return;
     // `validators` are deterministic review modules (.mjs) steps can point `validatorPath` at;
     // they carry the same built-in marker (as a JS comment) so the overwrite rules still apply.
@@ -133,9 +117,12 @@ export class ConfigManager {
       { kind: 'validators', exts: ['.mjs', '.js'] },
       { kind: 'reviews', exts: ['.md'] }
     ];
+    const targetBase = isGlobal ? this.globalPath : path.join(this.projectPath || '', '.claude');
+    if (!isGlobal && !this.projectPath) return;
+
     for (const { kind, exts } of sources) {
       const srcDir = path.join(this.extensionPath, 'resources', 'defaults', kind);
-      const destDir = path.join(this.globalPath, kind);
+      const destDir = path.join(targetBase, kind);
       let files: string[];
       try {
         files = (await fs.readdir(srcDir)).filter(name => exts.some(ext => name.endsWith(ext)));
@@ -186,46 +173,58 @@ export class ConfigManager {
 
   public async loadAgents(): Promise<Agent[]> {
     const agents = new Map<string, Agent>();
+    console.log('AI StepFlow: loadAgents starting...');
 
-    // Global agents first, then project agents override by name.
     for (const dir of this.scopedDirs('agents')) {
-      for (const file of await this.listFiles(dir, name => name.endsWith('.md'))) {
+      const files = await this.listFiles(dir, name => name.endsWith('.md'));
+      console.log(`AI StepFlow: checking dir ${dir}, found ${files.length} md files.`);
+      for (const file of files) {
         const agent = await this.parseAgentFile(path.join(dir, file));
         if (agent) agents.set(agent.name, agent);
       }
     }
 
+    console.log(`AI StepFlow: loadAgents finished, total ${agents.size} unique agents.`);
     return Array.from(agents.values());
   }
 
   public async loadSkills(): Promise<Skill[]> {
     const skills = new Map<string, Skill>();
+    console.log('AI StepFlow: loadSkills starting...');
 
     for (const dir of this.scopedDirs('skills')) {
-      // Support legacy/simple flat skill files while keeping folder-based skills canonical.
-      for (const file of await this.listFiles(dir, name => name.endsWith('.md'))) {
+      const mdFiles = await this.listFiles(dir, name => name.endsWith('.md'));
+      const subDirs = await this.listDirectories(dir);
+      console.log(`AI StepFlow: checking dir ${dir}, found ${mdFiles.length} md files and ${subDirs.length} subdirs.`);
+
+      for (const file of mdFiles) {
         const skill = await this.parseSkillFile(path.join(dir, file), true);
         if (skill) skills.set(skill.name, skill);
       }
-      for (const sub of await this.listDirectories(dir)) {
+      for (const sub of subDirs) {
         const skill = await this.parseSkillFolder(path.join(dir, sub));
         if (skill) skills.set(skill.name, skill);
       }
     }
 
+    console.log(`AI StepFlow: loadSkills finished, total ${skills.size} unique skills.`);
     return Array.from(skills.values());
   }
 
   public async loadFlows(): Promise<Flow[]> {
     const flows = new Map<string, Flow>();
+    console.log('AI StepFlow: loadFlows starting...');
 
     for (const dir of this.scopedDirs('flows')) {
-      for (const file of await this.listFiles(dir, name => name.endsWith('.yaml') || name.endsWith('.yml'))) {
+      const files = await this.listFiles(dir, name => name.endsWith('.yaml') || name.endsWith('.yml'));
+      console.log(`AI StepFlow: checking dir ${dir}, found ${files.length} flow files.`);
+      for (const file of files) {
         const flow = await this.parseFlowFile(path.join(dir, file));
         if (flow) flows.set(flow.id, flow);
       }
     }
 
+    console.log(`AI StepFlow: loadFlows finished, total ${flows.size} unique flows.`);
     return Array.from(flows.values());
   }
 
@@ -243,8 +242,6 @@ export class ConfigManager {
       steps: flow.steps
     };
 
-    // Re-edit the previous file's document in place so hand-written comments and
-    // top-level key order survive the round-trip instead of being flattened away.
     let baseContent: string | undefined;
     if (flow.sourcePath && this.isManagedPath(flow.sourcePath)) {
       try {
@@ -346,7 +343,6 @@ export class ConfigManager {
   ): Promise<Skill | undefined> {
     try {
       const content = await fs.readFile(filePath, 'utf8');
-      // Built-in skill files may put metadata comments before their YAML frontmatter.
       const leadingComments = content.match(/^(?:\s*<!--[\s\S]*?-->\s*)+(?=---(?:\r?\n|$))/);
       const parseableContent = leadingComments ? content.slice(leadingComments[0].length) : content;
       const { data, content: body } = matter(parseableContent);

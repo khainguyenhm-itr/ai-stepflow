@@ -47,6 +47,20 @@ export function pickAutoAdvanceStep(
 }
 
 /**
+ * Fan-out auto-advance: return EVERY dependent step whose dependencies are all done and that
+ * hasn't started yet, in input order. The orchestrator launches the headless/AI ones
+ * concurrently and opens at most one interactive step, so a diamond no longer stalls when
+ * several branches unlock at once.
+ */
+export function pickAutoAdvanceSteps(
+  steps: ReadyStepInput[],
+  done: ReadonlySet<string>,
+  started: ReadonlySet<string>
+): string[] {
+  return computeReadySteps(steps, done, started);
+}
+
+/**
  * Seed the "already started" set when adopting a restored run, so it never auto-re-runs
  * a step that already ran (e.g. one parked at a review gate). A step is treated as
  * started once it has moved past its pristine ready/locked + not_ready state.

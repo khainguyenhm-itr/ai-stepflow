@@ -26,9 +26,10 @@ export function validateRequires(step: FlowStep, projectPath: string, inputs: Re
 
 /** Verify a step's declared `produces` files exist and contain any required markers. */
 export function validateProduces(step: FlowStep, projectPath: string, inputs: Record<string, string> = {}): ProducesValidationResult {
-  const produces = resolveTemplates(step.produces, inputs);
+  const reviewPath = step.review.filePath ? [step.review.filePath] : [];
+  const produces = resolveTemplates([...(step.produces ?? []), ...reviewPath], inputs);
   if (produces.length === 0) return { ok: true };
-  const resolved = produces.map(p => (path.isAbsolute(p) ? p : path.join(projectPath, p)));
+  const resolved = [...new Set(produces.map(p => (path.isAbsolute(p) ? p : path.join(projectPath, p))))];
 
   const missing = resolved.filter(p => !fs.existsSync(p));
   if (missing.length) {

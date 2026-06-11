@@ -28,6 +28,7 @@ interface AgentModalProps {
   draftLoading: boolean;
   connectedMcpServers: string[];
   onClose: () => void;
+  onConnectMcp: () => void;
   onChange: (patch: Partial<AgentInput & { scope: SaveScope }>) => void;
   onSubmit: () => void;
   onGenerateDraft: () => void;
@@ -41,6 +42,7 @@ export const AgentModal: React.FC<AgentModalProps> = ({
   draftLoading,
   connectedMcpServers,
   onClose,
+  onConnectMcp,
   onChange,
   onSubmit,
   onGenerateDraft
@@ -117,6 +119,10 @@ export const AgentModal: React.FC<AgentModalProps> = ({
               </label>
             );
           })}
+          <button className="capability-chip add-new" onClick={onConnectMcp} title="Connect a new MCP server (GitHub, Figma, etc.)">
+            <Icon.Plus size={12} />
+            <span>Connect new...</span>
+          </button>
         </div>
       </Field>
       <Field label="System Prompt" hint="write manually, or let AI draft it from the name & description">

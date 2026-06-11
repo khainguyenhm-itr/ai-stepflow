@@ -13,10 +13,11 @@
     "url": "https://github.com/khainguyenhm-itr/ai-stepflow"
   },
   "scripts": {
+    "clean": "rm -rf packages/*/out packages/*/out-itest packages/*/out-test packages/*/tsconfig.tsbuildinfo",
     "compile": "npm run compile --workspaces && node scripts/bundle-extension.mjs",
-    "compile-all": "npm run build-webview && npm run compile",
+    "compile-all": "npm run compile && npm run build-webview",
     "package": "npm run package:vsix",
-    "package:vsix": "npm run compile-all && node scripts/package-vsix.mjs",
+    "package:vsix": "npm run clean && npm run compile-all && node scripts/package-vsix.mjs",
     "publish:marketplace": "npm run package:vsix && vsce publish --packagePath ai-stepflow.vsix",
     "watch": "npm run watch --workspaces & node scripts/bundle-extension.mjs --watch",
     "build-webview": "node scripts/build-webview.mjs",
@@ -24,12 +25,14 @@
     "watch-webview": "node scripts/build-webview.mjs --watch",
     "cli": "node packages/extension/out/cli.js",
     "pretest": "npm run compile && npm run lint",
-    "lint": "eslint packages/*/src packages/core/test --ext ts",
+    "lint": "eslint packages/*/src packages/core/test packages/webview/test --ext ts",
     "compile:test": "rm -rf packages/core/out/test && tsc -p packages/core/test/tsconfig.json",
     "compile:itest": "rm -rf packages/extension/out-itest && tsc -p packages/extension/test/tsconfig.json",
     "test:unit": "npm run compile && npm run compile:test && node --test packages/core/out/test/test/*.test.js",
+    "compile:webview-test": "rm -rf packages/webview/out-test && tsc -p packages/webview/test/tsconfig.json",
+    "test:webview": "npm run compile && npm run compile:webview-test && node --test packages/webview/out-test/test/*.test.js",
     "test:integration": "npm run compile && npm run compile:itest && node packages/extension/out-itest/test/runIntegration.js",
-    "test": "npm run test:unit",
+    "test": "npm run test:unit && npm run test:webview",
     "vscode:uninstall": "node packages/extension/out/uninstall.js"
   },
   "devDependencies": {

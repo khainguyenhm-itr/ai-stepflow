@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   Flow, FlowStep, FlowRunState, StepRunState,
   initRunState, markRunning, markCompleted, applyAiReview, markDone, doneStepIds,
-  pickAutoAdvanceStep, seedStartedSteps,
+  pickAutoAdvanceStep, pickAutoAdvanceSteps, seedStartedSteps,
   reviewStepArtifacts, ReviewResult,
   ClaudeStreamingRunResult, ClaudeStreamingRunOptions
 } from '@ai-stepflow/core';
@@ -50,6 +50,14 @@ test('pickAutoAdvanceStep skips an already-started dependent', () => {
 test('pickAutoAdvanceStep never auto-starts a root step (no deps)', () => {
   const steps = [step('a'), step('b')];
   assert.equal(pickAutoAdvanceStep(steps, new Set(), new Set()), undefined);
+});
+
+test('pickAutoAdvanceSteps returns every dependent a fan-out unlocks, in order', () => {
+  const steps = [step('a'), step('b', { dependsOn: ['a'] }), step('c', { dependsOn: ['a'] })];
+  assert.deepEqual(pickAutoAdvanceSteps(steps, new Set(['a']), new Set()), ['b', 'c']);
+  // already-started and root steps are excluded, like the singular picker.
+  assert.deepEqual(pickAutoAdvanceSteps(steps, new Set(['a']), new Set(['b'])), ['c']);
+  assert.deepEqual(pickAutoAdvanceSteps(steps, new Set(), new Set()), []);
 });
 
 // ---------------------------------------------------------------------------
@@ -114,9 +122,8 @@ test('reviewStepArtifacts waits for a human when the verdict cannot be parsed', 
 
 test('reviewStepArtifacts is validator-only when deep review is disabled', async () => {
   const r = await review('{"decision":"reject"}', false);
-  // Missing default validator => skip layer 1; deep disabled => approve without an LLM call.
-  assert.equal(r.status, 'approved');
-  assert.equal(r.source, 'validator-only');
+  assert.equal(r.status, 'waiting_human');
+  assert.equal(r.source, 'review-setup');
 });
 
 // ---------------------------------------------------------------------------
@@ -126,12 +133,23 @@ test('reviewStepArtifacts is validator-only when deep review is disabled', async
 /**
  * Drive a flow to completion using only core primitives + a stub reviewer, mirroring
  * the headless AI-review path in the extension/CLI: run a step, complete it, review it,
- * apply the verdict, then auto-advance the single unlocked dependent.
+ * apply the verdict, then auto-advance EVERY unlocked dependent (the orchestrator launches
+ * headless branches concurrently — the sim runs them in order, which is equivalent here).
  */
 async function driveHeadless(flow: Flow, verdicts: Record<string, string>): Promise<FlowRunState> {
   let st = initRunState(flow, { runId: 'r1' });
   const started = new Set<string>();
   const order: string[] = [];
+
+  // Launch every currently-ready dependent. Mark `started` before running so a sibling launched
+  // by one branch isn't re-launched by another — mirroring the orchestrator, where a single
+  // advance fans out to all ready steps and each completion advances again.
+  const advance = async (): Promise<void> => {
+    for (const id of pickAutoAdvanceSteps(flow.steps, doneStepIds(st), started)) {
+      if (started.has(id)) continue;
+      await runStep(id);
+    }
+  };
 
   const runStep = async (id: string): Promise<void> => {
     const step = flow.steps.find(s => s.id === id)!;
@@ -150,8 +168,7 @@ async function driveHeadless(flow: Flow, verdicts: Record<string, string>): Prom
     } else {
       st = markDone(st, flow, id);
     }
-    const next = pickAutoAdvanceStep(flow.steps, doneStepIds(st), started);
-    if (next) await runStep(next);
+    await advance();
   };
 
   // Kick off the root step (the host launches roots by hand).
@@ -185,16 +202,29 @@ test('an AI rejection parks the step back at ready and halts the chain', async (
   assert.equal(st.steps.c.executionStatus, 'locked');
 });
 
-test('a fan-out does not auto-advance; both dependents wait for the user', async () => {
+test('a fan-out auto-advances every unlocked dependent', async () => {
   const flow = flowOf([
     step('a'),
     step('b', { dependsOn: ['a'] }),
     step('c', { dependsOn: ['a'] })
   ]);
   const st = await driveHeadless(flow, {});
-  // 'a' ran and is done; 'b' and 'c' unlocked together so neither auto-started.
-  assert.equal(st.steps.a.completionStatus, 'done');
-  assert.deepEqual((st as any)._order, ['a']);
-  assert.equal(st.steps.b.executionStatus, 'ready');
-  assert.equal(st.steps.c.executionStatus, 'ready');
+  // 'a' ran and is done; 'b' and 'c' unlocked together and both ran.
+  assert.deepEqual((st as any)._order, ['a', 'b', 'c']);
+  for (const id of ['a', 'b', 'c']) assert.equal(st.steps[id].completionStatus, 'done', `${id} should be done`);
+});
+
+test('a diamond converges: both branches run, then the join step runs once', async () => {
+  const flow = flowOf([
+    step('a'),
+    step('b', { dependsOn: ['a'], review: { required: true, type: 'ai' }, produces: ['b.md'] }),
+    step('c', { dependsOn: ['a'], review: { required: true, type: 'ai' }, produces: ['c.md'] }),
+    step('d', { dependsOn: ['b', 'c'] })
+  ]);
+  const st = await driveHeadless(flow, { b: '{"decision":"pass"}', c: '{"decision":"pass"}' });
+  for (const id of ['a', 'b', 'c', 'd']) assert.equal(st.steps[id].completionStatus, 'done', `${id} should be done`);
+  // 'd' runs only after BOTH b and c are done, and exactly once.
+  const order = (st as any)._order as string[];
+  assert.equal(order.filter(id => id === 'd').length, 1);
+  assert.ok(order.indexOf('d') > order.indexOf('b') && order.indexOf('d') > order.indexOf('c'));
 });

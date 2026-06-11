@@ -12,12 +12,6 @@ export function activate(context: vscode.ExtensionContext) {
     const stateManager = new StateManager(context);
     const output = vscode.window.createOutputChannel('AI StepFlow');
 
-    // Initialize the project's CLAUDE.md. The default agent/skill library is NOT installed
-    // automatically — the user opts in via the sidebar "Initialize" button (ai-stepflow.installDefaults).
-    void configManager.ensureProjectClaudeMd().catch(err => {
-      console.error('AI StepFlow: failed to ensure CLAUDE.md', err);
-    });
-
     // Sidebar dashboard: active run, library counts, MCP servers, generated files.
     // Defensively handle version access
     const version = String(context.extension?.packageJSON?.version || '0.0.7');
@@ -84,15 +78,29 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.commands.registerCommand('ai-stepflow.refreshAll', refreshAll),
       output,
       vscode.commands.registerCommand('ai-stepflow.installDefaults', async () => {
-        const already = await configManager.isDefaultLibraryInstalled();
-        await configManager.installDefaultLibrary();
+        const items: (vscode.QuickPickItem & { scope: 'global' | 'project' })[] = [
+          { label: '$(globe) Global', description: 'Install to ~/.claude (available across all projects)', scope: 'global' },
+        ];
+        if (configManager.projectPath) {
+          items.push({ label: '$(repo) Current Repo', description: 'Install to .claude in this workspace', scope: 'project' });
+        }
+
+        const picked = await vscode.window.showQuickPick(items, {
+          title: 'Install Default Agent & Skill Library',
+          placeHolder: 'Select where to install the professional SDLC library'
+        });
+
+        if (!picked) return;
+
+        const isGlobal = picked.scope === 'global';
+        await configManager.installDefaultLibrary(isGlobal);
+
         vscode.window.showInformationMessage(
-          already
-            ? 'AI StepFlow: default agents & skills reinstalled.'
-            : 'AI StepFlow: default agents & skills added to ~/.claude.'
+          `AI StepFlow: default agents & skills installed to ${isGlobal ? 'global (~/.claude)' : 'current repo (.claude)'}.`
         );
         refreshAll();
-      })
+      }),
+
     );
 
     // AST graph: download the CLI, index the workspace, register it as a project-scoped MCP

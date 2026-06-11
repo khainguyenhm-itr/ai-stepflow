@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFlow, formatFlowError, isFlowShape, isFlowRunStateShape } from '@ai-stepflow/core';
+import { parseFlow, formatFlowError, isFlowShape, isFlowRunStateShape, isAgentInputShape, isSkillInputShape } from '@ai-stepflow/core';
 
 test('parseFlow fills defaults for a minimal hand-written flow', () => {
   const flow = parseFlow({ id: 'f1', steps: [{ id: 's1', agent: 'po', skills: ['prd'] }] }, 'fallback', '/x/f1.yaml');
@@ -83,6 +83,32 @@ test('isFlowRunStateShape accepts a real run state and rejects malformed ones', 
   assert.equal(isFlowRunStateShape({ flowId: 'f', runId: 'r1', steps: [] }), false);
   assert.equal(isFlowRunStateShape({ runId: 'r1', steps: {} }), false);
   assert.equal(isFlowRunStateShape(undefined), false);
+});
+
+test('isAgentInputShape requires a non-empty name and well-typed fields', () => {
+  assert.equal(isAgentInputShape({ name: 'po' }), true);
+  assert.equal(isAgentInputShape({ name: 'po', description: 'd', model: 'haiku', tools: ['Read'], systemPrompt: 'sp' }), true);
+  // tools may arrive as the comma-joined string an import populates
+  assert.equal(isAgentInputShape({ name: 'po', tools: 'Read, Edit' }), true);
+  // extra keys survive (passthrough)
+  assert.equal(isAgentInputShape({ name: 'po', sourcePath: '/a.md', builtIn: true }), true);
+  // rejected: missing/empty/non-string name, or a mistyped field
+  assert.equal(isAgentInputShape({ description: 'no name' }), false);
+  assert.equal(isAgentInputShape({ name: '' }), false);
+  assert.equal(isAgentInputShape({ name: 5 }), false);
+  assert.equal(isAgentInputShape({ name: 'po', tools: [1, 2] }), false);
+  assert.equal(isAgentInputShape({ name: 'po', model: 42 }), false);
+  assert.equal(isAgentInputShape(null), false);
+});
+
+test('isSkillInputShape requires a non-empty name and well-typed fields', () => {
+  assert.equal(isSkillInputShape({ name: 'prd' }), true);
+  assert.equal(isSkillInputShape({ name: 'prd', description: 'd', instructions: 'body' }), true);
+  assert.equal(isSkillInputShape({ name: 'prd', sourcePath: '/s.md' }), true);
+  assert.equal(isSkillInputShape({ instructions: 'no name' }), false);
+  assert.equal(isSkillInputShape({ name: '' }), false);
+  assert.equal(isSkillInputShape({ name: 'prd', instructions: 123 }), false);
+  assert.equal(isSkillInputShape(undefined), false);
 });
 
 test('parseFlow throws a readable error when steps is not a list', () => {

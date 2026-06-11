@@ -33,7 +33,7 @@ export interface ReviewResult {
   status: 'approved' | 'rejected' | 'waiting_human';
   note: string;
   /** Which layer produced the verdict — useful for logging/audit. */
-  source: 'validator' | 'validator-only' | 'llm';
+  source: 'validator' | 'validator-only' | 'llm' | 'review-setup';
 }
 
 /** Resolve and read a step's produced files into one capped payload for the LLM reviewer. */
@@ -42,11 +42,16 @@ export function readProducedArtifacts(
   workspaceRoot: string,
   inputs: Record<string, string>
 ): { text: string; count: number } {
-  const paths = resolveTemplates(step.produces ?? [], inputs).map(p => (path.isAbsolute(p) ? p : path.join(workspaceRoot, p)));
+  const reviewPath = step.review.filePath ? [step.review.filePath] : [];
+  const paths = resolveTemplates([...reviewPath, ...(step.produces ?? [])], inputs)
+    .map(p => (path.isAbsolute(p) ? p : path.join(workspaceRoot, p)));
+  const seen = new Set<string>();
   const parts: string[] = [];
   let total = 0;
   for (const filePath of paths) {
     if (total >= REVIEW_TOTAL_CHAR_CAP) break;
+    if (seen.has(filePath)) continue;
+    seen.add(filePath);
     let content: string;
     try { content = readFileSync(filePath, 'utf8'); } catch { continue; }
     const room = Math.min(REVIEW_ARTIFACT_CHAR_CAP, REVIEW_TOTAL_CHAR_CAP - total);
@@ -87,8 +92,9 @@ export interface ReviewOptions {
 
 /**
  * Run the two-layer review and return a verdict. Layer 1 (validator) can short-circuit to
- * `rejected`; a missing *default* validator is treated as "skip layer 1" rather than a failure.
- * Layer 2 (LLM) runs only when `deep` and a kit + artifacts are present.
+ * `rejected`; a missing *default* validator is treated as "skip layer 1" only when a deep
+ * LLM review can still inspect the artifacts. Missing validator-only infrastructure or a
+ * missing deep review payload waits for a human instead of silently approving.
  */
 export async function reviewStepArtifacts(opts: ReviewOptions): Promise<ReviewResult> {
   const { workspaceRoot, step, runState } = opts;
@@ -100,13 +106,23 @@ export async function reviewStepArtifacts(opts: ReviewOptions): Promise<ReviewRe
   if (!validatorMissing && verdict.decision === 'reject') {
     return { status: 'rejected', note: `Validator: reject — ${verdict.reason}`, source: 'validator' };
   }
+  if (!opts.deep) {
+    if (validatorMissing) {
+      return {
+        status: 'waiting_human',
+        note: `Validator-only review could not run: ${verdict.reason}`,
+        source: 'review-setup'
+      };
+    }
+    return { status: 'approved', note: 'Validator passed; LLM review skipped (deep review disabled).', source: 'validator-only' };
+  }
 
-  // Layer 2 — optional deep LLM review.
+  // Layer 2 — deep LLM review.
   const reviewKit = opts.reviewKit ?? loadReviewKit(workspaceRoot);
   const artifacts = opts.artifacts ?? readProducedArtifacts(step, workspaceRoot, runState.inputs || {});
-  if (!opts.deep || !reviewKit || artifacts.count === 0) {
-    const reason = !opts.deep ? 'deep review disabled' : (!reviewKit ? 'review kit not installed' : 'no produced artifacts to read');
-    return { status: 'approved', note: `Validator passed; LLM review skipped (${reason}).`, source: 'validator-only' };
+  if (!reviewKit || artifacts.count === 0) {
+    const reason = !reviewKit ? 'review kit not installed' : 'no produced artifacts to read';
+    return { status: 'waiting_human', note: `Deep review could not run: ${reason}.`, source: 'review-setup' };
   }
 
   const systemPrompt = `${reviewKit}\n\nRespond with ONLY a single-line JSON object: {"decision":"pass"|"reject","reason":"<short reason>"}.`;

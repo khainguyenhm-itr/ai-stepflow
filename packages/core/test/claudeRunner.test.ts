@@ -56,6 +56,36 @@ test('runClaudeStreaming passes non-JSON stdout lines through as text', async ()
   assert.ok(chunks.join('').includes('not json'));
 });
 
+test('runClaudeStreaming surfaces a clear message when claude is not on PATH (ENOENT)', async () => {
+  const child = new FakeChild();
+  const chunks: string[] = [];
+  const handle = runClaudeStreaming(
+    { systemPrompt: '', userMessage: 'x', projectPath: '', onText: c => chunks.push(c) },
+    spawnReturning(child)
+  );
+  const enoent = Object.assign(new Error('spawn claude ENOENT'), { code: 'ENOENT' });
+  child.emit('error', enoent);
+
+  const r = await handle.completed;
+  assert.equal(r.success, false);
+  assert.equal(r.exitCode, 1);
+  assert.match(chunks.join(''), /claude CLI not found on PATH/);
+});
+
+test('runClaudeStreaming reports a non-ENOENT spawn failure with its message', async () => {
+  const child = new FakeChild();
+  const chunks: string[] = [];
+  const handle = runClaudeStreaming(
+    { systemPrompt: '', userMessage: 'x', projectPath: '', onText: c => chunks.push(c) },
+    spawnReturning(child)
+  );
+  child.emit('error', Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }));
+
+  const r = await handle.completed;
+  assert.equal(r.success, false);
+  assert.match(chunks.join(''), /failed to launch claude: EACCES/);
+});
+
 test('runClaudeStreaming times out, kills the child, and reports timedOut', async () => {
   const child = new FakeChild();
   const handle = runClaudeStreaming(

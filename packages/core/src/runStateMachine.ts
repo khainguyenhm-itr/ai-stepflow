@@ -75,15 +75,61 @@ function patchStep(
   return { ...state, steps: applyDependencyLocks(flow, steps) };
 }
 
+function dependentStepIds(flow: Flow, stepId: string): Set<string> {
+  const dependents = new Map<string, string[]>();
+  for (const step of flow.steps) {
+    for (const dep of step.dependsOn ?? []) {
+      const list = dependents.get(dep) ?? [];
+      list.push(step.id);
+      dependents.set(dep, list);
+    }
+  }
+
+  const result = new Set<string>();
+  const queue = [...(dependents.get(stepId) ?? [])];
+  for (const id of queue) {
+    if (result.has(id)) continue;
+    result.add(id);
+    queue.push(...(dependents.get(id) ?? []));
+  }
+  return result;
+}
+
+/**
+ * Re-running a done step invalidates everything downstream: their previous artifacts may
+ * have been based on stale input. Keep the old output for reference, but clear completion
+ * and review decisions so the DAG has to advance through those steps again.
+ */
+function invalidateForRerun(state: FlowRunState, flow: Flow, stepId: string): FlowRunState {
+  const ids = new Set([stepId, ...dependentStepIds(flow, stepId)]);
+  const steps: Record<string, StepRunState> = { ...state.steps };
+  for (const id of ids) {
+    const prev = steps[id];
+    if (!prev) continue;
+    const step = flow.steps.find(s => s.id === id);
+    steps[id] = {
+      ...prev,
+      executionStatus: id === stepId ? prev.executionStatus : 'ready',
+      reviewStatus: step?.review.required ? 'pending' : 'not_required',
+      completionStatus: 'not_ready',
+      aiReviewOutput: undefined,
+      humanReview: undefined
+    };
+  }
+  return { ...state, steps: applyDependencyLocks(flow, steps) };
+}
+
 export function markRunning(state: FlowRunState, flow: Flow, stepId: string): FlowRunState {
+  const rerunDoneStep = state.steps[stepId]?.completionStatus === 'done';
+  const baseState = rerunDoneStep ? invalidateForRerun(state, flow, stepId) : state;
   const step = flow.steps.find(s => s.id === stepId);
-  const revision = (state.steps[stepId]?.revision ?? 0) + 1;
-  const patch: Partial<StepRunState> = { executionStatus: 'running', output: '', startedAt: new Date().toISOString(), revision };
+  const revision = (baseState.steps[stepId]?.revision ?? 0) + 1;
+  const patch: Partial<StepRunState> = { executionStatus: 'running', completionStatus: 'not_ready', output: '', startedAt: new Date().toISOString(), revision };
   if (step?.review.required) {
     patch.reviewStatus = 'pending';
     patch.aiReviewOutput = '';
   }
-  return patchStep(state, flow, stepId, patch, { status: 'running', message: revision > 1 ? `rerun #${revision}` : undefined });
+  return patchStep(baseState, flow, stepId, patch, { status: 'running', message: revision > 1 ? `rerun #${revision}` : undefined });
 }
 
 /** A finished run: "completed" is also "done" when the step has no review gate. */
@@ -125,6 +171,22 @@ export function applyHumanReview(state: FlowRunState, flow: Flow, stepId: string
 
 export function markDone(state: FlowRunState, flow: Flow, stepId: string): FlowRunState {
   return patchStep(state, flow, stepId, { completionStatus: 'done' }, { status: 'done' });
+}
+
+/**
+ * True when two step maps carry the same lock state. `applyDependencyLocks` only ever flips a
+ * step's `executionStatus` between `locked` and `ready`, so comparing that field per step tells
+ * us whether re-locking changed anything — a structural check that replaces a fragile,
+ * key-order-dependent `JSON.stringify` comparison.
+ */
+export function lockStatesEqual(a: Record<string, StepRunState>, b: Record<string, StepRunState>): boolean {
+  const keysA = Object.keys(a);
+  if (keysA.length !== Object.keys(b).length) return false;
+  for (const id of keysA) {
+    const sb = b[id];
+    if (!sb || a[id].executionStatus !== sb.executionStatus) return false;
+  }
+  return true;
 }
 
 /** Ids of steps already done, from the authoritative run state. */

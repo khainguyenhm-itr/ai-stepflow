@@ -27,3 +27,43 @@ export function listConnectedMcpServers(cwd?: string): Promise<string[]> {
     );
   });
 }
+
+/**
+ * Connect a new MCP server via `claude mcp add`. Supports optional environment
+ * variables by prepending them to the command (on Unix-like systems).
+ */
+export function addMcpServer(opts: {
+  name: string;
+  scope: 'global' | 'local';
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+  cwd?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  return new Promise(resolve => {
+    const fullCommand: string[] = [];
+    if (opts.env && Object.keys(opts.env).length > 0) {
+      fullCommand.push('env');
+      for (const [k, v] of Object.entries(opts.env)) {
+        fullCommand.push(`${k}=${v}`);
+      }
+    }
+    fullCommand.push(opts.command, ...opts.args);
+
+    const args = ['mcp', 'add', opts.name, '--scope', opts.scope, '--', ...fullCommand];
+
+    execFile(
+      'claude',
+      args,
+      { timeout: 30000, cwd: opts.cwd || undefined },
+      (error, _stdout, stderr) => {
+        if (error) {
+          console.error('AI StepFlow: failed to add MCP server', error, stderr);
+          resolve({ ok: false, error: stderr || error.message });
+          return;
+        }
+        resolve({ ok: true });
+      }
+    );
+  });
+}

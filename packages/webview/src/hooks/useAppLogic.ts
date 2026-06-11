@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Flow, FlowStep, FlowRunState, StepRunState, Agent, Skill } from '@ai-stepflow/core/types';
-import { isVSCodeWebview, getVSCodeApi, sendToVSCode } from '../vscode';
+import { isVSCodeWebview, sendToVSCode } from '../vscode';
 import { 
   getStepSkills, 
   applyDependencyLocks, 
@@ -57,6 +57,7 @@ export const useAppLogic = () => {
 
   const [agentModalOpen, setAgentModalOpen] = useState(false);
   const [skillModalOpen, setSkillModalOpen] = useState(false);
+  const [connectMcpModalOpen, setConnectMcpModalOpen] = useState(false);
   const [editingSkillSource, setEditingSkillSource] = useState<string | null>(null);
   const [editingAgentSource, setEditingAgentSource] = useState<string | null>(null);
 
@@ -142,8 +143,10 @@ export const useAppLogic = () => {
   };
 
   const handleHostMessage = (message: any) => {
+    console.log('[AI StepFlow Webview] received message:', message.type, message);
     switch (message.type) {
       case 'loadData':
+        console.log('[AI StepFlow Webview] loading data:', message.flows.length, 'flows');
         setFlows(message.flows);
         setAgents(message.agents);
         setSkills(message.skills);
@@ -161,8 +164,6 @@ export const useAppLogic = () => {
         setRunnerVisible(true);
         setActiveStepId(getDefaultActiveStepId(message.flow, message.runState));
         break;
-      // The backend owns the run state machine. These two messages stream display-only
-      // output between transitions; they never compute status themselves.
       case 'stepUpdate':
         setRunState(prev => {
           if (!prev) return prev;
@@ -179,8 +180,6 @@ export const useAppLogic = () => {
           return { ...prev, steps: { ...prev.steps, [message.stepId]: { ...ps, aiReviewOutput } } };
         });
         break;
-      // Authoritative state: the backend computed every transition and the lock/DAG state.
-      // The webview just renders it (and appends the optional audit event for the live log).
       case 'runStateChanged':
         setRunState(message.runState);
         if (message.historyEvent && activeFlowRef.current) {
@@ -337,6 +336,11 @@ export const useAppLogic = () => {
     setSkillModalOpen(true);
   };
 
+  const submitConnectMcp = (config: { name: string; scope: 'global' | 'local'; command: string; args: string[]; env?: Record<string, string> }) => {
+    sendToVSCode('connectMcpServer', { config });
+    setConnectMcpModalOpen(false);
+  };
+
   const submitRunInputs = () => {
     if (!runInputsTarget) return;
     initRunState(runInputsTarget, runInputValues);
@@ -359,9 +363,6 @@ export const useAppLogic = () => {
     ? Math.round((completedSteps / activeFlow.steps.length) * 100)
     : 0;
 
-  // In VS Code the extension host owns the run state machine and persists every transition,
-  // so the webview no longer echoes state back. (Preview mode keeps its purely-local simulation.)
-
   const seedPreview = () => {
     setFlows([previewFlow]);
     setAgents(previewAgents);
@@ -376,8 +377,8 @@ export const useAppLogic = () => {
       output: `Preview mode: simulating Claude output...\n\nRun description:\n${runDescription || 'No run description.'}\n`
     });
     window.setTimeout(() => {
-      updateRunState(activeStepId!, () => {
-        const step = activeFlowRef.current?.steps.find(s => s.id === activeStepId);
+      updateRunState(stepId, () => {
+        const step = activeFlowRef.current?.steps.find(s => s.id === stepId);
         const updates: Partial<StepRunState> = {
           executionStatus: 'completed',
           output: 'Preview mode: simulated step completed successfully.\n\nInstall the VSIX or run the extension host to execute Claude for real.'
@@ -492,6 +493,7 @@ export const useAppLogic = () => {
     detailItem, setDetailItem,
     agentModalOpen, setAgentModalOpen,
     skillModalOpen, setSkillModalOpen,
+    connectMcpModalOpen, setConnectMcpModalOpen,
     editingSkillSource, setEditingSkillSource,
     editingAgentSource, setEditingAgentSource,
     agentForm, setAgentForm,
@@ -507,6 +509,7 @@ export const useAppLogic = () => {
     startFreshRun,
     emptyAgentForm, emptySkillForm,
     submitAgentModal, openAgentEditor, submitSkillModal, openSkillEditor,
+    submitConnectMcp,
     submitRunInputs, runActiveStep, saveEditingFlow, saveStepEdit
   };
 };
