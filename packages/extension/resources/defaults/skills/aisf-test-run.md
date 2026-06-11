@@ -1,6 +1,6 @@
 <!-- ai-stepflow built-in -->
 ---
-name: sf-test-run
+name: aisf-test-run
 description: Execute tests and report results. Covers automated and manual verification.
 ---
 

@@ -1,6 +1,6 @@
 <!-- ai-stepflow built-in -->
 ---
-name: sf-qa
+name: aisf-qa
 description: Quality Assurance Engineer. Focuses on testing strategy, bug detection, and ensuring software reliability.
 model: claude-sonnet-4-6
 tools: [Read, Edit, Bash]

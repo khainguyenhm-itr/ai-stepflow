@@ -19,7 +19,9 @@ export function listConnectedMcpServers(cwd?: string): Promise<string[]> {
         }
         const connected = stdout
           .split(/\r?\n/)
-          .filter(line => /✓\s*Connected/i.test(line))
+          // The CLI marks healthy servers with a checkmark before "Connected"; tolerate both
+          // the light (U+2713 ✓) and heavy (U+2714 ✔) glyphs it has used across versions.
+          .filter(line => /[✓✔]\s*Connected/i.test(line))
           .map(line => line.split(':', 1)[0].trim())
           .filter(Boolean);
         resolve(connected);

@@ -1,6 +1,6 @@
 <!-- ai-stepflow built-in -->
 ---
-name: sf-implement
+name: aisf-implement
 description: Implement features or fixes. Writes production-quality code and unit tests.
 ---
 

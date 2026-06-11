@@ -1,6 +1,6 @@
 <!-- ai-stepflow built-in -->
 ---
-name: sf-test-plan
+name: aisf-test-plan
 description: Create a testing strategy and plan for a feature. Covers functional, integration, and regression testing.
 ---
 

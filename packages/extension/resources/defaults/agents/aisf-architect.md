@@ -1,6 +1,6 @@
 <!-- ai-stepflow built-in -->
 ---
-name: sf-architect
+name: aisf-architect
 description: Software Architect. Designs high-level systems, data models, and integration patterns.
 model: claude-sonnet-4-6
 tools: [Read, Edit, Bash]

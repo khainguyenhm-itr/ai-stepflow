@@ -1,6 +1,6 @@
 <!-- ai-stepflow built-in -->
 ---
-name: sf-refactor
+name: aisf-refactor
 description: Restructure existing code to improve quality without changing behavior.
 ---
 
