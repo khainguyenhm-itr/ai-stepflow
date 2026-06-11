@@ -18,6 +18,8 @@ export class CockpitPanel {
   private _disposables: vscode.Disposable[] = [];
   private _isReady = false;
   private _messageQueue: HostMessage[] = [];
+  /** Fallback so a missed/late `ready` handshake never leaves the panel permanently blank. */
+  private _readyTimer?: ReturnType<typeof setTimeout>;
   /** Owns the interactive `claude` terminal for ad-hoc and non-headless step runs. */
   private readonly _terminals: TerminalManager;
   /** Owns the run state machine and every transition that drives a flow run. */
@@ -79,6 +81,10 @@ export class CockpitPanel {
     // Pre-fetch and queue initial data
     void this._sendAllData();
 
+    // The webview signals `ready` once mounted; until then messages are queued. If that
+    // handshake is missed (slow mount, timing), flush anyway so the panel never stays blank.
+    this._readyTimer = setTimeout(() => { if (!this._isReady) this._flushQueue(); }, 2500);
+
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
     this._panel.webview.onDidReceiveMessage(
@@ -100,15 +106,7 @@ export class CockpitPanel {
   private async _dispatch(message: WebviewMessage): Promise<void> {
     switch (message.type) {
       case 'ready':
-        this._isReady = true;
-        console.log('AI StepFlow: webview is ready, flushing message queue...');
-        while (this._messageQueue.length > 0) {
-          const msg = this._messageQueue.shift();
-          if (msg) {
-            console.log(`AI StepFlow: flushing queued message of type ${msg.type}`);
-            this._panel.webview.postMessage(msg);
-          }
-        }
+        this._flushQueue();
         await this._sendAllData();
         await this._runner.restore();
         return;
@@ -369,6 +367,7 @@ export class CockpitPanel {
 
   public dispose() {
     CockpitPanel.currentPanel = undefined;
+    if (this._readyTimer) { clearTimeout(this._readyTimer); this._readyTimer = undefined; }
     this._runner.dispose();
     this._terminals.dispose();
     this._panel.dispose();
@@ -399,9 +398,18 @@ export class CockpitPanel {
     return html;
   }
 
+  /** Mark the webview ready and drain everything queued before the handshake landed. */
+  private _flushQueue() {
+    if (this._readyTimer) { clearTimeout(this._readyTimer); this._readyTimer = undefined; }
+    this._isReady = true;
+    while (this._messageQueue.length > 0) {
+      const msg = this._messageQueue.shift();
+      if (msg) this._panel.webview.postMessage(msg);
+    }
+  }
+
   public postMessage(message: HostMessage) {
     if (!this._isReady) {
-      console.log(`AI StepFlow: webview not ready, queuing message of type ${message.type}`);
       this._messageQueue.push(message);
       return;
     }

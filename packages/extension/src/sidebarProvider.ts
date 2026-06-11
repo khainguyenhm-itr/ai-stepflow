@@ -14,6 +14,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
   /** Last MCP probe result, reused on cheap refreshes so we don't respawn the CLI. */
   private _cachedMcp: string[] = [];
+  /** Last plugin-list result, reused on cheap refreshes so we don't respawn the CLI. */
+  private _cachedPlugins: Awaited<ReturnType<typeof listPlugins>> = [];
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -96,15 +98,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     if (!this._view) return;
 
     try {
-      const [flows, agents, skills, runFiles, activeRun, globalInstalled, projectInstalled, plugins] = await Promise.all([
+      const [flows, agents, skills, runFiles, activeRun, globalInstalled, projectInstalled] = await Promise.all([
         this.configManager.loadFlows().catch(() => []),
         this.configManager.loadAgents().catch(() => []),
         this.configManager.loadSkills().catch(() => []),
         this.stateManager.listRunFiles().catch(() => []),
         this.stateManager.loadLatestRun().catch(() => undefined),
         this.configManager.isDefaultLibraryInstalled('global').catch(() => false),
-        this.configManager.isDefaultLibraryInstalled('project').catch(() => false),
-        listPlugins().catch(() => [])
+        this.configManager.isDefaultLibraryInstalled('project').catch(() => false)
       ]);
 
       const defaultsInstalled = globalInstalled || projectInstalled;
@@ -136,7 +137,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         defaultsInstalled,
         activeRun: active,
         mcp: this._cachedMcp,
-        plugins,
+        plugins: this._cachedPlugins,
         runFiles: runFiles.slice(0, 8).map(file => ({
           flowName: flowName(file.flowId),
           runId: file.runId,
@@ -148,11 +149,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       });
 
       if (probeMcp) {
+        // Both probes spawn the `claude` CLI (slow cold start), so keep them off the
+        // critical path: the dashboard paints immediately, then each result is pushed in.
         void listConnectedMcpServers(this.configManager.getProjectPath()).then(mcp => {
           this._cachedMcp = mcp;
           this._view?.webview.postMessage({ type: 'mcp', mcp });
         }).catch(err => {
           console.error('AI StepFlow: MCP probe failed', err);
+        });
+        void listPlugins().then(plugins => {
+          this._cachedPlugins = plugins;
+          this._view?.webview.postMessage({ type: 'plugins', plugins });
+        }).catch(err => {
+          console.error('AI StepFlow: plugin probe failed', err);
         });
       }
     } catch (e) {
@@ -380,21 +389,31 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           '<div class="row">' +
           '<span class="dot" style="background:' + (p.enabled ? 'var(--vscode-charts-green)' : 'var(--vscode-charts-red, #f14c4c)') + '"></span>' +
           '<span class="label" title="' + esc(p.version) + '">' + esc(p.name.split('@')[0]) + '</span>' +
-          '<button class="del" style="opacity: .8" title="' + (p.enabled ? 'Disable' : 'Enable') + '" onclick="vscode.postMessage({ type: \'togglePlugin\', pluginName: \'' + esc(p.name) + '\', enable: ' + !p.enabled + ' })">' +
+          '<button class="del" style="opacity: .8" title="' + (p.enabled ? 'Disable' : 'Enable') + '" data-toggle="' + esc(p.name) + '" data-enable="' + !p.enabled + '">' +
           (p.enabled ? 'OFF' : 'ON') + '</button></div>'
         ).join('') + '</div>';
+        el.querySelectorAll('button[data-toggle]').forEach(btn => {
+          btn.onclick = () => vscode.postMessage({
+            type: 'togglePlugin',
+            pluginName: btn.getAttribute('data-toggle'),
+            enable: btn.getAttribute('data-enable') === 'true'
+          });
+        });
       } else {
         const installedNames = new Set(list.map(p => p.name.split('@')[0].toLowerCase()));
         const available = KNOWN_MARKETPLACE.filter(name => !installedNames.has(name.toLowerCase()));
-        
+
         if (!available.length) { el.innerHTML = '<span class="empty">All known plugins installed</span>'; return; }
         el.innerHTML = '<div class="list">' + available.map(name =>
           '<div class="row">' +
           '<span class="dot" style="background:var(--vscode-descriptionForeground); opacity:.3"></span>' +
           '<span class="label">' + esc(name) + '</span>' +
-          '<button class="del" style="opacity: .8" title="Install" onclick="vscode.postMessage({ type: \'installPlugin\', pluginName: \'' + esc(name) + '\' })">' +
+          '<button class="del" style="opacity: .8" title="Install" data-install="' + esc(name) + '">' +
           'INSTALL</button></div>'
         ).join('') + '</div>';
+        el.querySelectorAll('button[data-install]').forEach(btn => {
+          btn.onclick = () => vscode.postMessage({ type: 'installPlugin', pluginName: btn.getAttribute('data-install') });
+        });
       }
     }
 
@@ -427,6 +446,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         renderFiles(m.runFiles, m.totalRunFiles);
       } else if (m.type === 'mcp') {
         renderMcp(m.mcp);
+      } else if (m.type === 'plugins') {
+        renderPlugins(m.plugins);
       }
     });
   </script>
