@@ -158,6 +158,11 @@ export const useAppLogic = () => {
       case 'mcpServers':
         setConnectedMcpServers(message.connectedMcpServers || []);
         break;
+      case 'navigateToTab':
+        if (message.tab === 'flows' || message.tab === 'agents' || message.tab === 'skills') {
+          setActiveTab(message.tab);
+        }
+        break;
       case 'restoreRun':
         setActiveFlow(message.flow);
         setRunState(message.runState);

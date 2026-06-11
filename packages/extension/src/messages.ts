@@ -42,7 +42,8 @@ export type HostMessage =
   | { type: 'runStateChanged'; runState: FlowRunState; historyEvent?: HistoryEvent }
   | { type: 'fileImported'; kind: 'agent'; item: { name: string; description: string; model: string; tools: string; systemPrompt: string } }
   | { type: 'fileImported'; kind: 'skill'; item: { name: string; description: string; instructions: string } }
-  | { type: 'draftGenerated'; kind: 'agent' | 'skill'; content?: string; error?: string };
+  | { type: 'draftGenerated'; kind: 'agent' | 'skill'; content?: string; error?: string }
+  | { type: 'navigateToTab'; tab: 'flows' | 'agents' | 'skills' };
 
 /** Every message the webview is allowed to send to the extension host. */
 export type WebviewMessage =

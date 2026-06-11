@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as crypto from 'node:crypto';
 import { ConfigManager } from './configManager.js';
 import { StateManager } from './stateManager.js';
-import { listMcpServers, addRemoteMcpServer, reconnectRemoteMcpServer } from './mcp.js';
+import { listMcpServers, reconnectRemoteMcpServer } from './mcp.js';
 import type { McpServer } from './mcp.js';
 import { listPluginCatalog, togglePlugin, installPlugin, updatePlugin, uninstallPlugin, pluginDetails } from './plugins.js';
 import type { PluginInfo, AvailablePlugin } from './plugins.js';
@@ -30,17 +30,21 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   public resolveWebviewView(view: vscode.WebviewView): void {
     try {
       this._view = view;
-      view.webview.options = { 
-        enableScripts: true, 
-        localResourceRoots: [this.extensionUri] 
+      view.webview.options = {
+        enableScripts: true,
+        localResourceRoots: [this.extensionUri]
       };
       view.webview.html = this._getHtml(view.webview);
 
-      view.webview.onDidReceiveMessage(async (message: { type?: string; path?: string; url?: string; pluginId?: string; pluginName?: string; enable?: boolean; mcpName?: string; mcpUrl?: string; mcpTarget?: string }) => {
+      view.webview.onDidReceiveMessage(async (message: { type?: string; path?: string; url?: string; pluginId?: string; pluginName?: string; enable?: boolean; mcpName?: string; mcpTarget?: string; tab?: string }) => {
         try {
           switch (message?.type) {
             case 'openOverview':
-              await vscode.commands.executeCommand('ai-stepflow.openOverview');
+              if (message.tab) {
+                await vscode.commands.executeCommand('ai-stepflow.openTab', message.tab);
+              } else {
+                await vscode.commands.executeCommand('ai-stepflow.openOverview');
+              }
               return;
             case 'refresh':
               await this.refresh(true);
@@ -84,11 +88,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             case 'uninstallPlugin':
               if (message.pluginId) await this._runPluginTask(message.pluginId, message.pluginName, 'uninstall');
               return;
-            case 'addMcp':
-              if (message.mcpName && message.mcpUrl) await this._addMcp(message.mcpName, message.mcpUrl);
-              return;
             case 'reconnectMcp':
               if (message.mcpName && message.mcpTarget) await this._reconnectMcp(message.mcpName, message.mcpTarget);
+              return;
+            case 'mcpDetails':
+              if (message.mcpName) await this._showMcpDetails(message.mcpName);
               return;
             case 'astScan':
               await vscode.commands.executeCommand('ai-stepflow.astGraph.rescan');
@@ -246,21 +250,21 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     await vscode.window.showTextDocument(doc, { preview: true });
   }
 
-  /** Add a curated remote MCP server (user scope) with progress, then re-probe. */
-  private async _addMcp(name: string, url: string): Promise<void> {
-    await vscode.window.withProgress({
-      location: vscode.ProgressLocation.Notification,
-      title: `Adding MCP server '${name}'…`,
-      cancellable: false
-    }, async () => {
-      const res = await addRemoteMcpServer({ name, url, scope: 'user', cwd: this.configManager.getProjectPath() });
-      if (res.ok) {
-        vscode.window.showInformationMessage(`AI StepFlow: MCP server '${name}' added. Authenticate it on first use if prompted.`);
-      } else {
-        vscode.window.showErrorMessage(`AI StepFlow: failed to add MCP server. ${res.error}`);
-      }
-      await this.refresh(true);
-    });
+  private async _showMcpDetails(name: string): Promise<void> {
+    const server = this._cachedMcp.find(s => s.name === name);
+    if (!server) {
+      vscode.window.showWarningMessage(`AI StepFlow: MCP server '${name}' is no longer in the current list.`);
+      return;
+    }
+    const content = [
+      `Name: ${server.name}`,
+      `Status: ${server.status}`,
+      `Target: ${server.target || '(not reported)'}`,
+      '',
+      'Source: claude mcp list'
+    ].join('\n');
+    const doc = await vscode.workspace.openTextDocument({ language: 'plaintext', content });
+    await vscode.window.showTextDocument(doc, { preview: true });
   }
 
   /** Retry a failed remote MCP server from the sidebar using its current target. */
@@ -314,457 +318,497 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     :root {
-      --radius: 8px;
-      --radius-sm: 6px;
-      --hair-color: var(--vscode-panel-border, rgba(127,127,127,.22));
-      --hair: 1px solid var(--hair-color);
-      --surface: color-mix(in srgb, var(--vscode-sideBar-background, #252526) 92%, var(--vscode-foreground, #fff) 8%);
-      --surface-strong: color-mix(in srgb, var(--vscode-sideBar-background, #252526) 84%, var(--vscode-foreground, #fff) 16%);
-      --accent-soft: color-mix(in srgb, var(--vscode-button-background, #0e639c) 24%, transparent);
-      --muted: var(--vscode-descriptionForeground, rgba(204,204,204,.66));
+      --r: 3px;
+      --r-sm: 2px;
+      --border: var(--vscode-panel-border, #3c3c3c);
+      --panel: var(--vscode-sideBar-background, #252526);
+      --panel-2: var(--vscode-editorWidget-background, #2d2d2d);
+      --hover: var(--vscode-list-hoverBackground, #2a2d2e);
+      --focus: var(--vscode-focusBorder, #007fd4);
+      --btn: var(--vscode-button-background, #0e639c);
+      --btn-fg: var(--vscode-button-foreground, #fff);
+      --btn-h: var(--vscode-button-hoverBackground, #1177bb);
+      --error: var(--vscode-errorForeground, #f48771);
+      --badge: var(--vscode-badge-background, #4d4d4d);
+      --badge-fg: var(--vscode-badge-foreground, #fff);
+      --muted: var(--vscode-descriptionForeground, #9d9d9d);
+      --success: var(--vscode-charts-green, #73c991);
     }
-    * { box-sizing: border-box; }
-    body { padding: 0; margin: 0; color: var(--vscode-foreground); background: var(--vscode-sideBar-background); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); line-height: 1.4; }
-    .wrap { padding: 12px 10px 18px; }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { height: 100%; overflow: hidden; }
+    body { margin: 0; color: var(--vscode-foreground); background: var(--panel); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); line-height: 1.4; }
+    button { font-family: inherit; cursor: pointer; }
 
-    button { font-family: inherit; }
-    button.action { width: 100%; cursor: pointer; border: 1px solid transparent; border-radius: var(--radius-sm); padding: 8px 10px; font-size: 12px; font-weight: 700; color: var(--vscode-button-foreground); background: var(--vscode-button-background); transition: background .1s ease, border-color .1s ease; }
-    button.action:hover { background: var(--vscode-button-hoverBackground); }
-    button.action.secondary { color: var(--vscode-foreground); background: transparent; border: var(--hair); font-weight: 600; }
-    button.action.secondary:hover { background: var(--vscode-list-hoverBackground); }
-    .icon-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 0; height: 30px; cursor: pointer; border: var(--hair); border-radius: var(--radius-sm); color: var(--vscode-foreground); background: transparent; font-size: 13px; line-height: 1; }
-    .icon-btn:hover { background: var(--vscode-list-hoverBackground); }
+    /* ── shell layout ── */
+    .shell { display: flex; flex-direction: column; height: 100vh; }
 
-    .topbar { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; }
-    .mark { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 7px; color: var(--vscode-button-foreground); background: var(--vscode-button-background); font-size: 10px; font-weight: 800; letter-spacing: .02em; box-shadow: inset 0 0 0 1px rgba(255,255,255,.14); }
-    .brand { flex: 1; min-width: 0; }
-    .brand-name { display: block; overflow: hidden; font-size: 13px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
-    .brand-sub { display: block; color: var(--muted); font-size: 10.5px; font-weight: 500; }
-    .ver { color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+    /* header row */
+    .hdr { display: flex; align-items: center; gap: 7px; padding: 10px 10px 0; flex: 0 0 auto; }
+    .mark { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: var(--r); background: var(--btn); color: var(--btn-fg); font-size: 9px; font-weight: 700; flex: 0 0 auto; letter-spacing: .02em; }
+    .brand-name { flex: 1; font-size: 12.5px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ver { color: var(--muted); font-size: 10px; flex: 0 0 auto; }
+    .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 13px; line-height: 1; }
+    .icon-btn:hover { color: var(--vscode-foreground); background: var(--hover); }
 
-    .command-bar { display: grid; grid-template-columns: minmax(0, 1fr) 30px; gap: 7px; margin-bottom: 10px; }
-    .command-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-bottom: 12px; }
-    .command-grid .pill { display: inline-flex; justify-content: center; width: 100%; padding: 6px 6px; }
+    /* scrollable content area */
+    .body { flex: 1 1 0; overflow-y: auto; overflow-x: hidden; padding: 0 10px 16px; overscroll-behavior: contain; }
+    .body::-webkit-scrollbar { width: 5px; }
+    .body::-webkit-scrollbar-thumb { background: var(--vscode-scrollbarSlider-background, rgba(121,121,121,.4)); border-radius: 999px; }
 
-    .active { margin: 0 0 12px; padding: 10px 11px; border: var(--hair); border-left: 3px solid var(--vscode-button-background); border-radius: var(--radius); background: var(--surface); }
-    .active[hidden] { display: none; }
+    /* ── active run card ── */
+    .run-card { margin-top: 10px; padding: 9px 10px; border: 1px solid var(--border); border-left: 3px solid var(--btn); border-radius: var(--r); background: var(--panel-2); }
+    .run-card[hidden] { display: none; }
     .run-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-    .run-flow { font-weight: 600; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .run-sub { font-size: 11px; opacity: .7; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
-    .bar { height: 5px; border-radius: 3px; background: rgba(127,127,127,.22); overflow: hidden; margin: 9px 0 0; }
-    .bar > span { display: block; height: 100%; background: var(--vscode-charts-blue, var(--vscode-focusBorder)); transition: width .25s ease; }
-    .step-line { display: flex; align-items: center; gap: 6px; font-size: 11.5px; margin-top: 9px; opacity: .9; }
-    .badge { font-size: 9px; padding: 1px 6px; border-radius: 8px; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; background: rgba(127,127,127,.2); }
-    .badge.running { background: var(--vscode-charts-blue, #3794ff); color: #fff; }
-    .badge.completed { background: var(--vscode-charts-green, #2ea043); color: #fff; }
+    .run-name { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .run-pct { font-size: 10.5px; color: var(--muted); flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+    .progress { height: 3px; border-radius: 2px; background: var(--border); overflow: hidden; margin-top: 8px; }
+    .progress-fill { height: 100%; background: var(--vscode-progressBar-background, #0e70c0); transition: width .25s ease; }
+    .run-step { display: flex; align-items: center; gap: 5px; margin-top: 6px; font-size: 11px; color: var(--muted); overflow: hidden; }
+    .run-step > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-    .section { margin-top: 13px; }
-    .section-head { display: flex; align-items: center; gap: 8px; min-height: 24px; margin-bottom: 7px; }
-    .section-title { flex: 1; min-width: 0; overflow: hidden; color: var(--muted); font-size: 10.5px; font-weight: 800; letter-spacing: .055em; text-transform: uppercase; text-overflow: ellipsis; white-space: nowrap; }
-    .count { min-width: 18px; text-align: center; font-size: 10px; font-weight: 700; letter-spacing: 0; text-transform: none; background: rgba(127,127,127,.18); border-radius: 9px; padding: 1px 6px; }
-    .count:empty { display: none; }
-    .panel { border: var(--hair); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
-    .panel-pad { padding: 9px; }
+    /* badge */
+    .badge { display: inline-flex; align-items: center; height: 16px; padding: 0 6px; border-radius: 9px; font-size: 9px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--badge-fg); background: var(--badge); white-space: nowrap; flex: 0 0 auto; }
+    .badge.running { background: var(--vscode-charts-blue, var(--focus)); }
+    .badge.completed { background: var(--success); }
 
-    .stats { display: flex; gap: 7px; }
-    .stat { flex: 1; min-width: 0; text-align: left; border: var(--hair); border-radius: var(--radius); padding: 8px 7px; cursor: pointer; background: var(--surface); transition: border-color .1s ease, background .1s ease; }
-    .stat:hover { border-color: var(--vscode-focusBorder); background: var(--surface-strong); }
-    .stat .num { font-size: 18px; font-weight: 700; line-height: 1.1; }
-    .stat .lbl { color: var(--muted); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin-top: 2px; }
-    .lib-status { display: flex; align-items: center; gap: 9px; margin-top: 9px; padding: 8px 9px; border: var(--hair); border-radius: var(--radius); background: var(--surface); }
-    .lib-status-copy { min-width: 0; }
-    .lib-status-title { font-size: 12px; font-weight: 600; }
-    .lib-status-sub { color: var(--muted); font-size: 10.5px; margin-top: 1px; }
-    .help { color: var(--muted); font-size: 10.5px; margin-top: 8px; line-height: 1.45; }
-    .tool-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 9px; }
-    .tool-row + .tool-row { border-top: 1px solid rgba(127,127,127,.08); }
-    .tool-main { flex: 1; min-width: 0; }
-    .tool-name { display: block; overflow: hidden; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-    .tool-sub { display: block; overflow: hidden; color: var(--muted); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
+    /* ── section ── */
+    .sec { margin-top: 14px; }
+    .sec-hdr { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+    .sec-label { flex: 1; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+    .sec-count { display: inline-flex; align-items: center; height: 15px; padding: 0 5px; border-radius: 9px; font-size: 9px; font-weight: 700; color: var(--badge-fg); background: var(--badge); }
+    .sec-count:empty { display: none; }
 
-    .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: 0 0 auto; background: var(--vscode-charts-green, #2ea043); }
-    .list { display: flex; flex-direction: column; }
-    .row { display: flex; align-items: center; gap: 8px; font-size: 12px; min-height: 30px; padding: 7px 9px; }
-    .row + .row { border-top: 1px solid rgba(127,127,127,.08); }
-    .row .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .row .sub { font-size: 10px; opacity: .5; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
-    .row.click { cursor: pointer; }
-    .row.click:hover .label { text-decoration: underline; }
-    .row .acts { display: flex; justify-content: flex-end; gap: 4px; flex: 0 0 auto; }
-    .del { flex: 0 0 auto; cursor: pointer; border: none; background: transparent; color: var(--vscode-foreground); opacity: 0; padding: 0 3px; font-size: 11px; line-height: 1; }
-    .row:hover .del { opacity: .6; }
-    .del:hover { opacity: 1; color: var(--vscode-errorForeground, #f14c4c); }
-    .pill { flex: 0 0 auto; cursor: pointer; border: var(--hair); background: transparent; color: var(--vscode-foreground); border-radius: var(--radius-sm); font-size: 9.5px; font-weight: 700; letter-spacing: .01em; padding: 3px 7px; white-space: nowrap; transition: background .1s ease, opacity .1s ease, border-color .1s ease; }
-    .pill:hover { opacity: 1; background: var(--vscode-list-hoverBackground); }
+    /* ── library stats ── */
+    .stats { display: flex; gap: 5px; }
+    .stat { flex: 1; min-width: 0; padding: 7px 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); cursor: pointer; text-align: center; transition: border-color .1s, background .1s; }
+    .stat:hover { border-color: var(--focus); }
+    .stat-num { font-size: 18px; font-weight: 700; line-height: 1.1; }
+    .stat-lbl { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-top: 2px; }
+
+    /* library status row */
+    .lib-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); }
+    .lib-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); flex: 0 0 auto; }
+    .lib-info { flex: 1; min-width: 0; }
+    .lib-title { font-size: 11.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lib-sub { font-size: 10px; color: var(--muted); margin-top: 1px; }
+    .lib-hint { color: var(--muted); font-size: 10px; line-height: 1.4; margin-top: 5px; }
+    .btn-secondary { display: flex; align-items: center; justify-content: center; width: 100%; margin-top: 6px; padding: 4px 10px; border: 1px solid var(--border); border-radius: var(--r-sm); background: transparent; color: var(--vscode-foreground); font-size: 12px; font-weight: 600; }
+    .btn-secondary:hover { background: var(--hover); }
+
+    /* ── box (bordered list container) ── */
+    .box { border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
+
+    /* tabs inside box */
+    .box-tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 8px; background: var(--panel); }
+    .tab { padding: 6px 8px 5px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 11.5px; font-weight: 600; cursor: pointer; line-height: 1.4; }
+    .tab:hover { color: var(--vscode-foreground); }
+    .tab.active { color: var(--vscode-foreground); border-bottom-color: var(--focus); }
+
+    /* search row inside box */
+    .box-search { padding: 5px 7px; border-bottom: 1px solid var(--border); background: var(--panel); }
+    .search { width: 100%; padding: 3px 7px; border: 1px solid var(--vscode-input-border, var(--border)); border-radius: var(--r-sm); background: var(--vscode-input-background); color: var(--vscode-input-foreground); font-size: 11.5px; font-family: inherit; outline: none; }
+    .search:focus { border-color: var(--focus); }
+    .search::placeholder { color: var(--vscode-input-placeholderForeground, #818181); }
+
+    /* ── list items ── */
+    .item { position: relative; display: grid; grid-template-columns: 8px minmax(0,1fr) auto; align-items: center; gap: 8px; min-height: 36px; padding: 6px 8px 6px 10px; transition: background .1s; }
+    .item + .item { border-top: 1px solid rgba(127,127,127,.07); }
+    .item:hover { background: var(--hover); }
+    .item-dot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
+    .item-body { min-width: 0; }
+    .item-name { display: block; font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
+    .item-sub { display: block; font-size: 10.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; margin-top: 1px; }
+    .item-acts { display: flex; align-items: center; gap: 4px; }
+
+    /* ── pill action buttons ── */
+    .pill { display: inline-flex; align-items: center; justify-content: center; height: 22px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--r-sm); background: transparent; color: var(--vscode-foreground); font-size: 10.5px; font-weight: 600; cursor: pointer; white-space: nowrap; font-family: inherit; transition: background .1s, border-color .1s; }
+    .pill:hover { background: var(--hover); }
     .pill[disabled] { opacity: .4; cursor: default; }
-    .pill.primary { border-color: color-mix(in srgb, var(--vscode-button-background, #0e639c) 52%, var(--hair-color)); background: var(--accent-soft); }
-    .pill.primary:hover { background: var(--vscode-button-secondaryHoverBackground, rgba(127,127,127,.28)); }
-    .pill.danger:hover { color: var(--vscode-errorForeground, #f14c4c); border-color: var(--vscode-errorForeground, #f14c4c); background: transparent; }
+    .pill.accent { border-color: var(--btn); background: var(--btn); color: var(--btn-fg); }
+    .pill.accent:hover { background: var(--btn-h); border-color: var(--btn-h); }
+    .pill.danger:hover { color: var(--error); border-color: var(--error); background: transparent; }
 
-    .seg { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; width: 100%; min-height: 30px; padding: 2px; border: var(--hair); border-radius: 7px; background: rgba(127,127,127,.10); }
-    .seg-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 0; width: 100%; border: 0; color: var(--muted); background: transparent; text-align: center; font-size: 11px; font-weight: 600; cursor: pointer; padding: 5px 4px; border-radius: 5px; user-select: none; line-height: 1.2; }
-    .seg-btn:hover { color: var(--vscode-foreground); background: rgba(127,127,127,.08); }
-    .seg-btn.active { color: var(--vscode-foreground); background: var(--surface-strong); box-shadow: 0 1px 2px rgba(0,0,0,.18); }
-    .section-tools { display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; margin-bottom: 8px; }
-    .search { width: 100%; padding: 6px 8px; font-size: 11.5px; border-radius: 6px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, transparent)); outline: none; }
-    .search:focus { border-color: var(--vscode-focusBorder); }
-    .desc { color: var(--muted); font-size: 10px; line-height: 1.4; margin: 0 9px 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-    .plugin-row { flex-direction: column; align-items: stretch; gap: 5px; padding: 8px 0; }
-    .plugin-top { display: flex; align-items: center; gap: 8px; }
-    .plugin-actions { display: flex; justify-content: flex-start; flex-wrap: wrap; gap: 4px; min-width: 0; padding: 0 9px; }
+    /* ── context menu (details dropdown) ── */
+    .menu { position: relative; }
+    .menu > summary { list-style: none; }
+    .menu > summary::-webkit-details-marker { display: none; }
+    .menu-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1px solid transparent; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 14px; font-weight: 700; cursor: pointer; line-height: 1; font-family: inherit; }
+    .menu-btn:hover, .menu[open] .menu-btn { color: var(--vscode-foreground); background: var(--hover); border-color: var(--border); }
+    .menu-pop { position: absolute; top: 26px; right: 0; z-index: 20; min-width: 130px; padding: 3px; border: 1px solid var(--border); border-radius: var(--r); background: var(--vscode-dropdown-background, var(--panel-2)); box-shadow: 0 6px 20px rgba(0,0,0,.36); }
+    .menu-item { display: flex; align-items: center; width: 100%; min-height: 26px; border: 0; border-radius: var(--r-sm); padding: 4px 8px; background: transparent; color: var(--vscode-foreground); font-size: 11.5px; font-family: inherit; text-align: left; cursor: pointer; }
+    .menu-item:hover { background: var(--hover); }
+    .menu-item.danger { color: var(--error); }
 
-    .skel { display: flex; flex-direction: column; gap: 8px; padding: 4px 0; }
-    .skel-row { height: 12px; border-radius: 4px; background: linear-gradient(90deg, rgba(127,127,127,.10) 25%, rgba(127,127,127,.20) 37%, rgba(127,127,127,.10) 63%); background-size: 400% 100%; animation: shimmer 1.3s ease infinite; }
-    .skel-row:nth-child(2) { width: 70%; }
-    .skel-row:nth-child(3) { width: 85%; }
+    /* list footer */
+    .list-more { font-size: 10.5px; color: var(--muted); padding: 5px 10px 6px; border-top: 1px solid rgba(127,127,127,.08); }
+
+    /* ── states ── */
+    .empty { display: block; color: var(--muted); font-size: 11.5px; padding: 10px; font-style: italic; }
+    .skel { display: flex; flex-direction: column; gap: 7px; padding: 12px 10px; }
+    .skel-line { height: 11px; border-radius: 2px; background: linear-gradient(90deg, rgba(127,127,127,.10) 25%, rgba(127,127,127,.18) 37%, rgba(127,127,127,.10) 63%); background-size: 400% 100%; animation: shimmer 1.4s ease infinite; }
+    .skel-line:nth-child(2) { width: 68%; }
+    .skel-line:nth-child(3) { width: 80%; }
     @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
 
-    .muted { opacity: .6; font-size: 11px; }
-    .empty { display: block; color: var(--muted); font-size: 11.5px; font-style: italic; padding: 9px; }
-    footer { margin-top: 18px; font-size: 10px; opacity: .4; text-align: center; letter-spacing: .04em; }
+    footer { display: none; }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="topbar">
-      <span class="mark">AI</span>
-      <span class="brand">
-        <span class="brand-name">AI StepFlow</span>
-        <span class="brand-sub">Agent workflow cockpit</span>
-      </span>
-      ${this.version ? `<span class="ver">v${this.version}</span>` : ''}
-    </div>
+<div class="shell">
 
-    <div class="command-bar">
-      <button class="action" id="open">Open Overview</button>
-      <button class="icon-btn" id="refresh" title="Refresh sidebar" aria-label="Refresh sidebar">↻</button>
-    </div>
+  <!-- header: brand + version + refresh -->
+  <div class="hdr">
+    <span class="mark">AI</span>
+    <span class="brand-name">AI StepFlow</span>
+    ${this.version ? `<span class="ver">v${this.version}</span>` : ''}
+    <button class="icon-btn" id="refresh" title="Refresh" aria-label="Refresh">↻</button>
+  </div>
 
-    <div class="active" id="active-wrap" hidden><div id="active"></div></div>
+  <!-- scrollable content -->
+  <div class="body">
 
-    <div class="command-grid">
-      <button class="pill primary" id="ast-scan" type="button">Scan AST</button>
-      <button class="pill" id="ast-register" type="button">Register MCP</button>
-      <button class="pill" id="ast-settings" type="button">AST Settings</button>
-      <button class="pill" id="ast-refresh" type="button">Refresh Data</button>
-    </div>
+    <!-- active run (hidden when idle) -->
+    <div class="run-card" id="active-wrap" hidden><div id="active"></div></div>
 
-    <section class="section" id="g-library">
-      <div class="section-head">
-        <span class="section-title">Workspace Library</span>
-        <span class="count" id="lib-count"></span>
+    <!-- library stats -->
+    <section class="sec">
+      <div class="sec-hdr">
+        <span class="sec-label">Library</span>
+        <span class="sec-count" id="lib-count"></span>
       </div>
-      <div id="stats" class="stats"></div>
+      <div class="stats" id="stats"></div>
       <div id="defaults"></div>
     </section>
 
-    <section class="section">
-      <div class="section-head">
-        <span class="section-title">Connections</span>
-        <span class="count" id="conn-count"></span>
+    <!-- MCP connections -->
+    <section class="sec">
+      <div class="sec-hdr">
+        <span class="sec-label">MCP Connections</span>
+        <span class="sec-count" id="conn-count"></span>
       </div>
-      <div class="section-tools">
-        <div class="seg" id="mcp-tabs">
-          <button class="seg-btn active" type="button" data-tab="installed">Installed</button>
-          <button class="seg-btn" type="button" data-tab="available">Available</button>
+      <div class="box">
+        <div class="box-search">
+          <input class="search" id="mcp-search" type="text" placeholder="Filter servers…" autocomplete="off" spellcheck="false">
         </div>
-        <input class="search" id="mcp-search" type="text" placeholder="Search MCP servers…" autocomplete="off" spellcheck="false">
+        <div id="mcp"><div class="skel"><div class="skel-line"></div><div class="skel-line"></div></div></div>
       </div>
-      <div id="mcp" class="panel"><div class="skel"><div class="skel-row"></div><div class="skel-row"></div></div></div>
     </section>
 
-    <section class="section">
-      <div class="section-head">
-        <span class="section-title">Plugins</span>
-        <span class="count" id="plug-count"></span>
+    <!-- plugins -->
+    <section class="sec">
+      <div class="sec-hdr">
+        <span class="sec-label">Plugins</span>
+        <span class="sec-count" id="plug-count"></span>
       </div>
-      <div class="section-tools">
-        <div class="seg" id="plugin-tabs">
-          <button class="seg-btn active" type="button" data-tab="installed">Installed</button>
-          <button class="seg-btn" type="button" data-tab="marketplace">Available</button>
+      <div class="box">
+        <div class="box-tabs" id="plugin-tabs">
+          <button class="tab active" type="button" data-tab="installed">Installed</button>
+          <button class="tab" type="button" data-tab="marketplace">Available</button>
         </div>
-        <input class="search" id="plugin-search" type="text" placeholder="Search plugins by name…" autocomplete="off" spellcheck="false">
+        <div class="box-search">
+          <input class="search" id="plugin-search" type="text" placeholder="Filter plugins…" autocomplete="off" spellcheck="false">
+        </div>
+        <div id="plugins"><div class="skel"><div class="skel-line"></div><div class="skel-line"></div><div class="skel-line"></div></div></div>
       </div>
-      <div id="plugins" class="panel"><div class="skel"><div class="skel-row"></div><div class="skel-row"></div><div class="skel-row"></div></div></div>
     </section>
 
-    <section class="section">
-      <div class="section-head">
-        <span class="section-title">Generated Files</span>
-        <span class="count" id="files-count"></span>
+    <!-- recent runs -->
+    <section class="sec">
+      <div class="sec-hdr">
+        <span class="sec-label">Recent Runs</span>
+        <span class="sec-count" id="files-count"></span>
       </div>
-      <div id="files" class="panel"><span class="empty">No runs yet</span></div>
+      <div class="box" id="files"><span class="empty">No runs yet</span></div>
     </section>
 
-    <footer>AI StepFlow</footer>
-  </div>
+  </div><!-- /.body -->
+</div><!-- /.shell -->
+<footer>AI StepFlow</footer>
 
-  <script nonce="${nonce}">
-    const vscode = acquireVsCodeApi();
-    document.getElementById('open').onclick = () => vscode.postMessage({ type: 'openOverview' });
-    document.getElementById('refresh').onclick = () => vscode.postMessage({ type: 'refresh' });
-    document.getElementById('ast-scan').onclick = () => vscode.postMessage({ type: 'astScan' });
-    document.getElementById('ast-register').onclick = () => vscode.postMessage({ type: 'astRegister' });
-    document.getElementById('ast-settings').onclick = () => vscode.postMessage({ type: 'openAstSettings' });
-    document.getElementById('ast-refresh').onclick = () => vscode.postMessage({ type: 'refresh' });
+<script nonce="${nonce}">
+  const vscode = acquireVsCodeApi();
+  document.getElementById('refresh').onclick = () => vscode.postMessage({ type: 'refresh' });
 
-    const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-    const fmtTime = iso => { const d = new Date(iso); return !isNaN(d.getTime()) ? d.toLocaleString() : esc(iso); };
-    const statusText = s => s === 'connected' ? 'Connected' : s === 'needs-auth' ? 'Auth' : s === 'failed' ? 'Failed' : s ? s : 'Not added';
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const fmtTime = iso => { const d = new Date(iso); return !isNaN(d.getTime()) ? d.toLocaleString() : esc(iso); };
+  const statusText = s => s === 'connected' ? 'Connected' : s === 'needs-auth' ? 'Needs auth' : s === 'failed' ? 'Failed' : s || 'Not added';
+  const actionMenu = items => items && items.length
+    ? '<details class="menu"><summary class="menu-btn" title="More actions" aria-label="More">···</summary><div class="menu-pop">' + items.join('') + '</div></details>'
+    : '';
+  const menuItem = (label, attrs, danger) =>
+    '<button class="menu-item' + (danger ? ' danger' : '') + '" type="button" ' + attrs + '>' + esc(label) + '</button>';
 
-    let activePluginTab = 'installed';
-    let pluginQuery = '';
-    let installedPlugins = [];
-    let availablePlugins = [];
+  // Close any open menu when clicking outside it.
+  document.addEventListener('click', e => {
+    const menu = e.target instanceof Element ? e.target.closest('.menu') : null;
+    document.querySelectorAll('.menu[open]').forEach(n => { if (n !== menu) n.open = false; });
+  });
 
-    document.querySelectorAll('#plugin-tabs .seg-btn').forEach(n => {
-      n.onclick = () => {
-        document.querySelectorAll('#plugin-tabs .seg-btn').forEach(t => t.classList.remove('active'));
-        n.classList.add('active');
-        activePluginTab = n.getAttribute('data-tab');
-        renderPlugins();
-      };
-    });
-    document.getElementById('plugin-search').addEventListener('input', e => {
-      pluginQuery = e.target.value.trim().toLowerCase();
+  let activePluginTab = 'installed';
+  let pluginQuery = '';
+  let installedPlugins = [];
+  let availablePlugins = [];
+  const LIMITS = { mcp: 6, pluginsInstalled: 5, pluginsAvailable: 6, files: 5 };
+
+  // Plugin tab switcher
+  document.querySelectorAll('#plugin-tabs .tab').forEach(n => {
+    n.onclick = () => {
+      document.querySelectorAll('#plugin-tabs .tab').forEach(t => t.classList.remove('active'));
+      n.classList.add('active');
+      activePluginTab = n.getAttribute('data-tab');
       renderPlugins();
-    });
-
-    // Curated catalog of popular remote (HTTP) MCP servers offered under the "Available" tab.
-    // All add cleanly with one CLI call; auth (where needed) happens on first use.
-    const MCP_CATALOG = [
-      { name: 'github', url: 'https://api.githubcopilot.com/mcp/', desc: 'GitHub repos, issues, pull requests, and code search.' },
-      { name: 'sentry', url: 'https://mcp.sentry.dev/mcp', desc: 'Error tracking and performance monitoring.' },
-      { name: 'deepwiki', url: 'https://mcp.deepwiki.com/mcp', desc: 'Ask questions about any public GitHub repo (no auth).' },
-      { name: 'context7', url: 'https://mcp.context7.com/mcp', desc: 'Up-to-date documentation for libraries and frameworks.' },
-      { name: 'huggingface', url: 'https://huggingface.co/mcp', desc: 'Search models, datasets, and Spaces on Hugging Face.' },
-      { name: 'cloudflare-docs', url: 'https://docs.mcp.cloudflare.com/mcp', desc: 'Cloudflare product documentation (no auth).' },
-      { name: 'stripe', url: 'https://mcp.stripe.com', desc: 'Stripe payments, billing, and customer data.' }
-    ];
-
-    let activeMcpTab = 'installed';
-    let mcpQuery = '';
-    let mcpServers = [];
-
-    document.querySelectorAll('#mcp-tabs .seg-btn').forEach(n => {
-      n.onclick = () => {
-        document.querySelectorAll('#mcp-tabs .seg-btn').forEach(t => t.classList.remove('active'));
-        n.classList.add('active');
-        activeMcpTab = n.getAttribute('data-tab');
-        renderMcp();
-      };
-    });
-    document.getElementById('mcp-search').addEventListener('input', e => {
-      mcpQuery = e.target.value.trim().toLowerCase();
-      renderMcp();
-    });
-
-    function renderActive(run) {
-      const wrap = document.getElementById('active-wrap');
-      const el = document.getElementById('active');
-      if (!run) { wrap.hidden = true; el.innerHTML = ''; return; }
-      wrap.hidden = false;
-      const step = run.currentStep
-        ? '<div class="step-line"><span class="badge ' + esc(run.currentStep.status) + '">' + esc(run.currentStep.status) + '</span><span>' + esc(run.currentStep.title) + '</span></div>'
-        : '';
-      el.innerHTML =
-        '<div class="run-head"><span class="run-flow">' + esc(run.flowName) + '</span>' +
-        '<span class="run-sub">' + run.completed + '/' + run.total + ' · ' + run.percent + '%</span></div>' +
-        '<div class="bar"><span style="width:' + run.percent + '%"></span></div>' + step;
-    }
-
-    function renderStats(s) {
-      const items = [['flows', s.flows, 'Workflows'], ['agents', s.agents, 'Agents'], ['skills', s.skills, 'Skills']];
-      document.getElementById('stats').innerHTML = items.map(i =>
-        '<div class="stat" data-tab="' + i[0] + '"><div class="num">' + i[1] + '</div><div class="lbl">' + i[2] + '</div></div>'
-      ).join('');
-      document.querySelectorAll('.stat').forEach(n => n.onclick = () => vscode.postMessage({ type: 'openOverview' }));
-      const total = (s.flows || 0) + (s.agents || 0) + (s.skills || 0);
-      document.getElementById('lib-count').textContent = total ? String(total) : '';
-    }
-
-    function renderDefaults(installed) {
-      const el = document.getElementById('defaults');
-      if (!installed) {
-        el.innerHTML = '<button class="action secondary" id="init-def" style="margin-top:9px">Install Professional Library</button>' +
-          '<div class="help">Adds professional SDLC agents &amp; skills to ~/.claude or your project .claude folder.</div>';
-        const btn = document.getElementById('init-def');
-        if (btn) btn.onclick = () => vscode.postMessage({ type: 'installDefaults' });
-      } else {
-        el.innerHTML = '<div class="lib-status">' +
-          '<span class="dot"></span>' +
-          '<div class="lib-status-copy">' +
-          '<div class="lib-status-title">Professional Library</div>' +
-          '<div class="lib-status-sub">Built-in agents &amp; skills installed.</div>' +
-          '</div></div>' +
-          '<button class="action secondary" id="reinit-def" style="margin-top:9px">Manage / Reinstall</button>';
-        const btn = document.getElementById('reinit-def');
-        if (btn) btn.onclick = () => vscode.postMessage({ type: 'installDefaults' });
-      }
-    }
-
-    const MCP_STATUS = {
-      'connected':  { color: 'var(--vscode-charts-green, #2ea043)', label: '', rank: 0 },
-      'needs-auth': { color: 'var(--vscode-charts-yellow, #d7a000)', label: 'Needs auth', rank: 1 },
-      'unknown':    { color: 'var(--vscode-descriptionForeground, #888)', label: '', rank: 2 },
-      'failed':     { color: 'var(--vscode-charts-red, #f14c4c)', label: 'Failed', rank: 3 }
     };
+  });
+  document.getElementById('plugin-search').addEventListener('input', e => {
+    pluginQuery = e.target.value.trim().toLowerCase();
+    renderPlugins();
+  });
 
-    function setMcpData(list) {
-      mcpServers = (list || []).slice();
-      renderMcp();
-      if (pluginsReceived) renderPlugins();
+  // MCP search
+  let mcpQuery = '';
+  let mcpServers = [];
+  document.getElementById('mcp-search').addEventListener('input', e => {
+    mcpQuery = e.target.value.trim().toLowerCase();
+    renderMcp();
+  });
+
+  // ── render functions ──
+
+  function renderActive(run) {
+    const wrap = document.getElementById('active-wrap');
+    const el = document.getElementById('active');
+    if (!run) { wrap.hidden = true; el.innerHTML = ''; return; }
+    wrap.hidden = false;
+    const step = run.currentStep
+      ? '<div class="run-step"><span class="badge ' + esc(run.currentStep.status) + '">' + esc(run.currentStep.status) + '</span><span>' + esc(run.currentStep.title) + '</span></div>'
+      : '';
+    el.innerHTML =
+      '<div class="run-head">' +
+      '<span class="run-name">' + esc(run.flowName) + '</span>' +
+      '<span class="run-pct">' + run.completed + '/' + run.total + ' · ' + run.percent + '%</span>' +
+      '</div>' +
+      '<div class="progress"><div class="progress-fill" style="width:' + run.percent + '%"></div></div>' +
+      step;
+  }
+
+  function renderStats(s) {
+    const items = [['flows', s.flows, 'Flows'], ['agents', s.agents, 'Agents'], ['skills', s.skills, 'Skills']];
+    document.getElementById('stats').innerHTML = items.map(([key, n, lbl]) =>
+      '<div class="stat" data-tab="' + key + '" title="Open ' + lbl + '">' +
+      '<div class="stat-num">' + n + '</div>' +
+      '<div class="stat-lbl">' + lbl + '</div>' +
+      '</div>'
+    ).join('');
+    document.querySelectorAll('.stat').forEach(n => {
+      n.onclick = () => vscode.postMessage({ type: 'openOverview', tab: n.getAttribute('data-tab') });
+    });
+    const total = (s.flows || 0) + (s.agents || 0) + (s.skills || 0);
+    document.getElementById('lib-count').textContent = total ? String(total) : '';
+  }
+
+  function renderDefaults(installed) {
+    const el = document.getElementById('defaults');
+    if (!installed) {
+      el.innerHTML =
+        '<div class="lib-hint">Add professional SDLC agents &amp; skills to your workspace.</div>' +
+        '<button class="btn-secondary" id="init-def">Install Professional Library</button>';
+      const btn = document.getElementById('init-def');
+      if (btn) btn.onclick = () => vscode.postMessage({ type: 'installDefaults' });
+    } else {
+      el.innerHTML =
+        '<div class="lib-row">' +
+        '<span class="lib-dot"></span>' +
+        '<div class="lib-info">' +
+        '<div class="lib-title">Professional Library</div>' +
+        '<div class="lib-sub">Agents &amp; skills installed</div>' +
+        '</div>' +
+        '<button class="pill" id="reinit-def">Manage</button>' +
+        '</div>';
+      const btn = document.getElementById('reinit-def');
+      if (btn) btn.onclick = () => vscode.postMessage({ type: 'installDefaults' });
     }
+  }
 
-    function renderMcp() {
-      const el = document.getElementById('mcp');
-      const connected = mcpServers.filter(s => s.status === 'connected').length;
-      // Badge shows connected / total so a wall of "needs auth" rows doesn't read as healthy.
-      document.getElementById('conn-count').textContent = mcpServers.length ? connected + '/' + mcpServers.length : '';
-      const q = mcpQuery;
+  const MCP_STATUS = {
+    'connected':  { color: 'var(--vscode-charts-green, #73c991)',   label: 'Connected',  rank: 0 },
+    'needs-auth': { color: 'var(--vscode-charts-yellow, #d7a000)',  label: 'Needs auth', rank: 1 },
+    'unknown':    { color: 'var(--muted, #888)',                     label: 'Unknown',    rank: 2 },
+    'failed':     { color: 'var(--vscode-charts-red, #f48771)',     label: 'Failed',     rank: 3 }
+  };
 
-      if (activeMcpTab === 'installed') {
-        const rows = mcpServers.filter(s => !q || s.name.toLowerCase().includes(q)).sort((a, b) =>
-          (MCP_STATUS[a.status] || MCP_STATUS.unknown).rank - (MCP_STATUS[b.status] || MCP_STATUS.unknown).rank
-          || a.name.localeCompare(b.name));
-        if (!mcpServers.length) { el.innerHTML = '<span class="empty">No MCP servers</span>'; return; }
-        if (!rows.length) { el.innerHTML = '<span class="empty">No match for &ldquo;' + esc(q) + '&rdquo;</span>'; return; }
-        el.innerHTML = '<div class="list">' + rows.map(s => {
-          const st = MCP_STATUS[s.status] || MCP_STATUS.unknown;
-          const targetText = s.target || '';
-          const targetLower = targetText.toLowerCase();
-          const isHttpTarget = targetLower.startsWith('http://') || targetLower.startsWith('https://') || targetText.toUpperCase().endsWith('(HTTP)');
-          const canReconnect = (s.status === 'failed' || s.status === 'needs-auth') && s.target && isHttpTarget;
-          return '<div class="tool-row">' +
-            '<span class="dot" title="' + esc(s.status) + '" style="background:' + st.color + '"></span>' +
-            '<span class="tool-main"><span class="tool-name" title="' + esc(s.name) + '">' + esc(s.name) + '</span>' +
-            '<span class="tool-sub" title="' + esc(s.target || statusText(s.status)) + '">' + esc(st.label || statusText(s.status)) + '</span></span>' +
-            (canReconnect ? '<button class="pill primary" data-mcp-reconnect="' + esc(s.name) + '" data-target="' + esc(s.target) + '">' + (s.status === 'failed' ? 'Reconnect' : 'Connect') + '</button>' : '') +
-            '</div>';
-        }).join('') + '</div>';
-        el.querySelectorAll('button[data-mcp-reconnect]').forEach(btn => {
-          btn.onclick = () => {
-            btn.disabled = true;
-            btn.textContent = 'Connecting…';
-            vscode.postMessage({ type: 'reconnectMcp', mcpName: btn.getAttribute('data-mcp-reconnect'), mcpTarget: btn.getAttribute('data-target') });
-          };
-        });
-      } else {
-        const installedNames = new Set(mcpServers.map(s => s.name.toLowerCase()));
-        const rows = MCP_CATALOG.filter(c => !installedNames.has(c.name.toLowerCase()))
-          .filter(c => !q || c.name.toLowerCase().includes(q) || c.desc.toLowerCase().includes(q));
-        if (!rows.length) { el.innerHTML = '<span class="empty">' + (q ? 'No match for &ldquo;' + esc(q) + '&rdquo;' : 'All popular servers added') + '</span>'; return; }
-        el.innerHTML = '<div class="list">' + rows.map(c =>
-          '<div class="row plugin-row">' +
-          '<div class="plugin-top">' +
-          '<span class="label" title="' + esc(c.url) + '">' + esc(c.name) + '</span>' +
-          '<button class="pill primary" data-mcp-add="' + esc(c.name) + '" data-url="' + esc(c.url) + '">Add</button>' +
-          '</div>' +
-          '<div class="desc">' + esc(c.desc) + '</div>' +
-          '</div>'
-        ).join('') + '</div>';
-        el.querySelectorAll('button[data-mcp-add]').forEach(btn => {
-          btn.onclick = () => {
-            btn.disabled = true;
-            btn.textContent = 'Adding…';
-            vscode.postMessage({ type: 'addMcp', mcpName: btn.getAttribute('data-mcp-add'), mcpUrl: btn.getAttribute('data-url') });
-          };
-        });
-      }
+  function setMcpData(list) {
+    mcpServers = (list || []).slice();
+    renderMcp();
+  }
+
+  function renderMcp() {
+    const el = document.getElementById('mcp');
+    const connected = mcpServers.filter(s => s.status === 'connected').length;
+    document.getElementById('conn-count').textContent = mcpServers.length ? connected + '/' + mcpServers.length : '';
+    const q = mcpQuery;
+
+    if (!mcpServers.length) {
+      el.innerHTML = '<span class="empty">No MCP servers configured</span>';
+      return;
     }
-
-    function setPluginData(installed, available) {
-      installedPlugins = installed || [];
-      availablePlugins = available || [];
-      renderPlugins();
+    const rows = mcpServers
+      .filter(s => !q || s.name.toLowerCase().includes(q))
+      .sort((a, b) =>
+        (MCP_STATUS[a.status] || MCP_STATUS.unknown).rank - (MCP_STATUS[b.status] || MCP_STATUS.unknown).rank
+        || a.name.localeCompare(b.name));
+    if (!rows.length) {
+      el.innerHTML = '<span class="empty">No match for &ldquo;' + esc(q) + '&rdquo;</span>';
+      return;
     }
+    const shown = rows.slice(0, LIMITS.mcp);
+    el.innerHTML = shown.map(s => {
+      const st = MCP_STATUS[s.status] || MCP_STATUS.unknown;
+      const tgt = s.target || '';
+      const isHttp = tgt.toLowerCase().startsWith('http://') || tgt.toLowerCase().startsWith('https://') || tgt.toUpperCase().endsWith('(HTTP)');
+      const canReconnect = (s.status === 'failed' || s.status === 'needs-auth') && tgt && isHttp;
+      return '<div class="item">' +
+        '<span class="item-dot" title="' + esc(s.status) + '" style="background:' + st.color + '"></span>' +
+        '<span class="item-body">' +
+          '<span class="item-name" title="' + esc(s.name) + '">' + esc(s.name) + '</span>' +
+          '<span class="item-sub">' + esc(st.label) + '</span>' +
+        '</span>' +
+        '<span class="item-acts">' +
+          '<button class="pill" type="button" data-act="mcpDetails" data-name="' + esc(s.name) + '">Details</button>' +
+          (canReconnect
+            ? '<button class="pill accent" type="button" data-act="mcpReconnect" data-name="' + esc(s.name) + '" data-target="' + esc(tgt) + '">' +
+              (s.status === 'failed' ? 'Retry' : 'Auth') + '</button>'
+            : '') +
+        '</span>' +
+        '</div>';
+    }).join('') +
+    (rows.length > shown.length ? '<div class="list-more">Showing ' + shown.length + ' of ' + rows.length + '</div>' : '');
+    bindActionButtons(el);
+  }
 
-    function renderPlugins() {
-      const el = document.getElementById('plugins');
-      document.getElementById('plug-count').textContent = installedPlugins.length ? String(installedPlugins.length) : '';
-      const q = pluginQuery;
+  function setPluginData(installed, available) {
+    installedPlugins = installed || [];
+    availablePlugins = available || [];
+    renderPlugins();
+  }
 
-      if (activePluginTab === 'installed') {
-        const rows = installedPlugins.filter(p => !q || p.name.toLowerCase().includes(q));
-        if (!installedPlugins.length) { el.innerHTML = '<span class="empty">No plugins installed</span>'; return; }
-        if (!rows.length) { el.innerHTML = '<span class="empty">No match for &ldquo;' + esc(q) + '&rdquo;</span>'; return; }
-        el.innerHTML = '<div class="list">' + rows.map(p =>
-          '<div class="row plugin-row">' +
-          '<div class="plugin-top">' +
-          '<span class="dot" title="' + (p.enabled ? 'Enabled' : 'Disabled') + '" style="background:' + (p.enabled ? 'var(--vscode-charts-green)' : 'var(--vscode-charts-red, #f14c4c)') + '"></span>' +
-          '<span class="label" title="' + esc(p.name) + ' · v' + esc(p.version) + '">' + esc(p.name) + '</span>' +
-          '<span class="sub">' + esc(p.scope) + '</span>' +
-          '</div>' +
-          '<div class="plugin-actions acts">' +
-          '<button class="pill" data-act="toggle" data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '" data-enable="' + !p.enabled + '">' + (p.enabled ? 'Disable' : 'Enable') + '</button>' +
-          '<button class="pill" data-act="details" data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '">Details</button>' +
-          '<button class="pill" data-act="update" data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '">Update</button>' +
-          '<button class="pill danger" data-act="uninstall" data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '">Uninstall</button>' +
-          '</div></div>'
-        ).join('') + '</div>';
-      } else {
-        const rows = availablePlugins.filter(p => !q || p.name.toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q));
-        if (!availablePlugins.length) { el.innerHTML = '<span class="empty">No marketplace configured</span>'; return; }
-        if (!rows.length) { el.innerHTML = '<span class="empty">No match for &ldquo;' + esc(q) + '&rdquo;</span>'; return; }
-        el.innerHTML = '<div class="list">' + rows.slice(0, 60).map(p =>
-          '<div class="row plugin-row">' +
-          '<div class="plugin-top">' +
-          '<span class="label" title="' + esc(p.id) + '">' + esc(p.name) + '</span>' +
-          '<button class="pill primary" data-act="install" data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '">Install</button>' +
-          '</div>' +
-          (p.description ? '<div class="desc">' + esc(p.description) + '</div>' : '') +
-          '</div>'
-        ).join('') + '</div>' +
-        (rows.length > 60 ? '<div class="muted" style="margin-top:6px">Showing 60 of ' + rows.length + ' — refine your search.</div>' : '');
-      }
+  function renderPanelError(id, label) {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '<span class="empty">' + esc(label) + ' unavailable</span>';
+  }
 
-      el.querySelectorAll('button[data-act]').forEach(btn => {
-        btn.onclick = () => {
-          const act = btn.getAttribute('data-act');
-          const id = btn.getAttribute('data-id');
-          const name = btn.getAttribute('data-name');
-          // Optimistic feedback: lock the row's buttons so the click registers instantly.
-          btn.closest('.acts, .plugin-top')?.querySelectorAll('button').forEach(b => b.disabled = true);
-          btn.textContent = act === 'install' ? 'Installing…' : act === 'update' ? 'Updating…' : act === 'uninstall' ? 'Removing…' : act === 'details' ? 'Opening…' : act === 'connect' ? 'Opening…' : '…';
-          if (act === 'toggle') vscode.postMessage({ type: 'togglePlugin', pluginId: id, pluginName: name, enable: btn.getAttribute('data-enable') === 'true' });
-          else if (act === 'install') vscode.postMessage({ type: 'installPlugin', pluginId: id, pluginName: name });
-          else if (act === 'update') vscode.postMessage({ type: 'updatePlugin', pluginId: id, pluginName: name });
-          else if (act === 'details') vscode.postMessage({ type: 'pluginDetails', pluginId: id, pluginName: name });
-          else if (act === 'uninstall') vscode.postMessage({ type: 'uninstallPlugin', pluginId: id, pluginName: name });
-        };
-      });
+  function renderPlugins() {
+    const el = document.getElementById('plugins');
+    document.getElementById('plug-count').textContent = installedPlugins.length ? String(installedPlugins.length) : '';
+    const q = pluginQuery;
+
+    if (activePluginTab === 'installed') {
+      const rows = installedPlugins.filter(p => !q || p.name.toLowerCase().includes(q));
+      if (!installedPlugins.length) { el.innerHTML = '<span class="empty">No plugins installed</span>'; return; }
+      if (!rows.length) { el.innerHTML = '<span class="empty">No match for &ldquo;' + esc(q) + '&rdquo;</span>'; return; }
+      const shown = rows.slice(0, LIMITS.pluginsInstalled);
+      el.innerHTML = shown.map(p =>
+        '<div class="item">' +
+        '<span class="item-dot" title="' + (p.enabled ? 'Enabled' : 'Disabled') + '" style="background:' +
+          (p.enabled ? 'var(--vscode-charts-green, #73c991)' : 'var(--vscode-charts-red, #f48771)') + '"></span>' +
+        '<span class="item-body">' +
+          '<span class="item-name" title="' + esc(p.name) + ' · v' + esc(p.version) + '">' + esc(p.name) + '</span>' +
+          '<span class="item-sub">' + esc(p.scope) + ' · v' + esc(p.version) + '</span>' +
+        '</span>' +
+        '<span class="item-acts">' +
+          '<button class="pill" type="button" data-act="details" data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '">Details</button>' +
+          actionMenu([
+            menuItem(p.enabled ? 'Disable' : 'Enable', 'data-act="toggle" data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '" data-enable="' + !p.enabled + '"'),
+            menuItem('Update', 'data-act="update" data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '"'),
+            menuItem('Uninstall', 'data-act="uninstall" data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '"', true)
+          ]) +
+        '</span>' +
+        '</div>'
+      ).join('') +
+      (rows.length > shown.length ? '<div class="list-more">Showing ' + shown.length + ' of ' + rows.length + '</div>' : '');
+    } else {
+      const rows = availablePlugins.filter(p => !q || p.name.toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q));
+      if (!availablePlugins.length) { el.innerHTML = '<span class="empty">No marketplace configured</span>'; return; }
+      if (!rows.length) { el.innerHTML = '<span class="empty">No match for &ldquo;' + esc(q) + '&rdquo;</span>'; return; }
+      const shown = rows.slice(0, LIMITS.pluginsAvailable);
+      el.innerHTML = shown.map(p =>
+        '<div class="item">' +
+        '<span class="item-dot" style="background:var(--muted)"></span>' +
+        '<span class="item-body">' +
+          '<span class="item-name" title="' + esc(p.id) + '">' + esc(p.name) + '</span>' +
+          '<span class="item-sub" title="' + esc(p.description || p.id) + '">' + esc(p.description || p.id) + '</span>' +
+        '</span>' +
+        '<span class="item-acts">' +
+          '<button class="pill accent" type="button" data-act="install" data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '">Install</button>' +
+        '</span>' +
+        '</div>'
+      ).join('') +
+      (rows.length > shown.length ? '<div class="list-more">Showing ' + shown.length + ' of ' + rows.length + '</div>' : '');
     }
+    bindActionButtons(el);
+  }
 
-    function renderFiles(files, total) {
-      document.getElementById('files-count').textContent = total ? String(total) : '';
-      const el = document.getElementById('files');
-      if (!files || !files.length) { el.innerHTML = '<span class="empty">No runs yet</span>'; return; }
-      el.innerHTML = '<div class="list">' + files.map(f =>
-        '<div class="row click" data-path="' + esc(f.filePath) + '">' +
-        '<span class="label">' + esc(f.flowName) + ' · ' + f.completed + '/' + f.total + '</span>' +
-        '<span class="muted">' + fmtTime(f.runId) + '</span>' +
-        '<button class="del" title="Delete run file">🗑</button></div>'
-      ).join('') + '</div>';
-      el.querySelectorAll('.row.click').forEach(n => {
-        const path = n.getAttribute('data-path');
-        n.onclick = () => vscode.postMessage({ type: 'openFile', path });
-        const delBtn = n.querySelector('.del');
-        if (delBtn) delBtn.onclick = ev => { ev.stopPropagation(); vscode.postMessage({ type: 'deleteRun', path }); };
-      });
-    }
+  function bindActionButtons(root) {
+    root.querySelectorAll('button[data-act]').forEach(btn => {
+      btn.onclick = () => {
+        const act = btn.getAttribute('data-act');
+        const id = btn.getAttribute('data-id');
+        const name = btn.getAttribute('data-name');
+        const locks = ['install', 'update', 'uninstall', 'toggle', 'mcpReconnect', 'deleteRun'].includes(act);
+        if (locks) btn.closest('.item')?.querySelectorAll('button').forEach(b => b.disabled = true);
+        const menu = btn.closest('.menu');
+        if (menu) menu.open = false;
+        if (locks) btn.textContent = act === 'install' ? 'Installing…' : act === 'update' ? 'Updating…' : act === 'uninstall' ? 'Removing…' : act === 'mcpReconnect' ? 'Connecting…' : act === 'deleteRun' ? 'Deleting…' : '…';
+        if (act === 'toggle') vscode.postMessage({ type: 'togglePlugin', pluginId: id, pluginName: name, enable: btn.getAttribute('data-enable') === 'true' });
+        else if (act === 'install') vscode.postMessage({ type: 'installPlugin', pluginId: id, pluginName: name });
+        else if (act === 'update') vscode.postMessage({ type: 'updatePlugin', pluginId: id, pluginName: name });
+        else if (act === 'details') vscode.postMessage({ type: 'pluginDetails', pluginId: id, pluginName: name });
+        else if (act === 'uninstall') vscode.postMessage({ type: 'uninstallPlugin', pluginId: id, pluginName: name });
+        else if (act === 'mcpReconnect') vscode.postMessage({ type: 'reconnectMcp', mcpName: name, mcpTarget: btn.getAttribute('data-target') });
+        else if (act === 'mcpDetails') vscode.postMessage({ type: 'mcpDetails', mcpName: name });
+        else if (act === 'openFile') vscode.postMessage({ type: 'openFile', path: btn.getAttribute('data-path') });
+        else if (act === 'deleteRun') vscode.postMessage({ type: 'deleteRun', path: btn.getAttribute('data-path') });
+      };
+    });
+  }
 
-    // Async probes (MCP, plugins) arrive after the first paint. Until each lands once,
-    // leave its loading skeleton up instead of flashing an empty state from the cold cache.
-    let mcpReceived = false, pluginsReceived = false;
+  function renderFiles(files, total) {
+    document.getElementById('files-count').textContent = total ? String(total) : '';
+    const el = document.getElementById('files');
+    if (!files || !files.length) { el.innerHTML = '<span class="empty">No runs yet</span>'; return; }
+    const shown = files.slice(0, LIMITS.files);
+    el.innerHTML = shown.map(f =>
+      '<div class="item">' +
+      '<span class="item-dot" style="background:var(--muted)"></span>' +
+      '<span class="item-body">' +
+        '<span class="item-name" title="' + esc(f.flowName) + '">' + esc(f.flowName) + ' · ' + f.completed + '/' + f.total + '</span>' +
+        '<span class="item-sub">' + fmtTime(f.runId) + '</span>' +
+      '</span>' +
+      '<span class="item-acts">' +
+        actionMenu([
+          menuItem('Open', 'data-act="openFile" data-path="' + esc(f.filePath) + '"'),
+          menuItem('Delete', 'data-act="deleteRun" data-path="' + esc(f.filePath) + '"', true)
+        ]) +
+      '</span>' +
+      '</div>'
+    ).join('') +
+    (files.length > shown.length ? '<div class="list-more">Showing ' + shown.length + ' of ' + total + ' runs</div>' : '');
+    bindActionButtons(el);
+  }
 
-    window.addEventListener('message', e => {
+  // Async probes arrive after first paint — keep skeletons up until each lands.
+  let mcpReceived = false, pluginsReceived = false;
+
+  window.addEventListener('message', e => {
+    try {
       const m = e.data;
       if (m.type === 'data') {
         renderActive(m.activeRun);
         renderStats(m.stats);
         renderDefaults(m.defaultsInstalled);
-        if (mcpReceived) setMcpData(m.mcp);
-        if (pluginsReceived) setPluginData(m.plugins, m.pluginsAvailable);
+        mcpReceived = true;
+        pluginsReceived = true;
+        setMcpData(m.mcp);
+        setPluginData(m.plugins, m.pluginsAvailable);
         renderFiles(m.runFiles, m.totalRunFiles);
       } else if (m.type === 'mcp') {
         mcpReceived = true;
@@ -773,8 +817,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         pluginsReceived = true;
         setPluginData(m.plugins, m.pluginsAvailable);
       }
-    });
-  </script>
+    } catch (err) {
+      console.error('AI StepFlow sidebar render failed', err);
+      renderPanelError('mcp', 'Connections');
+      renderPanelError('plugins', 'Plugins');
+    }
+  });
+</script>
 </body>
 </html>`;
   }
