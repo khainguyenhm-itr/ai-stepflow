@@ -215,98 +215,122 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body { padding: 0; margin: 0; color: var(--vscode-foreground); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); }
-    .wrap { padding: 12px 12px 16px; }
-    .hero { margin-bottom: 16px; }
-    .hero-title { font-size: 14px; font-weight: 600; letter-spacing: .01em; }
-    .hero-sub { font-size: 11px; line-height: 1.45; opacity: .7; margin: 4px 0 10px; }
-    button.action { width: 100%; cursor: pointer; border: none; border-radius: 4px; padding: 7px 8px; font-size: 12px; color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+    .wrap { padding: 14px 12px 18px; }
+
+    /* Hero */
+    .hero { display: flex; align-items: center; justify-content: center; gap: 7px; margin: 2px 0 14px; }
+    .hero .logo { font-size: 17px; line-height: 1; }
+    .hero .name { font-size: 14px; font-weight: 600; letter-spacing: .01em; }
+
+    /* Buttons */
+    button.action { width: 100%; cursor: pointer; border: none; border-radius: 5px; padding: 8px; font-size: 12px; font-weight: 500; color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
     button.action:hover { background: var(--vscode-button-hoverBackground); }
-    button.action.secondary { color: var(--vscode-foreground); background: var(--vscode-button-secondaryBackground, var(--vscode-editorWidget-background, transparent)); border: 1px solid var(--vscode-panel-border, var(--vscode-input-border)); }
-    button.action.secondary:hover { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground)); }
-    .footer { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--vscode-panel-border, var(--vscode-input-border)); font-size: 10px; opacity: .5; text-align: center; letter-spacing: .03em; }
-    .section { margin-bottom: 16px; }
-    .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; opacity: .7; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
-    .card { border: 1px solid var(--vscode-panel-border, var(--vscode-input-border)); border-radius: 6px; padding: 10px; background: var(--vscode-editorWidget-background, transparent); }
-    .stats { display: flex; gap: 6px; }
-    .stat { flex: 1; text-align: center; border: 1px solid var(--vscode-panel-border, var(--vscode-input-border)); border-radius: 6px; padding: 8px 4px; cursor: pointer; }
-    .stat:hover { border-color: var(--vscode-focusBorder); }
-    .stat .num { font-size: 18px; font-weight: 600; }
-    .stat .lbl { font-size: 10px; opacity: .7; text-transform: uppercase; letter-spacing: .04em; }
-    .library-actions { margin-top: 8px; }
-    .library-status { display: flex; flex-direction: column; align-items: stretch; gap: 10px; margin-top: 8px; padding: 10px; border: 1px solid var(--vscode-panel-border, var(--vscode-input-border)); border-radius: 8px; background: var(--vscode-editorWidget-background, transparent); }
-    .library-status-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
-    .library-status-copy { min-width: 0; }
-    .library-status-title { font-size: 12px; font-weight: 600; }
-    .library-status-sub { font-size: 11px; opacity: .7; margin-top: 2px; }
+    button.action.secondary { color: var(--vscode-foreground); background: transparent; border: 1px solid var(--vscode-panel-border, var(--vscode-input-border)); font-weight: 400; margin-top: 8px; }
+    button.action.secondary:hover { background: var(--vscode-list-hoverBackground); }
+
+    /* Active run (always-visible when present) */
+    .active { margin-top: 14px; padding: 10px 11px; border-radius: 6px; background: var(--vscode-editorWidget-background, rgba(127,127,127,.06)); border: 1px solid var(--vscode-panel-border, var(--vscode-input-border)); }
+    .active[hidden] { display: none; }
     .run-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-    .run-flow { font-weight: 600; }
-    .run-sub { font-size: 11px; opacity: .75; }
-    .bar { height: 5px; border-radius: 3px; background: var(--vscode-progressBar-background, rgba(127,127,127,.25)); overflow: hidden; margin: 8px 0 6px; }
-    .bar > span { display: block; height: 100%; background: var(--vscode-progressBar-background, var(--vscode-focusBorder)); background: var(--vscode-charts-blue, var(--vscode-focusBorder)); }
-    .step-line { display: flex; align-items: center; gap: 6px; font-size: 12px; }
-    .badge { font-size: 10px; padding: 1px 6px; border-radius: 8px; text-transform: uppercase; letter-spacing: .03em; background: rgba(127,127,127,.2); }
+    .run-flow { font-weight: 600; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .run-sub { font-size: 11px; opacity: .7; flex: 0 0 auto; }
+    .bar { height: 5px; border-radius: 3px; background: rgba(127,127,127,.22); overflow: hidden; margin: 8px 0 0; }
+    .bar > span { display: block; height: 100%; background: var(--vscode-charts-blue, var(--vscode-focusBorder)); }
+    .step-line { display: flex; align-items: center; gap: 6px; font-size: 11.5px; margin-top: 8px; opacity: .9; }
+    .badge { font-size: 9.5px; padding: 1px 6px; border-radius: 8px; text-transform: uppercase; letter-spacing: .03em; background: rgba(127,127,127,.2); }
     .badge.running { background: var(--vscode-charts-blue, #3794ff); color: #fff; }
     .badge.completed { background: var(--vscode-charts-green, #2ea043); color: #fff; }
+
+    /* Collapsible groups */
+    .groups { margin-top: 12px; }
+    details.group { border-top: 1px solid var(--vscode-panel-border, rgba(127,127,127,.18)); }
+    details.group:last-of-type { border-bottom: 1px solid var(--vscode-panel-border, rgba(127,127,127,.18)); }
+    details.group > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 7px; padding: 9px 2px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; opacity: .82; user-select: none; }
+    details.group > summary::-webkit-details-marker { display: none; }
+    details.group > summary::before { content: '\\203A'; display: inline-block; font-size: 13px; opacity: .55; transition: transform .12s ease; }
+    details.group[open] > summary::before { transform: rotate(90deg); }
+    details.group > summary:hover { opacity: 1; }
+    .count { margin-left: auto; font-size: 10px; font-weight: 500; letter-spacing: 0; text-transform: none; opacity: .55; }
+    .group-body { padding: 2px 2px 13px 18px; }
+
+    /* Library stats */
+    .stats { display: flex; gap: 6px; }
+    .stat { flex: 1; text-align: center; border: 1px solid var(--vscode-panel-border, var(--vscode-input-border)); border-radius: 6px; padding: 7px 4px; cursor: pointer; }
+    .stat:hover { border-color: var(--vscode-focusBorder); background: var(--vscode-list-hoverBackground); }
+    .stat .num { font-size: 17px; font-weight: 600; }
+    .stat .lbl { font-size: 9.5px; opacity: .65; text-transform: uppercase; letter-spacing: .04em; }
+    .lib-status { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+    .lib-status-copy { min-width: 0; }
+    .lib-status-title { font-size: 12px; font-weight: 600; }
+    .lib-status-sub { font-size: 10.5px; opacity: .65; margin-top: 1px; }
+    .help { font-size: 10.5px; opacity: .6; margin-top: 7px; line-height: 1.4; }
+
+    /* Lists / rows */
     .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: 0 0 auto; background: var(--vscode-charts-green, #2ea043); }
-    .list { display: flex; flex-direction: column; gap: 4px; }
+    .list { display: flex; flex-direction: column; gap: 2px; }
     .row { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 3px 0; }
     .row .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .row.click { cursor: pointer; }
     .row.click:hover .label { text-decoration: underline; }
-    .del { flex: 0 0 auto; cursor: pointer; border: none; background: transparent; color: var(--vscode-foreground); opacity: 0; padding: 0 2px; font-size: 12px; line-height: 1; }
-    .row:hover .del { opacity: .65; }
+    .del { flex: 0 0 auto; cursor: pointer; border: none; background: transparent; color: var(--vscode-foreground); opacity: 0; padding: 0 3px; font-size: 11px; line-height: 1; }
+    .row:hover .del { opacity: .6; }
     .del:hover { opacity: 1; color: var(--vscode-errorForeground, #f14c4c); }
+    .pill { flex: 0 0 auto; cursor: pointer; border: 1px solid var(--vscode-panel-border, var(--vscode-input-border)); background: transparent; color: var(--vscode-foreground); border-radius: 4px; font-size: 9.5px; letter-spacing: .03em; padding: 1px 6px; opacity: .85; }
+    .pill:hover { opacity: 1; background: var(--vscode-list-hoverBackground); }
+
+    /* Plugin tabs */
+    .mini-tabs { display: flex; gap: 12px; margin-bottom: 8px; }
+    .mini-tab { font-size: 11px; cursor: pointer; opacity: .5; padding-bottom: 2px; border-bottom: 1.5px solid transparent; }
+    .mini-tab:hover { opacity: .85; }
+    .mini-tab.active { opacity: 1; border-bottom-color: var(--vscode-focusBorder); }
+
     .muted { opacity: .6; font-size: 11px; }
-    .empty { opacity: .6; font-size: 12px; font-style: italic; }
-    
-    /* Mini tabs for Plugins */
-    .mini-tabs { display: flex; gap: 8px; }
-    .mini-tab { font-size: 10px; padding: 2px 4px; cursor: pointer; opacity: .5; border-bottom: 1px solid transparent; text-transform: none; font-weight: normal; }
-    .mini-tab:hover { opacity: 1; }
-    .mini-tab.active { opacity: 1; border-bottom-color: var(--vscode-focusBorder); font-weight: 600; }
+    .empty { opacity: .55; font-size: 11.5px; font-style: italic; }
+    footer { margin-top: 16px; font-size: 10px; opacity: .4; text-align: center; letter-spacing: .04em; }
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="hero">
-      <div class="hero-title">AI StepFlow</div>
-      <div class="hero-sub">Orchestrate Claude agents, skills & workflows.</div>
-      <button class="action" id="open">Open Overview</button>
+      <span class="logo">🐇</span><span class="name">AI StepFlow</span>
     </div>
 
-    <div class="section">
-      <div class="section-title">Active Run</div>
-      <div class="card" id="active"><span class="empty">No active run</span></div>
-    </div>
+    <button class="action" id="open">Open Overview</button>
 
-    <div class="section">
-      <div class="section-title">Library</div>
-      <div class="stats" id="stats"></div>
-      <div class="library-actions" id="defaults"></div>
-    </div>
+    <div class="active" id="active-wrap" hidden><div id="active"></div></div>
 
-    <div class="section">
-      <div class="section-title">
-        <span>Claude Plugins</span>
-        <div class="mini-tabs" id="plugin-tabs">
-          <div class="mini-tab active" data-tab="installed">Installed</div>
-          <div class="mini-tab" data-tab="marketplace">Marketplace</div>
+    <div class="groups">
+      <details class="group" id="g-library">
+        <summary>Library<span class="count" id="lib-count"></span></summary>
+        <div class="group-body">
+          <div class="stats" id="stats"></div>
+          <div id="defaults"></div>
         </div>
-      </div>
-      <div class="card" id="plugins"><span class="muted">Checking…</span></div>
+      </details>
+
+      <details class="group">
+        <summary>Connections<span class="count" id="conn-count"></span></summary>
+        <div class="group-body"><div id="mcp"><span class="muted">Checking…</span></div></div>
+      </details>
+
+      <details class="group">
+        <summary>Plugins<span class="count" id="plug-count"></span></summary>
+        <div class="group-body">
+          <div class="mini-tabs" id="plugin-tabs">
+            <span class="mini-tab active" data-tab="installed">Installed</span>
+            <span class="mini-tab" data-tab="marketplace">Marketplace</span>
+          </div>
+          <div id="plugins"><span class="muted">Checking…</span></div>
+        </div>
+      </details>
+
+      <details class="group">
+        <summary>Generated files<span class="count" id="files-count"></span></summary>
+        <div class="group-body"><div id="files"><span class="empty">No runs yet</span></div></div>
+      </details>
     </div>
 
-    <div class="section">
-      <div class="section-title">MCP Servers</div>
-      <div class="card" id="mcp"><span class="muted">Checking…</span></div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">Generated Files <span class="muted" id="files-count"></span></div>
-      <div class="card" id="files"><span class="empty">No runs yet</span></div>
-    </div>
-
-    <div class="footer">AI StepFlow${this.version ? ' · v' + this.version : ''}</div>
+    <footer>AI StepFlow${this.version ? ' · v' + this.version : ''}</footer>
   </div>
 
   <script nonce="${nonce}">
@@ -330,14 +354,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     });
 
     function renderActive(run) {
+      const wrap = document.getElementById('active-wrap');
       const el = document.getElementById('active');
-      if (!run) { el.innerHTML = '<span class="empty">No active run</span>'; return; }
+      if (!run) { wrap.hidden = true; el.innerHTML = ''; return; }
+      wrap.hidden = false;
       const step = run.currentStep
         ? '<div class="step-line"><span class="badge ' + esc(run.currentStep.status) + '">' + esc(run.currentStep.status) + '</span><span>' + esc(run.currentStep.title) + '</span></div>'
         : '';
       el.innerHTML =
         '<div class="run-head"><span class="run-flow">' + esc(run.flowName) + '</span>' +
-        '<span class="run-sub">' + run.completed + '/' + run.total + ' steps</span></div>' +
+        '<span class="run-sub">' + run.completed + '/' + run.total + ' · ' + run.percent + '%</span></div>' +
         '<div class="bar"><span style="width:' + run.percent + '%"></span></div>' + step;
     }
 
@@ -347,25 +373,27 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         '<div class="stat" data-tab="' + i[0] + '"><div class="num">' + i[1] + '</div><div class="lbl">' + i[2] + '</div></div>'
       ).join('');
       document.querySelectorAll('.stat').forEach(n => n.onclick = () => vscode.postMessage({ type: 'openOverview' }));
+      const total = (s.flows || 0) + (s.agents || 0) + (s.skills || 0);
+      document.getElementById('lib-count').textContent = total ? String(total) : '';
     }
 
     function renderDefaults(installed) {
       const el = document.getElementById('defaults');
       if (!installed) {
-        el.innerHTML = '<button class="action" id="init-def">Install Professional Library</button>' +
-          '<div class="muted" style="margin-top:6px">Adds professional SDLC agents & skills to ~/.claude or your project .claude folder.</div>';
+        // Surface the install CTA on first run by opening the Library group.
+        document.getElementById('g-library').open = true;
+        el.innerHTML = '<button class="action secondary" id="init-def" style="margin-top:10px">Install Professional Library</button>' +
+          '<div class="help">Adds professional SDLC agents &amp; skills to ~/.claude or your project .claude folder.</div>';
         const btn = document.getElementById('init-def');
         if (btn) btn.onclick = () => vscode.postMessage({ type: 'installDefaults' });
       } else {
-        el.innerHTML = '<div class="library-status">' +
-          '<div class="library-status-main">' +
+        el.innerHTML = '<div class="lib-status">' +
           '<span class="dot"></span>' +
-          '<div class="library-status-copy">' +
-          '<div class="library-status-title">Professional Library</div>' +
-          '<div class="library-status-sub">Built-in agents and skills are installed.</div>' +
+          '<div class="lib-status-copy">' +
+          '<div class="lib-status-title">Professional Library</div>' +
+          '<div class="lib-status-sub">Built-in agents &amp; skills installed.</div>' +
           '</div></div>' +
-          '<button class="action secondary" id="reinit-def">Manage / Reinstall</button>' +
-          '</div>';
+          '<button class="action secondary" id="reinit-def">Manage / Reinstall</button>';
         const btn = document.getElementById('reinit-def');
         if (btn) btn.onclick = () => vscode.postMessage({ type: 'installDefaults' });
       }
@@ -373,6 +401,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     function renderMcp(list) {
       const el = document.getElementById('mcp');
+      document.getElementById('conn-count').textContent = (list && list.length) ? String(list.length) : '';
       if (!list || !list.length) { el.innerHTML = '<span class="empty">None connected</span>'; return; }
       el.innerHTML = '<div class="list">' + list.map(name =>
         '<div class="row"><span class="dot"></span><span class="label">' + esc(name) + '</span></div>'
@@ -382,14 +411,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     function renderPlugins(list) {
       currentPlugins = list || [];
       const el = document.getElementById('plugins');
-      
+      document.getElementById('plug-count').textContent = (list && list.length) ? String(list.length) : '';
+
       if (activePluginTab === 'installed') {
         if (!list || !list.length) { el.innerHTML = '<span class="empty">No plugins installed</span>'; return; }
         el.innerHTML = '<div class="list">' + list.map(p =>
           '<div class="row">' +
           '<span class="dot" style="background:' + (p.enabled ? 'var(--vscode-charts-green)' : 'var(--vscode-charts-red, #f14c4c)') + '"></span>' +
           '<span class="label" title="' + esc(p.version) + '">' + esc(p.name.split('@')[0]) + '</span>' +
-          '<button class="del" style="opacity: .8" title="' + (p.enabled ? 'Disable' : 'Enable') + '" data-toggle="' + esc(p.name) + '" data-enable="' + !p.enabled + '">' +
+          '<button class="pill" title="' + (p.enabled ? 'Disable' : 'Enable') + '" data-toggle="' + esc(p.name) + '" data-enable="' + !p.enabled + '">' +
           (p.enabled ? 'OFF' : 'ON') + '</button></div>'
         ).join('') + '</div>';
         el.querySelectorAll('button[data-toggle]').forEach(btn => {
@@ -408,8 +438,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           '<div class="row">' +
           '<span class="dot" style="background:var(--vscode-descriptionForeground); opacity:.3"></span>' +
           '<span class="label">' + esc(name) + '</span>' +
-          '<button class="del" style="opacity: .8" title="Install" data-install="' + esc(name) + '">' +
-          'INSTALL</button></div>'
+          '<button class="pill" title="Install" data-install="' + esc(name) + '">INSTALL</button></div>'
         ).join('') + '</div>';
         el.querySelectorAll('button[data-install]').forEach(btn => {
           btn.onclick = () => vscode.postMessage({ type: 'installPlugin', pluginName: btn.getAttribute('data-install') });
@@ -418,7 +447,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
 
     function renderFiles(files, total) {
-      document.getElementById('files-count').textContent = total ? '(' + total + ')' : '';
+      document.getElementById('files-count').textContent = total ? String(total) : '';
       const el = document.getElementById('files');
       if (!files || !files.length) { el.innerHTML = '<span class="empty">No runs yet</span>'; return; }
       el.innerHTML = '<div class="list">' + files.map(f =>
