@@ -3,7 +3,8 @@
  * file watcher so saves keep the graph fresh.
  *
  * DB layout: `<workspaceFolder>/.ast-graph/graph.db` (the CLI's default). We append
- * `.ast-graph/` to `.gitignore` to avoid committing the binary db.
+ * `.ast-graph/` to `.git/info/exclude` to avoid committing the binary db without
+ * changing the shared `.gitignore`.
  */
 
 import * as vscode from 'vscode';
@@ -30,26 +31,27 @@ export function dbPathFor(folder: vscode.WorkspaceFolder): string {
   return path.join(folder.uri.fsPath, '.ast-graph', 'graph.db');
 }
 
-export async function ensureGitignoreEntry(folder: vscode.WorkspaceFolder): Promise<void> {
-  const gi = path.join(folder.uri.fsPath, '.gitignore');
+export async function ensureLocalExcludeEntry(folder: vscode.WorkspaceFolder): Promise<void> {
+  const gitDir = path.join(folder.uri.fsPath, '.git');
+  const hasGit = await fs.promises
+    .stat(gitDir)
+    .then((s) => s.isDirectory())
+    .catch(() => false);
+  if (!hasGit) return;
+
+  const exclude = path.join(gitDir, 'info', 'exclude');
   let body = '';
   try {
-    body = await fs.promises.readFile(gi, 'utf8');
+    body = await fs.promises.readFile(exclude, 'utf8');
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') return;
+    await fs.promises.mkdir(path.dirname(exclude), { recursive: true });
   }
   const lines = body.split(/\r?\n/);
   if (lines.some((l) => l.trim() === '.ast-graph/' || l.trim() === '.ast-graph')) return;
 
-  // Only create a .gitignore when there's a .git folder — don't litter non-repo dirs.
-  const hasGit = await fs.promises
-    .stat(path.join(folder.uri.fsPath, '.git'))
-    .then((s) => s.isDirectory())
-    .catch(() => false);
-  if (!hasGit && !body) return;
-
   const prefix = body && !body.endsWith('\n') ? '\n' : '';
-  await fs.promises.writeFile(gi, `${body}${prefix}.ast-graph/\n`, 'utf8');
+  await fs.promises.writeFile(exclude, `${body}${prefix}.ast-graph/\n`, 'utf8');
 }
 
 interface ScanOpts {

@@ -5,6 +5,7 @@ export type McpStatus = 'connected' | 'needs-auth' | 'failed' | 'unknown';
 export interface McpServer {
   name: string;
   status: McpStatus;
+  target?: string;
 }
 
 /** Classify one `claude mcp list` line by the status suffix the CLI appends. */
@@ -43,7 +44,9 @@ export function listMcpServers(cwd?: string): Promise<McpServer[]> {
           const sep = line.indexOf(': ');
           if (sep <= 0) continue; // header ("Checking MCP server health…") and blanks
           const name = line.slice(0, sep).trim();
-          if (name) servers.push({ name, status: statusOf(line) });
+          const rest = line.slice(sep + 2).trim();
+          const target = rest.replace(/\s+-\s+(?:✓|✔|✘)?\s*.*$/u, '').trim();
+          if (name) servers.push({ name, status: statusOf(line), target });
         }
         resolve(servers);
       }
@@ -82,6 +85,35 @@ export function addRemoteMcpServer(opts: {
           return;
         }
         resolve({ ok: true });
+      }
+    );
+  });
+}
+
+/**
+ * Re-add an existing remote MCP server using the target shown by `claude mcp list`.
+ * This gives failed HTTP servers a direct retry path from the sidebar.
+ */
+export function reconnectRemoteMcpServer(opts: {
+  name: string;
+  target: string;
+  scope: 'user' | 'local';
+  cwd?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const url = opts.target.replace(/\s+\(HTTP\)\s*$/i, '').trim();
+  return new Promise(resolve => {
+    execFile(
+      'claude',
+      ['mcp', 'remove', opts.name],
+      { timeout: 15000, cwd: opts.cwd || undefined },
+      (removeError, removeStdout, removeStderr) => {
+        if (removeError) {
+          const detail = (removeStderr || removeStdout || removeError.message || '').trim();
+          console.error('AI StepFlow: failed to remove MCP server before reconnect', detail);
+          resolve({ ok: false, error: detail });
+          return;
+        }
+        addRemoteMcpServer({ name: opts.name, url, scope: opts.scope, cwd: opts.cwd }).then(resolve);
       }
     );
   });

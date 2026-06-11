@@ -9,6 +9,11 @@ export interface PluginInfo {
   version: string;
   scope: string;
   enabled: boolean;
+  installPath?: string;
+  installedAt?: string;
+  lastUpdated?: string;
+  projectPath?: string;
+  mcpServers?: Record<string, { type?: string; url?: string; command?: string; args?: string[] }>;
 }
 
 /** A plugin offered by a configured marketplace that is not yet installed. */
@@ -34,7 +39,12 @@ function toPluginInfo(p: any): PluginInfo {
     name: nameFromId(p?.id),
     version: p?.version || 'unknown',
     scope: p?.scope || 'unknown',
-    enabled: !!p?.enabled
+    enabled: !!p?.enabled,
+    installPath: p?.installPath,
+    installedAt: p?.installedAt,
+    lastUpdated: p?.lastUpdated,
+    projectPath: p?.projectPath,
+    mcpServers: p?.mcpServers
   };
 }
 
@@ -118,6 +128,25 @@ export function togglePlugin(id: string, enable: boolean): Promise<{ ok: boolean
 /** Install a plugin via `claude plugin install` (accepts `plugin@marketplace`). */
 export function installPlugin(id: string): Promise<{ ok: boolean; error?: string }> {
   return runPluginAction(['plugin', 'install', id], 60000);
+}
+
+/** Update a plugin to the latest available version. */
+export function updatePlugin(id: string): Promise<{ ok: boolean; error?: string }> {
+  return runPluginAction(['plugin', 'update', id], 60000);
+}
+
+/** Return the CLI's human-readable component inventory for an installed plugin. */
+export function pluginDetails(id: string): Promise<{ ok: boolean; output?: string; error?: string }> {
+  return new Promise(resolve => {
+    execFile('claude', ['plugin', 'details', id], { timeout: 20000, maxBuffer: 4 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        const detail = (stderr || stdout || error.message || '').trim();
+        resolve({ ok: false, error: detail });
+        return;
+      }
+      resolve({ ok: true, output: stdout.trim() });
+    });
+  });
 }
 
 /**

@@ -15,7 +15,7 @@
 import * as vscode from 'vscode';
 
 import { ensureAstGraphBinary, UnsupportedPlatformError } from './binary.js';
-import { createSourceWatcher, ensureGitignoreEntry, runScan, type ScanSummary } from './scanner.js';
+import { createSourceWatcher, ensureLocalExcludeEntry, runScan, type ScanSummary } from './scanner.js';
 import { isAlreadyRegistered, registerMcpServer } from './mcpRegister.js';
 import { ensureClaudeMdHint } from './claudeMdHint.js';
 
@@ -105,7 +105,7 @@ export function registerAstGraph(context: vscode.ExtensionContext, output: vscod
     updateStatusBar();
 
     try {
-      await ensureGitignoreEntry(folder);
+      await ensureLocalExcludeEntry(folder);
       const summary = await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Window, title: `ast-graph scan: ${folder.name}` },
         () => runScan({ binPath: binPath!, folder, clean, output }),
