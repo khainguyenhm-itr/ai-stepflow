@@ -1,6 +1,6 @@
 <!-- ai-stepflow built-in -->
 ---
-name: aisf-test-cases
+name: aisf-skill-test-cases
 description: Generate detailed, executable test cases from a PRD or Test Plan.
 ---
 

@@ -1,6 +1,6 @@
 <!-- ai-stepflow built-in -->
 ---
-name: aisf-ba
+name: aisf-agent-ba
 description: Business Analyst / Product Owner. Focuses on requirements, user flows, and acceptance criteria.
 model: claude-sonnet-4-6
 tools: [Read, Edit, Bash]

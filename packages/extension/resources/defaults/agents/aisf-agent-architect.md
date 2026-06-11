@@ -1,6 +1,6 @@
 <!-- ai-stepflow built-in -->
 ---
-name: aisf-architect
+name: aisf-agent-architect
 description: Software Architect. Designs high-level systems, data models, and integration patterns.
 model: claude-sonnet-4-6
 tools: [Read, Edit, Bash]

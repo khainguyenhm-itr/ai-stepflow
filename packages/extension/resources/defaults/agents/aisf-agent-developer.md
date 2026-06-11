@@ -1,6 +1,6 @@
 <!-- ai-stepflow built-in -->
 ---
-name: aisf-developer
+name: aisf-agent-developer
 description: Senior Software Engineer. Writes clean, robust, and maintainable production code following best practices.
 model: claude-sonnet-4-6
 tools: [Read, Edit, Bash]

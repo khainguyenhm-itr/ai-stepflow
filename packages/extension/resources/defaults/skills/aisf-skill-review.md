@@ -1,6 +1,6 @@
 <!-- ai-stepflow built-in -->
 ---
-name: aisf-review
+name: aisf-skill-review
 description: Perform a technical review of code or designs. Focuses on quality, security, and standards.
 ---
 

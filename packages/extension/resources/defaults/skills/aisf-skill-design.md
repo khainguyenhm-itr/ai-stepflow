@@ -1,6 +1,6 @@
 <!-- ai-stepflow built-in -->
 ---
-name: aisf-design
+name: aisf-skill-design
 description: Draft a Technical Design Document. Focuses on architecture, data models, API specs, and tradeoffs.
 ---
 

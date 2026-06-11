@@ -1,6 +1,6 @@
 <!-- ai-stepflow built-in -->
 ---
-name: aisf-prd
+name: aisf-skill-prd
 description: Draft or refine a Product Requirements Document (PRD). Focuses on problem/goal, user flows, and testable ACs.
 ---
 
