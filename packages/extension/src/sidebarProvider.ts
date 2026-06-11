@@ -362,7 +362,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 <body>
   <div class="wrap">
     <div class="hero">
-      <span class="logo">🐇</span><span class="name">AI StepFlow</span>${this.version ? `<span class="ver">v${this.version}</span>` : ''}
+      <span class="logo"></span><span class="name">AISF</span>${this.version ? `<span class="ver">v${this.version}</span>` : ''}
     </div>
 
     <button class="action" id="open">Open Overview</button>
