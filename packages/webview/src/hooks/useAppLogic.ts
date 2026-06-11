@@ -143,8 +143,10 @@ export const useAppLogic = () => {
   };
 
   const handleHostMessage = (message: any) => {
+    console.log('[AI StepFlow Webview] received message:', message.type, message);
     switch (message.type) {
       case 'loadData':
+        console.log('[AI StepFlow Webview] loading data:', message.flows.length, 'flows');
         setFlows(message.flows);
         setAgents(message.agents);
         setSkills(message.skills);
@@ -162,8 +164,6 @@ export const useAppLogic = () => {
         setRunnerVisible(true);
         setActiveStepId(getDefaultActiveStepId(message.flow, message.runState));
         break;
-      // The backend owns the run state machine. These two messages stream display-only
-      // output between transitions; they never compute status themselves.
       case 'stepUpdate':
         setRunState(prev => {
           if (!prev) return prev;
@@ -180,8 +180,6 @@ export const useAppLogic = () => {
           return { ...prev, steps: { ...prev.steps, [message.stepId]: { ...ps, aiReviewOutput } } };
         });
         break;
-      // Authoritative state: the backend computed every transition and the lock/DAG state.
-      // The webview just renders it (and appends the optional audit event for the live log).
       case 'runStateChanged':
         setRunState(message.runState);
         if (message.historyEvent && activeFlowRef.current) {
@@ -364,9 +362,6 @@ export const useAppLogic = () => {
   const activeProgress = runState && activeFlow?.steps.length
     ? Math.round((completedSteps / activeFlow.steps.length) * 100)
     : 0;
-
-  // In VS Code the extension host owns the run state machine and persists every transition,
-  // so the webview no longer echoes state back. (Preview mode keeps its purely-local simulation.)
 
   const seedPreview = () => {
     setFlows([previewFlow]);

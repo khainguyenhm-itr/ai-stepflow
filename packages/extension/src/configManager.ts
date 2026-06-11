@@ -173,46 +173,58 @@ export class ConfigManager {
 
   public async loadAgents(): Promise<Agent[]> {
     const agents = new Map<string, Agent>();
+    console.log('AI StepFlow: loadAgents starting...');
 
-    // Global agents first, then project agents override by name.
     for (const dir of this.scopedDirs('agents')) {
-      for (const file of await this.listFiles(dir, name => name.endsWith('.md'))) {
+      const files = await this.listFiles(dir, name => name.endsWith('.md'));
+      console.log(`AI StepFlow: checking dir ${dir}, found ${files.length} md files.`);
+      for (const file of files) {
         const agent = await this.parseAgentFile(path.join(dir, file));
         if (agent) agents.set(agent.name, agent);
       }
     }
 
+    console.log(`AI StepFlow: loadAgents finished, total ${agents.size} unique agents.`);
     return Array.from(agents.values());
   }
 
   public async loadSkills(): Promise<Skill[]> {
     const skills = new Map<string, Skill>();
+    console.log('AI StepFlow: loadSkills starting...');
 
     for (const dir of this.scopedDirs('skills')) {
-      // Support legacy/simple flat skill files while keeping folder-based skills canonical.
-      for (const file of await this.listFiles(dir, name => name.endsWith('.md'))) {
+      const mdFiles = await this.listFiles(dir, name => name.endsWith('.md'));
+      const subDirs = await this.listDirectories(dir);
+      console.log(`AI StepFlow: checking dir ${dir}, found ${mdFiles.length} md files and ${subDirs.length} subdirs.`);
+
+      for (const file of mdFiles) {
         const skill = await this.parseSkillFile(path.join(dir, file), true);
         if (skill) skills.set(skill.name, skill);
       }
-      for (const sub of await this.listDirectories(dir)) {
+      for (const sub of subDirs) {
         const skill = await this.parseSkillFolder(path.join(dir, sub));
         if (skill) skills.set(skill.name, skill);
       }
     }
 
+    console.log(`AI StepFlow: loadSkills finished, total ${skills.size} unique skills.`);
     return Array.from(skills.values());
   }
 
   public async loadFlows(): Promise<Flow[]> {
     const flows = new Map<string, Flow>();
+    console.log('AI StepFlow: loadFlows starting...');
 
     for (const dir of this.scopedDirs('flows')) {
-      for (const file of await this.listFiles(dir, name => name.endsWith('.yaml') || name.endsWith('.yml'))) {
+      const files = await this.listFiles(dir, name => name.endsWith('.yaml') || name.endsWith('.yml'));
+      console.log(`AI StepFlow: checking dir ${dir}, found ${files.length} flow files.`);
+      for (const file of files) {
         const flow = await this.parseFlowFile(path.join(dir, file));
         if (flow) flows.set(flow.id, flow);
       }
     }
 
+    console.log(`AI StepFlow: loadFlows finished, total ${flows.size} unique flows.`);
     return Array.from(flows.values());
   }
 
@@ -230,8 +242,6 @@ export class ConfigManager {
       steps: flow.steps
     };
 
-    // Re-edit the previous file's document in place so hand-written comments and
-    // top-level key order survive the round-trip instead of being flattened away.
     let baseContent: string | undefined;
     if (flow.sourcePath && this.isManagedPath(flow.sourcePath)) {
       try {
@@ -333,7 +343,6 @@ export class ConfigManager {
   ): Promise<Skill | undefined> {
     try {
       const content = await fs.readFile(filePath, 'utf8');
-      // Built-in skill files may put metadata comments before their YAML frontmatter.
       const leadingComments = content.match(/^(?:\s*<!--[\s\S]*?-->\s*)+(?=---(?:\r?\n|$))/);
       const parseableContent = leadingComments ? content.slice(leadingComments[0].length) : content;
       const { data, content: body } = matter(parseableContent);

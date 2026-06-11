@@ -74,6 +74,8 @@ export class CockpitPanel {
     this._runner = new RunOrchestrator(configManager, stateManager, this._terminals, msg => this.postMessage(msg));
 
     this._update();
+    // Send data immediately and also on 'ready' handshake
+    void this._sendAllData();
 
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
@@ -265,8 +267,6 @@ export class CockpitPanel {
     const metaPrompt = [`Write ${target}.`, `Name: ${name}`, description?.trim() ? `Purpose: ${description.trim()}` : '', '', 'Rules:', '- Return ONLY markdown.', '- Be concise.'].join('\n');
     const projectPath = this.configManager.getProjectPath() || '';
 
-    // Route through the shared streaming runner so a draft gets the same per-run timeout and
-    // dispose-time cleanup as a step run, and report failures to the webview's draft error path.
     await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Drafting ${kind}...` }, async () => {
       let text = '';
       const result = await this._runner.spawnClaudeStreaming({ systemPrompt: '', userMessage: metaPrompt, projectPath, onText: chunk => { text += chunk; } });
@@ -286,11 +286,14 @@ export class CockpitPanel {
 
   private async _sendAllData() {
     try {
+      console.log('AI StepFlow: fetching data from ConfigManager...');
       const [flows, agents, skills] = await Promise.all([
         this.configManager.loadFlows().catch(e => { console.error('AI StepFlow: loadFlows failed', e); return []; }),
         this.configManager.loadAgents().catch(e => { console.error('AI StepFlow: loadAgents failed', e); return []; }),
         this.configManager.loadSkills().catch(e => { console.error('AI StepFlow: loadSkills failed', e); return []; })
       ]);
+      console.log(`AI StepFlow: loaded ${flows.length} flows, ${agents.length} agents, ${skills.length} skills.`);
+
       const auditLogs: Record<string, any[]> = {};
       await Promise.all(flows.map(async flow => {
         try {
@@ -303,6 +306,7 @@ export class CockpitPanel {
       const projectPath = this.configManager.getProjectPath() || '';
       const globalPath = this.configManager.getGlobalPath() || '';
 
+      console.log('AI StepFlow: posting loadData message to webview...');
       this.postMessage({
         type: 'loadData',
         flows, agents, skills,
@@ -321,7 +325,6 @@ export class CockpitPanel {
       }
     } catch (err) {
       console.error('AI StepFlow: _sendAllData critical failure', err);
-      // Even if everything fails, send minimal data to unblock the UI
       this.postMessage({
         type: 'loadData',
         flows: [], agents: [], skills: [],
@@ -370,7 +373,14 @@ export class CockpitPanel {
     const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'out/webview', 'main.js'));
     const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'out/webview', 'main.css'));
     const nonce = crypto.randomBytes(16).toString('base64');
-    const csp = [`default-src 'none'`, `img-src ${webview.cspSource} data:`, `font-src ${webview.cspSource}`, `style-src ${webview.cspSource} 'unsafe-inline'`, `script-src 'nonce-${nonce}'`].join('; ');
+    const csp = [
+      `default-src 'none'`,
+      `img-src ${webview.cspSource} data:`,
+      `font-src ${webview.cspSource}`,
+      `style-src ${webview.cspSource} 'unsafe-inline'`,
+      `script-src 'nonce-${nonce}'`
+    ].join('; ');
+    
     let html = fs.readFileSync(path.join(this._extensionUri.fsPath, 'out/webview/index.html'), 'utf8');
     html = html.replace('<head>', `<head>\n    <meta http-equiv="Content-Security-Policy" content="${csp}">`);
     html = html.replace('href="main.css"', `href="${styleUri}"`);
@@ -378,5 +388,8 @@ export class CockpitPanel {
     return html;
   }
 
-  public postMessage(message: HostMessage) { this._panel.webview.postMessage(message); }
+  public postMessage(message: HostMessage) {
+    if (!this._panel.webview) return;
+    this._panel.webview.postMessage(message);
+  }
 }
