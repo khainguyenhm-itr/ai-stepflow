@@ -1,9 +1,9 @@
 /**
  * Runs (via the `vscode:uninstall` package.json script) when the extension is removed.
- * Cleans up everything this extension wrote outside its own folder:
- *   - default agent/skill files in ~/.claude (identified by the built-in marker)
- *   - the Karpathy block merged into each project CLAUDE.md (identified by start/end markers,
- *     using the path list we recorded at merge time, since no workspace context exists here)
+ * Cleans up everything this extension wrote outside its own folder, in every `.claude`
+ * root it installed into (global ~/.claude plus any project roots recorded at install time):
+ *   - default agent/skill/validator/review files (identified by the built-in marker)
+ *   - the Karpathy block merged into each root's CLAUDE.md (identified by start/end markers)
  * Plain Node only: no `vscode` API, so marker strings are duplicated rather than imported.
  */
 import * as os from 'os';
@@ -13,9 +13,19 @@ import { promises as fs } from 'fs';
 const MARKER = 'ai-stepflow built-in';
 const CLAUDE_MD_START = '<!-- ai-stepflow:karpathy:start -->';
 const CLAUDE_MD_END = '<!-- ai-stepflow:karpathy:end -->';
-const root = path.join(os.homedir(), '.claude');
+const globalRoot = path.join(os.homedir(), '.claude');
+const trackDir = path.join(globalRoot, '.ai-stepflow');
 
-async function removeMarkedEntries(dir: string): Promise<void> {
+/** The default subfolders we install into, with the extensions we own in each. */
+const KINDS: { dir: string; exts: string[] }[] = [
+  { dir: 'agents', exts: ['.md'] },
+  { dir: 'skills', exts: ['.md'] },
+  { dir: 'validators', exts: ['.mjs', '.js'] },
+  { dir: 'reviews', exts: ['.md'] }
+];
+
+/** Remove marker-stamped files (and folder-based skills) we installed under `<root>/<kind>`. */
+async function removeMarkedEntries(dir: string, exts: string[]): Promise<void> {
   let entries;
   try {
     entries = await fs.readdir(dir, { withFileTypes: true });
@@ -25,7 +35,7 @@ async function removeMarkedEntries(dir: string): Promise<void> {
   for (const entry of entries) {
     const target = path.join(dir, entry.name);
     try {
-      if (entry.isFile() && entry.name.endsWith('.md')) {
+      if (entry.isFile() && exts.some(ext => entry.name.endsWith(ext))) {
         const content = await fs.readFile(target, 'utf8');
         if (content.includes(MARKER)) await fs.rm(target, { force: true });
       } else if (entry.isDirectory()) {
@@ -40,32 +50,32 @@ async function removeMarkedEntries(dir: string): Promise<void> {
   }
 }
 
-/** Strip the marked Karpathy block (and any surrounding blank lines) from every recorded CLAUDE.md. */
-async function stripClaudeMdBlocks(): Promise<void> {
-  const trackPath = path.join(root, '.ai-stepflow', 'claude-md-paths.json');
-  let paths: string[];
-  try {
-    paths = JSON.parse(await fs.readFile(trackPath, 'utf8'));
-  } catch {
-    return;
-  }
-  if (!Array.isArray(paths)) return;
-
+/** Strip the marked Karpathy block (and any surrounding blank lines) from one CLAUDE.md. */
+async function stripClaudeMd(file: string): Promise<void> {
   const blockPattern = new RegExp(
     `\\n*${escapeRegExp(CLAUDE_MD_START)}[\\s\\S]*?${escapeRegExp(CLAUDE_MD_END)}\\n*`,
     'g'
   );
-  for (const file of paths) {
-    try {
-      const content = await fs.readFile(file, 'utf8');
-      if (!content.includes(CLAUDE_MD_START)) continue;
-      const stripped = content.replace(blockPattern, '\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
-      await fs.writeFile(file, stripped, 'utf8');
-    } catch {
-      /* file moved/removed — nothing to do */
-    }
+  try {
+    const content = await fs.readFile(file, 'utf8');
+    if (!content.includes(CLAUDE_MD_START)) return;
+    const stripped = content.replace(blockPattern, '\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
+    await fs.writeFile(file, stripped, 'utf8');
+  } catch {
+    /* file moved/removed — nothing to do */
   }
-  await fs.rm(path.join(root, '.ai-stepflow'), { recursive: true, force: true }).catch(() => undefined);
+}
+
+/** Read the `.claude` roots we installed into; always include the global root. */
+async function installedRoots(): Promise<string[]> {
+  const roots = new Set<string>([globalRoot]);
+  try {
+    const recorded = JSON.parse(await fs.readFile(path.join(trackDir, 'installed-roots.json'), 'utf8'));
+    if (Array.isArray(recorded)) recorded.filter(r => typeof r === 'string').forEach(r => roots.add(r));
+  } catch {
+    /* no manifest (older install or global-only) — global root alone is fine */
+  }
+  return [...roots];
 }
 
 function escapeRegExp(s: string): string {
@@ -73,7 +83,18 @@ function escapeRegExp(s: string): string {
 }
 
 void (async () => {
-  await removeMarkedEntries(path.join(root, 'agents'));
-  await removeMarkedEntries(path.join(root, 'skills'));
-  await stripClaudeMdBlocks();
+  for (const root of await installedRoots()) {
+    for (const { dir, exts } of KINDS) {
+      await removeMarkedEntries(path.join(root, dir), exts);
+    }
+    await stripClaudeMd(path.join(root, 'CLAUDE.md'));
+  }
+  // Legacy: older builds recorded individual CLAUDE.md paths instead of roots.
+  try {
+    const paths = JSON.parse(await fs.readFile(path.join(trackDir, 'claude-md-paths.json'), 'utf8'));
+    if (Array.isArray(paths)) for (const p of paths) await stripClaudeMd(p);
+  } catch {
+    /* none */
+  }
+  await fs.rm(trackDir, { recursive: true, force: true }).catch(() => undefined);
 })();

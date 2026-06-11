@@ -120,6 +120,10 @@ export class ConfigManager {
     const targetBase = isGlobal ? this.globalPath : path.join(this.projectPath || '', '.claude');
     if (!isGlobal && !this.projectPath) return;
 
+    // Record where we installed so the uninstall hook (which has no workspace context) can
+    // clean project-scoped installs too, not just ~/.claude.
+    await this.recordInstallRoot(targetBase);
+
     for (const { kind, exts } of sources) {
       const srcDir = path.join(this.extensionPath, 'resources', 'defaults', kind);
       const destDir = path.join(targetBase, kind);
@@ -144,6 +148,23 @@ export class ConfigManager {
         }
       }
       await this.pruneRenamedDefaults(destDir, new Set(files), exts);
+    }
+  }
+
+  /** Append a `.claude` root we installed into, to the manifest the uninstall hook reads. */
+  private async recordInstallRoot(root: string): Promise<void> {
+    const trackPath = path.join(this.globalPath, '.ai-stepflow', 'installed-roots.json');
+    try {
+      await fs.mkdir(path.dirname(trackPath), { recursive: true });
+      let roots: string[] = [];
+      try { roots = JSON.parse(await fs.readFile(trackPath, 'utf8')); } catch { /* none yet */ }
+      if (!Array.isArray(roots)) roots = [];
+      if (!roots.includes(root)) {
+        roots.push(root);
+        await fs.writeFile(trackPath, JSON.stringify(roots, null, 2), 'utf8');
+      }
+    } catch (e) {
+      console.error('AI StepFlow: failed to record install root', e);
     }
   }
 
