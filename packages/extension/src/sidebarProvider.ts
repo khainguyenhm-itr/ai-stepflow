@@ -377,8 +377,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       --success: var(--vscode-charts-green, #73c991);
     }
     *, *::before, *::after { box-sizing: border-box; }
-    html, body { height: 100%; overflow: hidden; }
-    body { margin: 0; color: var(--vscode-foreground); background: var(--panel); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); line-height: 1.4; }
+    html, body { height: 100%; overflow: hidden; margin: 0; padding: 0; }
+    body { color: var(--vscode-foreground); background: var(--panel); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); line-height: 1.4; }
     button { font-family: inherit; cursor: pointer; }
 
     /* ── shell layout ── */
@@ -394,8 +394,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     /* scrollable content area */
     .body { flex: 1 1 0; overflow-y: auto; overflow-x: hidden; padding: 0 0 16px; overscroll-behavior: contain; }
-    .body::-webkit-scrollbar { width: 5px; }
-    .body::-webkit-scrollbar-thumb { background: var(--vscode-scrollbarSlider-background, rgba(121,121,121,.4)); border-radius: 999px; }
+    .body::-webkit-scrollbar { display: none; }
+    .body { scrollbar-width: none; }
 
     /* ── active run inline (inside Runs list) ── */
     .run-active { border-left: 2px solid var(--btn); background: rgba(14,99,156,.06); }
@@ -410,8 +410,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .badge.completed { background: var(--success); }
 
     /* ── section ── */
-    .sec { margin-top: 14px; }
-    .sec-hdr { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
+    .sec { margin-top: 8px; }
+    .sec-hdr { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
+    #lib-hdr { padding: 9px 8px; }
     .sec-label { flex: 1; font-size: 12px; font-weight: 700; color: var(--vscode-foreground); }
     .sec-count { display: inline-flex; align-items: center; height: 15px; padding: 0 5px; border-radius: 9px; font-size: 9px; font-weight: 700; color: var(--badge-fg); background: var(--badge); }
     .sec-count:empty { display: none; }
@@ -426,7 +427,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .stat-lbl { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-top: 2px; }
 
     /* default library expandable */
-    .lib-toggle { display: flex; align-items: center; gap: 7px; margin-top: 6px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); cursor: pointer; width: 100%; text-align: left; font-family: inherit; color: var(--vscode-foreground); transition: background .1s; }
+    .lib-toggle { display: flex; align-items: center; gap: 7px; margin-top: 6px; padding: 9px 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); cursor: pointer; width: 100%; text-align: left; font-family: inherit; color: var(--vscode-foreground); transition: background .1s; }
     .lib-toggle:hover { background: var(--hover); }
     .lib-caret { font-size: 9px; color: var(--muted); transition: transform .15s; flex: 0 0 auto; }
     .lib-caret.open { transform: rotate(90deg); }
@@ -449,13 +450,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .tab.active { color: var(--vscode-foreground); border-bottom-color: var(--focus); }
 
     /* search row inside box */
-    .box-search { padding: 5px 7px; border-bottom: 1px solid var(--border); background: var(--panel); }
+    .box-search { padding: 5px 8px; border-bottom: 1px solid var(--border); background: var(--panel); }
     .search { width: 100%; padding: 3px 7px; border: 1px solid var(--vscode-input-border, var(--border)); border-radius: var(--r-sm); background: var(--vscode-input-background); color: var(--vscode-input-foreground); font-size: 11.5px; font-family: inherit; outline: none; }
     .search:focus { border-color: var(--focus); }
     .search::placeholder { color: var(--vscode-input-placeholderForeground, #818181); }
 
     /* ── list items ── */
-    .item { position: relative; display: grid; grid-template-columns: 8px minmax(0,1fr) auto; align-items: center; gap: 6px; min-height: 36px; padding: 5px 8px 5px 10px; transition: background .1s; }
+    .item { position: relative; display: grid; grid-template-columns: 8px minmax(0,1fr) auto; align-items: center; gap: 6px; min-height: 36px; padding: 5px 8px; transition: background .1s; }
     .item + .item { border-top: 1px solid rgba(127,127,127,.07); }
     .item:hover { background: var(--hover); }
     .item-dot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
@@ -487,13 +488,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .menu-item[disabled] { opacity: .4; cursor: default; pointer-events: none; }
 
     /* list footer */
-    .list-more { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--muted); padding: 5px 10px 6px; border-top: 1px solid rgba(127,127,127,.08); }
+    .list-more { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--muted); padding: 5px 8px 6px; border-top: 1px solid rgba(127,127,127,.08); }
     /* Default Library tab bar: sticky so it stays visible while scrolling items */
     .lib-panel .lib-tabs { position: sticky; top: 0; z-index: 1; background: var(--panel); }
 
     /* ── states ── */
-    .empty { display: block; color: var(--muted); font-size: 11.5px; padding: 10px; font-style: italic; }
-    .skel { display: flex; flex-direction: column; gap: 7px; padding: 12px 10px; }
+    .empty { display: block; color: var(--muted); font-size: 11.5px; padding: 8px; font-style: italic; }
+    .skel { display: flex; flex-direction: column; gap: 7px; padding: 10px 8px; }
     .skel-line { height: 11px; border-radius: 2px; background: linear-gradient(90deg, rgba(127,127,127,.10) 25%, rgba(127,127,127,.18) 37%, rgba(127,127,127,.10) 63%); background-size: 400% 100%; animation: shimmer 1.4s ease infinite; }
     .skel-line:nth-child(2) { width: 68%; }
     .skel-line:nth-child(3) { width: 80%; }
@@ -526,7 +527,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     <!-- library stats -->
     <section class="sec">
-      <div class="sec-hdr">
+      <div class="sec-hdr" id="lib-hdr">
         <span class="sec-label">Library</span>
         <span class="sec-count" id="lib-count"></span>
       </div>
@@ -538,7 +539,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     <!-- MCP connections -->
     <section class="sec">
       <div class="sec-hdr">
-        <button class="sec-toggle" id="mcp-section-toggle" type="button" aria-expanded="true">
+        <button class="sec-toggle" id="mcp-section-toggle" type="button" aria-expanded="false">
           <span class="lib-caret open" id="mcp-caret">&#9658;</span>
           <span class="sec-label">MCP Connections</span>
           <span class="sec-count" id="conn-count"></span>
@@ -559,7 +560,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     <!-- plugins -->
     <section class="sec">
       <div class="sec-hdr">
-        <button class="sec-toggle" id="plugins-section-toggle" type="button" aria-expanded="true">
+        <button class="sec-toggle" id="plugins-section-toggle" type="button" aria-expanded="false">
           <span class="lib-caret open" id="plugins-caret">&#9658;</span>
           <span class="sec-label">Plugins</span>
           <span class="sec-count" id="plug-count"></span>
@@ -580,7 +581,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     <!-- runs (active + recent) -->
     <section class="sec">
       <div class="sec-hdr">
-        <button class="sec-toggle" id="runs-section-toggle" type="button" aria-expanded="true">
+        <button class="sec-toggle" id="runs-section-toggle" type="button" aria-expanded="false">
           <span class="lib-caret open" id="runs-caret">&#9658;</span>
           <span class="sec-label">Runs</span>
           <span class="sec-count" id="runs-count"></span>
@@ -664,7 +665,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   let lastActiveRun = null;
   let lastRunFiles = [];
   let lastRunTotal = 0;
-  const sectionOpen = { mcp: true, plugins: true, runs: true };
+  const sectionOpen = { mcp: false, plugins: false, runs: false };
 
   function setSectionOpen(key, open) {
     sectionOpen[key] = open;
