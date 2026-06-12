@@ -411,10 +411,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     /* ── section ── */
     .sec { margin-top: 14px; }
-    .sec-hdr { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
-    .sec-label { flex: 1; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+    .sec-hdr { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
+    .sec-label { flex: 1; font-size: 12px; font-weight: 700; color: var(--vscode-foreground); }
     .sec-count { display: inline-flex; align-items: center; height: 15px; padding: 0 5px; border-radius: 9px; font-size: 9px; font-weight: 700; color: var(--badge-fg); background: var(--badge); }
     .sec-count:empty { display: none; }
+    .sec-toggle { display: flex; align-items: center; gap: 7px; width: 100%; padding: 9px 8px; border: 0; background: transparent; color: inherit; text-align: left; font-family: inherit; transition: background .1s; }
+    .sec-toggle:hover { background: var(--hover); }
 
     /* ── library stats ── */
     .stats { display: flex; gap: 5px; }
@@ -462,7 +464,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .item-sub { display: block; font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; margin-top: 1px; }
     /* action buttons: hidden until hover so narrow sidebars don't clip content */
     .item-acts { display: flex; align-items: center; gap: 3px; opacity: 0; transition: opacity .1s; }
-    .item:hover .item-acts { opacity: 1; }
+    .item:hover .item-acts, .item.menu-open .item-acts { opacity: 1; }
 
     /* ── pill action buttons ── */
     .pill { display: inline-flex; align-items: center; justify-content: center; height: 22px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--r-sm); background: transparent; color: var(--vscode-foreground); font-size: 10.5px; font-weight: 600; cursor: pointer; white-space: nowrap; font-family: inherit; transition: background .1s, border-color .1s; }
@@ -478,7 +480,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .menu > summary::-webkit-details-marker { display: none; }
     .menu-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1px solid transparent; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 14px; font-weight: 700; cursor: pointer; line-height: 1; font-family: inherit; }
     .menu-btn:hover, .menu[open] .menu-btn { color: var(--vscode-foreground); background: var(--hover); border-color: var(--border); }
-    .menu-pop { position: fixed; z-index: 9999; min-width: 130px; padding: 3px; border: 1px solid var(--border); border-radius: var(--r); background: var(--vscode-dropdown-background, var(--panel-2)); box-shadow: 0 6px 20px rgba(0,0,0,.36); }
+    .menu-pop { position: fixed; z-index: 9999; min-width: 130px; max-width: calc(100vw - 12px); padding: 3px; border: 1px solid var(--border); border-radius: var(--r); background: var(--vscode-dropdown-background, var(--panel-2)); box-shadow: 0 6px 20px rgba(0,0,0,.36); }
     .menu-item { display: flex; align-items: center; width: 100%; min-height: 26px; border: 0; border-radius: var(--r-sm); padding: 4px 8px; background: transparent; color: var(--vscode-foreground); font-size: 11.5px; font-family: inherit; text-align: left; cursor: pointer; }
     .menu-item:hover { background: var(--hover); }
     .menu-item.danger { color: var(--error); }
@@ -536,10 +538,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     <!-- MCP connections -->
     <section class="sec">
       <div class="sec-hdr">
-        <span class="sec-label">MCP Connections</span>
-        <span class="sec-count" id="conn-count"></span>
+        <button class="sec-toggle" id="mcp-section-toggle" type="button" aria-expanded="true">
+          <span class="lib-caret open" id="mcp-caret">&#9658;</span>
+          <span class="sec-label">MCP Connections</span>
+          <span class="sec-count" id="conn-count"></span>
+        </button>
       </div>
-      <div class="box">
+      <div class="box" id="mcp-panel">
+        <div class="box-tabs" id="mcp-tabs">
+          <button class="tab active" type="button" data-tab="installed">Installed</button>
+          <button class="tab" type="button" data-tab="available">Available</button>
+        </div>
         <div class="box-search">
           <input class="search" id="mcp-search" type="text" placeholder="Filter servers…" autocomplete="off" spellcheck="false">
         </div>
@@ -550,10 +559,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     <!-- plugins -->
     <section class="sec">
       <div class="sec-hdr">
-        <span class="sec-label">Plugins</span>
-        <span class="sec-count" id="plug-count"></span>
+        <button class="sec-toggle" id="plugins-section-toggle" type="button" aria-expanded="true">
+          <span class="lib-caret open" id="plugins-caret">&#9658;</span>
+          <span class="sec-label">Plugins</span>
+          <span class="sec-count" id="plug-count"></span>
+        </button>
       </div>
-      <div class="box">
+      <div class="box" id="plugins-panel">
         <div class="box-tabs" id="plugin-tabs">
           <button class="tab active" type="button" data-tab="installed">Installed</button>
           <button class="tab" type="button" data-tab="marketplace">Available</button>
@@ -568,10 +580,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     <!-- runs (active + recent) -->
     <section class="sec">
       <div class="sec-hdr">
-        <span class="sec-label">Runs</span>
-        <span class="sec-count" id="runs-count"></span>
+        <button class="sec-toggle" id="runs-section-toggle" type="button" aria-expanded="true">
+          <span class="lib-caret open" id="runs-caret">&#9658;</span>
+          <span class="sec-label">Runs</span>
+          <span class="sec-count" id="runs-count"></span>
+        </button>
       </div>
-      <div class="box" id="runs"><span class="empty">No runs yet</span></div>
+      <div class="box" id="runs-panel"><div id="runs"><span class="empty">No runs yet</span></div></div>
     </section>
 
   </div><!-- /.body -->
@@ -592,19 +607,54 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   const menuItem = (label, attrs, danger, disabled) =>
     '<button class="menu-item' + (danger ? ' danger' : '') + '" type="button" ' + (disabled ? 'disabled ' : '') + attrs + '>' + esc(label) + '</button>';
 
-  // Close any open menu when clicking outside it; position newly opened menu-pop via fixed coords.
+  function positionMenu(menu) {
+    const btn = menu.querySelector('.menu-btn');
+    const pop = menu.querySelector('.menu-pop');
+    if (!btn || !pop) return;
+
+    pop.style.left = '0px';
+    pop.style.right = 'auto';
+    pop.style.top = '0px';
+
+    const margin = 6;
+    const btnRect = btn.getBoundingClientRect();
+    const popRect = pop.getBoundingClientRect();
+    const viewportW = document.documentElement.clientWidth;
+    const viewportH = document.documentElement.clientHeight;
+    const width = Math.min(popRect.width, Math.max(0, viewportW - margin * 2));
+    const height = popRect.height;
+
+    let left = btnRect.right - width;
+    left = Math.max(margin, Math.min(left, viewportW - width - margin));
+
+    let top = btnRect.bottom + 4;
+    if (top + height > viewportH - margin) {
+      top = btnRect.top - height - 4;
+    }
+    top = Math.max(margin, Math.min(top, viewportH - height - margin));
+
+    pop.style.left = left + 'px';
+    pop.style.top = top + 'px';
+  }
+
+  // Close any open menu when clicking outside it; position opened menu-pop via fixed coords.
   document.addEventListener('click', e => {
     const menu = e.target instanceof Element ? e.target.closest('.menu') : null;
-    document.querySelectorAll('.menu[open]').forEach(n => { if (n !== menu) n.open = false; });
-    if (menu && menu.open) {
-      const btn = menu.querySelector('.menu-btn');
-      const pop = menu.querySelector('.menu-pop');
-      if (btn && pop) {
-        const r = btn.getBoundingClientRect();
-        pop.style.top = (r.bottom + 2) + 'px';
-        pop.style.right = (document.documentElement.clientWidth - r.right) + 'px';
+    document.querySelectorAll('.menu[open]').forEach(n => {
+      if (n !== menu) {
+        n.open = false;
+        n.closest('.item')?.classList.remove('menu-open');
       }
-    }
+    });
+  });
+  document.addEventListener('toggle', e => {
+    const menu = e.target instanceof Element ? e.target.closest('.menu') : null;
+    if (!menu) return;
+    menu.closest('.item')?.classList.toggle('menu-open', menu.open);
+    if (menu.open) positionMenu(menu);
+  }, true);
+  window.addEventListener('resize', () => {
+    document.querySelectorAll('.menu[open]').forEach(positionMenu);
   });
 
   let activePluginTab = 'installed';
@@ -614,6 +664,24 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   let lastActiveRun = null;
   let lastRunFiles = [];
   let lastRunTotal = 0;
+  const sectionOpen = { mcp: true, plugins: true, runs: true };
+
+  function setSectionOpen(key, open) {
+    sectionOpen[key] = open;
+    const panel = document.getElementById(key + '-panel');
+    const caret = document.getElementById(key + '-caret');
+    const toggle = document.getElementById(key + '-section-toggle');
+    if (panel) panel.style.display = open ? '' : 'none';
+    if (caret) caret.className = 'lib-caret' + (open ? ' open' : '');
+    if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  ['mcp', 'plugins', 'runs'].forEach(key => {
+    const toggle = document.getElementById(key + '-section-toggle');
+    if (!toggle) return;
+    toggle.onclick = () => setSectionOpen(key, !sectionOpen[key]);
+    setSectionOpen(key, sectionOpen[key]);
+  });
 
   // Plugin tab switcher
   document.querySelectorAll('#plugin-tabs .tab').forEach(n => {
@@ -629,9 +697,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     renderPlugins();
   });
 
-  // MCP search
+  // MCP tabs + search
+  let activeMcpTab = 'installed';
   let mcpQuery = '';
   let mcpServers = [];
+  document.querySelectorAll('#mcp-tabs .tab').forEach(n => {
+    n.onclick = () => {
+      document.querySelectorAll('#mcp-tabs .tab').forEach(t => t.classList.remove('active'));
+      n.classList.add('active');
+      activeMcpTab = n.getAttribute('data-tab');
+      renderMcp();
+    };
+  });
   document.getElementById('mcp-search').addEventListener('input', e => {
     mcpQuery = e.target.value.trim().toLowerCase();
     renderMcp();
@@ -750,18 +827,27 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   function renderMcp() {
     const el = document.getElementById('mcp');
     const connected = mcpServers.filter(s => s.status === 'connected').length;
-    document.getElementById('conn-count').textContent = mcpServers.length ? connected + '/' + mcpServers.length : '';
+    document.getElementById('conn-count').textContent = connected ? String(connected) : '';
     const q = mcpQuery;
 
     if (!mcpServers.length) {
-      el.innerHTML = '<span class="empty">No MCP servers configured</span>';
+      el.innerHTML = '<span class="empty">No MCP connections installed</span>';
       return;
     }
     const rows = mcpServers
+      .filter(s => activeMcpTab === 'installed' ? s.status === 'connected' : s.status !== 'connected')
       .filter(s => !q || s.name.toLowerCase().includes(q))
       .sort((a, b) =>
         (MCP_STATUS[a.status] || MCP_STATUS.unknown).rank - (MCP_STATUS[b.status] || MCP_STATUS.unknown).rank
         || a.name.localeCompare(b.name));
+    if (activeMcpTab === 'installed' && !connected) {
+      el.innerHTML = '<span class="empty">No MCP connections installed</span>';
+      return;
+    }
+    if (activeMcpTab === 'available' && !mcpServers.some(s => s.status !== 'connected')) {
+      el.innerHTML = '<span class="empty">No available MCP connections</span>';
+      return;
+    }
     if (!rows.length) {
       el.innerHTML = '<span class="empty">No match for &ldquo;' + esc(q) + '&rdquo;</span>';
       return;

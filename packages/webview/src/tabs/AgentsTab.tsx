@@ -13,6 +13,8 @@ interface AgentsTabProps {
   onRun: (agent: Agent) => void;
   onDetail: (agent: Agent) => void;
   onNew: (scope: SaveScope) => void;
+  isBookmarked: (agent: Agent) => boolean;
+  onToggleBookmark: (agent: Agent) => void;
 }
 
 export const AgentsTab: React.FC<AgentsTabProps> = ({
@@ -22,7 +24,9 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
   onOpenEditor,
   onRun,
   onDetail,
-  onNew
+  onNew,
+  isBookmarked,
+  onToggleBookmark
 }) => {
   const [filter, setFilter] = useState<ScopeFilter>('all');
 
@@ -36,8 +40,12 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
 
   const visibleAgents = agents
     .filter(agent => matchesScopeFilter(agent.sourcePath))
-    // Built-in (default) agents float to the top, then alphabetical.
-    .sort((a, b) => (Number(!!b.builtIn) - Number(!!a.builtIn)) || a.name.localeCompare(b.name));
+    // Bookmarked agents are easiest to reach, then built-ins, then alphabetical.
+    .sort((a, b) =>
+      (Number(isBookmarked(b)) - Number(isBookmarked(a)))
+      || (Number(!!b.builtIn) - Number(!!a.builtIn))
+      || a.name.localeCompare(b.name)
+    );
 
   const renderScopeBadge = (sourcePath: string) => {
     const scope = getItemScope(sourcePath);
@@ -74,6 +82,8 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
               badge={agent.builtIn ? <span className="badge built-in">Build-in</span> : undefined}
               meta={<span className="muted small mono">model: {agent.model}</span>}
               onEdit={() => onOpenEditor(agent)}
+              bookmarked={isBookmarked(agent)}
+              onToggleBookmark={() => onToggleBookmark(agent)}
               actions={
                 <button className="btn primary" onClick={() => onRun(agent)}>
                   <span className="btn-glyph"><Icon.Play size={14} /></span>Run

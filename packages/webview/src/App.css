@@ -26,6 +26,7 @@
   --link: var(--vscode-textLink-foreground, #3794ff);
   --error: var(--vscode-errorForeground, #f48771);
   --warn: var(--vscode-editorWarning-foreground, #cca700);
+  --bookmark: var(--vscode-editorWarning-foreground, #cca700);
   --success: var(--vscode-charts-green, #73c991);
   --running: var(--vscode-charts-blue, #3794ff);
   --badge-bg: var(--vscode-badge-background, #4d4d4d);
@@ -689,11 +690,13 @@ textarea.input {
 }
 
 .card {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 10px;
   min-height: 180px;
   padding: 14px;
+  padding-right: 42px;
   border: 1px solid var(--border);
   border-radius: 3px;
   background: var(--panel);
@@ -720,6 +723,22 @@ textarea.input {
 }
 
 .card-head .icon-btn {
+  margin-left: auto;
+}
+
+.card > .icon-btn.bookmark {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  color: var(--muted);
+}
+
+.card > .icon-btn.bookmark:hover,
+.card > .icon-btn.bookmark.active {
+  color: var(--bookmark);
+}
+
+.card-head .icon-btn.pencil {
   margin-left: auto;
 }
 

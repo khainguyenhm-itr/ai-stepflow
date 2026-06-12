@@ -29,6 +29,7 @@ const App: React.FC = () => {
     activeStepId, setActiveStepId,
     runnerVisible, setRunnerVisible,
     commandCopied, setCommandCopied,
+    isBookmarked, toggleBookmark,
     standaloneRun, setStandaloneRun,
     standaloneRunDescription, setStandaloneRunDescription,
     editingFlow, setEditingFlow,
@@ -214,6 +215,8 @@ const App: React.FC = () => {
             meta: { Scope: getScope(agent.sourcePath), Model: agent.model },
             onDelete: () => sendToVSCode('deleteAgent', { agent })
           })}
+          isBookmarked={agent => isBookmarked('agent', agent.sourcePath)}
+          onToggleBookmark={agent => toggleBookmark('agent', agent.sourcePath)}
           onNew={scope => openAgentEditor({ name: '', description: '', model: 'claude-sonnet-4-6', tools: [], systemPrompt: '', sourcePath: scope === 'global' ? globalPath : projectPath })}
         />
       )}
@@ -236,6 +239,8 @@ const App: React.FC = () => {
             meta: { Scope: getScope(skill.sourcePath) },
             onDelete: () => sendToVSCode('deleteSkill', { skill })
           })}
+          isBookmarked={skill => isBookmarked('skill', skill.sourcePath)}
+          onToggleBookmark={skill => toggleBookmark('skill', skill.sourcePath)}
           onNew={scope => openSkillEditor({ name: '', description: '', instructions: '', sourcePath: scope === 'global' ? globalPath : projectPath })}
         />
       )}

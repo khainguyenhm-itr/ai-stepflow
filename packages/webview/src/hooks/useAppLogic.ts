@@ -12,11 +12,28 @@ import { previewFlow, previewAgents, previewSkills } from '../previewData';
 type Tab = 'flows' | 'agents' | 'skills';
 type SaveScope = 'project' | 'global';
 
+const BOOKMARKS_STORAGE_KEY = 'ai-stepflow:resource-bookmarks';
+
+type ResourceBookmarks = Record<string, boolean>;
+
+const loadBookmarks = (): ResourceBookmarks => {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(BOOKMARKS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
 export const useAppLogic = () => {
   const [activeTab, setActiveTab] = useState<Tab>('flows');
   const [flows, setFlows] = useState<Flow[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
+  const [bookmarks, setBookmarks] = useState<ResourceBookmarks>(loadBookmarks);
   /** Persistent local machine logs (non-repo). Keyed by flowId. */
   const [auditLogs, setAuditLogs] = useState<Record<string, any[]>>({});
   const [globalPath, setGlobalPath] = useState<string>('');
@@ -77,6 +94,10 @@ export const useAppLogic = () => {
     activeFlowRef.current = activeFlow;
   }, [activeFlow]);
 
+  useEffect(() => {
+    window.localStorage.setItem(BOOKMARKS_STORAGE_KEY, JSON.stringify(bookmarks));
+  }, [bookmarks]);
+
   const getItemScope = (sourcePath: string): SaveScope => {
     if (globalPath && sourcePath.startsWith(globalPath)) return 'global';
     return 'project';
@@ -85,6 +106,17 @@ export const useAppLogic = () => {
   const getFlowScope = (flow: Flow): SaveScope => getItemScope(flow.sourcePath);
   const getAgentByName = (name: string) => agents.find(agent => agent.name === name);
   const getSkillByName = (name: string) => skills.find(skill => skill.name === name);
+  const getBookmarkKey = (kind: 'agent' | 'skill', sourcePath: string) => `${kind}:${sourcePath}`;
+  const isBookmarked = (kind: 'agent' | 'skill', sourcePath: string) => !!bookmarks[getBookmarkKey(kind, sourcePath)];
+  const toggleBookmark = (kind: 'agent' | 'skill', sourcePath: string) => {
+    const key = getBookmarkKey(kind, sourcePath);
+    setBookmarks(prev => {
+      const next = { ...prev };
+      if (next[key]) delete next[key];
+      else next[key] = true;
+      return next;
+    });
+  };
 
   const updateRunState = (stepId: string, updates: Partial<StepRunState> | ((prev: StepRunState | undefined) => Partial<StepRunState>)) => {
     shouldPersistRun.current = true;
@@ -475,6 +507,7 @@ export const useAppLogic = () => {
     flows, setFlows,
     agents, setAgents,
     skills, setSkills,
+    bookmarks,
     auditLogs, setAuditLogs,
     globalPath, projectPath, connectedMcpServers,
     activeFlow, setActiveFlow,
@@ -510,6 +543,7 @@ export const useAppLogic = () => {
     completedSteps, activeProgress,
     handleHostMessage, seedPreview,
     getItemScope, getFlowScope, getAgentByName, getSkillByName,
+    isBookmarked, toggleBookmark,
     startOrResumeRun,
     startFreshRun,
     emptyAgentForm, emptySkillForm,

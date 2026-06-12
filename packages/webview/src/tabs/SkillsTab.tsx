@@ -13,6 +13,8 @@ interface SkillsTabProps {
   onRun: (skill: Skill) => void;
   onDetail: (skill: Skill) => void;
   onNew: (scope: SaveScope) => void;
+  isBookmarked: (skill: Skill) => boolean;
+  onToggleBookmark: (skill: Skill) => void;
 }
 
 export const SkillsTab: React.FC<SkillsTabProps> = ({
@@ -22,7 +24,9 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
   onOpenEditor,
   onRun,
   onDetail,
-  onNew
+  onNew,
+  isBookmarked,
+  onToggleBookmark
 }) => {
   const [filter, setFilter] = useState<ScopeFilter>('all');
 
@@ -36,8 +40,12 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
 
   const visibleSkills = skills
     .filter(skill => matchesScopeFilter(skill.sourcePath))
-    // Built-in (default) skills float to the top, then alphabetical.
-    .sort((a, b) => (Number(!!b.builtIn) - Number(!!a.builtIn)) || a.name.localeCompare(b.name));
+    // Bookmarked skills are easiest to reach, then built-ins, then alphabetical.
+    .sort((a, b) =>
+      (Number(isBookmarked(b)) - Number(isBookmarked(a)))
+      || (Number(!!b.builtIn) - Number(!!a.builtIn))
+      || a.name.localeCompare(b.name)
+    );
 
   const renderScopeBadge = (sourcePath: string) => {
     const scope = getItemScope(sourcePath);
@@ -73,6 +81,8 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
               scopeBadge={renderScopeBadge(skill.sourcePath)}
               badge={skill.builtIn ? <span className="badge built-in">Build-in</span> : undefined}
               onEdit={() => onOpenEditor(skill)}
+              bookmarked={isBookmarked(skill)}
+              onToggleBookmark={() => onToggleBookmark(skill)}
               actions={
                 <button className="btn primary" onClick={() => onRun(skill)}>
                   <span className="btn-glyph"><Icon.Play size={14} /></span>Run
