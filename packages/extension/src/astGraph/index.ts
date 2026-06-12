@@ -3,7 +3,7 @@
  * registration, and a status-bar entry point into a single `registerAstGraph(context, output)`
  * call invoked from `extension.ts`.
  *
- * Lifecycle (primary workspace folder only — `local` MCP scope points at one db):
+ * Lifecycle (all workspace folders — each `local` MCP scope points at that repo's db):
  *   1. Resolve binary (download + verify on first run, cache afterwards)
  *   2. Run initial scan
  *   3. Register MCP server with the Claude CLI (best-effort) + write the CLAUDE.md hint
@@ -16,7 +16,7 @@ import * as vscode from 'vscode';
 
 import { ensureAstGraphBinary, UnsupportedPlatformError } from './binary.js';
 import { createSourceWatcher, ensureLocalExcludeEntry, runScan, type ScanSummary } from './scanner.js';
-import { isAlreadyRegistered, registerMcpServer } from './mcpRegister.js';
+import { reconcileMcpServer } from './mcpRegister.js';
 import { ensureClaudeMdHint } from './claudeMdHint.js';
 
 const SETTING_NAMESPACE = 'ai-stepflow.astGraph';
@@ -48,43 +48,51 @@ export function registerAstGraph(context: vscode.ExtensionContext, output: vscod
   const folderStates = new Map<string, FolderState>();
   let binPath: string | null = null;
 
-  const primaryFolder = (): vscode.WorkspaceFolder | undefined => vscode.workspace.workspaceFolders?.[0];
-  const primaryState = (): FolderState | undefined => {
-    const f = primaryFolder();
-    return f ? folderStates.get(f.uri.toString()) : undefined;
+  const workspaceFolders = (): readonly vscode.WorkspaceFolder[] => vscode.workspace.workspaceFolders ?? [];
+  const stateFor = (folder: vscode.WorkspaceFolder): FolderState => {
+    const key = folder.uri.toString();
+    const existing = folderStates.get(key);
+    if (existing) return existing;
+    const created: FolderState = {
+      folder, lastScan: null, scanning: false, mcp: { ok: false, reason: 'not registered yet' }, watcher: null,
+    };
+    folderStates.set(key, created);
+    return created;
   };
 
   const updateStatusBar = (): void => {
-    const s = primaryState();
     if (!binPath) {
       item.text = '$(cloud-download) AST …';
       item.tooltip = 'AST graph: downloading binary…';
       return;
     }
-    if (!s) {
+    const folders = workspaceFolders();
+    if (!folders.length) {
       item.text = '$(type-hierarchy) AST';
       item.tooltip = 'AST graph: no workspace folder.';
       return;
     }
-    if (s.scanning) {
-      item.text = '$(sync~spin) AST';
-      item.tooltip = 'AST graph: scanning…';
-      return;
+    const states = folders.map(stateFor);
+    const connected = states.filter((s) => s.mcp.ok).length;
+    const scanning = states.filter((s) => s.scanning).length;
+    const scanned = states.filter((s) => s.lastScan).length;
+    item.text = scanning
+      ? `$(sync~spin) AST ${connected}/${folders.length}`
+      : `$(type-hierarchy) AST ${connected}/${folders.length}`;
+
+    const md = new vscode.MarkdownString();
+    md.appendMarkdown('**AST graph**\n\n');
+    for (const s of states) {
+      const scan = s.scanning
+        ? 'scanning'
+        : s.lastScan
+          ? `${s.lastScan.files} files · ${s.lastScan.nodes} nodes`
+          : 'not scanned';
+      const mcp = s.mcp.ok ? 'connected' : `off (${s.mcp.reason || 'not registered'})`;
+      md.appendMarkdown(`- **${s.folder.name}**: ${scan}; MCP ${mcp}\n`);
     }
-    if (s.lastScan) {
-      const k = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
-      item.text = `$(type-hierarchy) AST ${k(s.lastScan.nodes)}n`;
-      const md = new vscode.MarkdownString();
-      md.appendMarkdown('**AST graph**\n\n');
-      md.appendMarkdown(`Files: ${s.lastScan.files} · Nodes: ${s.lastScan.nodes} · Edges: ${s.lastScan.edges}\n\n`);
-      md.appendMarkdown(`Languages: ${s.lastScan.languages.join(', ') || '—'}\n\n`);
-      md.appendMarkdown(`MCP: ${s.mcp.ok ? 'registered' : `off (${s.mcp.reason || 'not registered'})`}\n\n`);
-      md.appendMarkdown('Click to rescan.');
-      item.tooltip = md;
-    } else {
-      item.text = '$(type-hierarchy) AST';
-      item.tooltip = 'AST graph: no scan yet. Click to scan.';
-    }
+    md.appendMarkdown(`\nScanned: ${scanned}/${folders.length}. Click to rescan.`);
+    item.tooltip = md;
   };
 
   async function scanFolder(folder: vscode.WorkspaceFolder, clean: boolean): Promise<void> {
@@ -93,9 +101,7 @@ export function registerAstGraph(context: vscode.ExtensionContext, output: vscod
       return;
     }
     const key = folder.uri.toString();
-    const state: FolderState = folderStates.get(key) ?? {
-      folder, lastScan: null, scanning: false, mcp: { ok: false, reason: 'not registered yet' }, watcher: null,
-    };
+    const state = stateFor(folder);
     if (state.scanning) {
       output.appendLine(`AST graph: scan already in flight for ${folder.name}, skipping.`);
       return;
@@ -111,11 +117,12 @@ export function registerAstGraph(context: vscode.ExtensionContext, output: vscod
         () => runScan({ binPath: binPath!, folder, clean, output }),
       );
       state.lastScan = summary;
-      output.appendLine(`AST graph: scan done — ${summary.files} files, ${summary.nodes} nodes, ${summary.edges} edges in ${summary.durationMs}ms.`);
+      output.appendLine(`AST graph [${folder.name}]: scan done — ${summary.files} files, ${summary.nodes} nodes, ${summary.edges} edges in ${summary.durationMs}ms.`);
+      await registerMcp(folder);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      output.appendLine(`AST graph: scan failed — ${msg}`);
-      void vscode.window.showWarningMessage(`AST graph scan failed: ${msg}`);
+      output.appendLine(`AST graph [${folder.name}]: scan failed — ${msg}`);
+      void vscode.window.showWarningMessage(`AST graph scan failed for ${folder.name}: ${msg}`);
     } finally {
       state.scanning = false;
       folderStates.set(key, state);
@@ -129,25 +136,15 @@ export function registerAstGraph(context: vscode.ExtensionContext, output: vscod
     const state = folderStates.get(key);
     if (!state || !state.lastScan) return;
 
-    const already = await isAlreadyRegistered(folder.uri.fsPath);
-    if (already) {
-      state.mcp = { ok: true, reason: 'already registered' };
-      folderStates.set(key, state);
-      output.appendLine(`AST graph: MCP already registered in ${folder.name}.`);
-      await writeHint(folder);
-      updateStatusBar();
-      onMcpReady?.();
-      return;
-    }
-    const result = await registerMcpServer({ binPath, dbPath: state.lastScan.dbPath, cwd: folder.uri.fsPath });
+    const result = await reconcileMcpServer({ binPath, dbPath: state.lastScan.dbPath, cwd: folder.uri.fsPath });
     state.mcp = result;
     folderStates.set(key, state);
     if (result.ok) {
-      output.appendLine(`AST graph: registered MCP server in ${folder.name}.`);
+      output.appendLine(`AST graph [${folder.name}]: MCP connected.`);
       await writeHint(folder);
       onMcpReady?.();
     } else {
-      output.appendLine(`AST graph: MCP registration skipped — ${result.reason}`);
+      output.appendLine(`AST graph [${folder.name}]: MCP registration failed/skipped — ${result.reason}`);
     }
     updateStatusBar();
   }
@@ -166,21 +163,62 @@ export function registerAstGraph(context: vscode.ExtensionContext, output: vscod
     const state = folderStates.get(key);
     if (!state || state.watcher) return;
     const debounceMs = Math.max(1, cfg().get<number>('autoRescanDebounceSeconds', 5)) * 1000;
-    state.watcher = createSourceWatcher({ folder, debounceMs, onTrigger: () => void scanFolder(folder, false) });
+    state.watcher = createSourceWatcher({
+      folder,
+      debounceMs,
+      onTrigger: () => void scanFolder(folder, false),
+    });
     folderStates.set(key, state);
     context.subscriptions.push(state.watcher);
   }
 
-  async function runForPrimary(clean: boolean): Promise<void> {
-    const f = primaryFolder();
-    if (!f) {
+  async function runForFolders(folders: readonly vscode.WorkspaceFolder[], clean: boolean): Promise<void> {
+    if (!folders.length) {
       output.appendLine('AST graph: no workspace folder open, deferring scan.');
       return;
     }
-    await scanFolder(f, clean);
-    if (folderStates.get(f.uri.toString())?.lastScan) {
-      await registerMcp(f);
-      attachWatcher(f);
+    for (const folder of folders) {
+      await scanFolder(folder, clean);
+      if (folderStates.get(folder.uri.toString())?.lastScan) {
+        attachWatcher(folder);
+      }
+    }
+  }
+
+  async function pickFoldersForCommand(title: string): Promise<readonly vscode.WorkspaceFolder[] | undefined> {
+    const folders = workspaceFolders();
+    if (folders.length <= 1) return folders;
+    const all = { label: '$(repo) All workspace repos', description: `${folders.length} repos`, folders };
+    const picked = await vscode.window.showQuickPick(
+      [
+        all,
+        ...folders.map((folder) => ({
+          label: `$(folder) ${folder.name}`,
+          description: folder.uri.fsPath,
+          folders: [folder] as readonly vscode.WorkspaceFolder[],
+        })),
+      ],
+      { title, placeHolder: 'Choose which repo AST graph should update' },
+    );
+    return picked?.folders;
+  }
+
+  function disposeFolder(folder: vscode.WorkspaceFolder): void {
+    const key = folder.uri.toString();
+    const state = folderStates.get(key);
+    state?.watcher?.dispose();
+    folderStates.delete(key);
+  }
+
+  async function reregisterFolders(folders: readonly vscode.WorkspaceFolder[]): Promise<void> {
+    if (!binPath) return;
+    for (const folder of folders) {
+      const state = stateFor(folder);
+      if (!state.lastScan) {
+        await scanFolder(folder, false);
+        continue;
+      }
+      await registerMcp(folder);
     }
   }
 
@@ -204,25 +242,24 @@ export function registerAstGraph(context: vscode.ExtensionContext, output: vscod
       return;
     }
     updateStatusBar();
-    await runForPrimary(false);
+    await runForFolders(workspaceFolders(), false);
   }
 
   void bootstrap();
 
   context.subscriptions.push(
-    vscode.workspace.onDidChangeWorkspaceFolders(async () => {
-      if (binPath && !primaryState()?.lastScan) await runForPrimary(false);
+    vscode.workspace.onDidChangeWorkspaceFolders(async (event) => {
+      for (const folder of event.removed) disposeFolder(folder);
+      if (binPath && event.added.length) await runForFolders(event.added, false);
       updateStatusBar();
     }),
-    vscode.commands.registerCommand(RESCAN_CMD, () => runForPrimary(true)),
+    vscode.commands.registerCommand(RESCAN_CMD, async () => {
+      const folders = await pickFoldersForCommand('Rescan AST Graph');
+      if (folders) await runForFolders(folders, true);
+    }),
     vscode.commands.registerCommand(REREGISTER_CMD, async () => {
-      const f = primaryFolder();
-      const s = primaryState();
-      if (!binPath || !f || !s?.lastScan) return;
-      const res = await registerMcpServer({ binPath, dbPath: s.lastScan.dbPath, cwd: f.uri.fsPath });
-      s.mcp = res;
-      folderStates.set(f.uri.toString(), s);
-      if (res.ok) await writeHint(f);
+      const folders = await pickFoldersForCommand('Re-register AST Graph MCP Server');
+      if (folders) await reregisterFolders(folders);
       updateStatusBar();
     }),
   );

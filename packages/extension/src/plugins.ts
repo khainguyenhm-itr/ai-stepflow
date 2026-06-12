@@ -1,4 +1,7 @@
-import { execFile } from 'child_process';
+import { execFile, spawn } from 'child_process';
+import { promises as fs } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 /** An installed Claude plugin. */
 export interface PluginInfo {
@@ -32,6 +35,55 @@ export interface PluginCatalog {
 
 const nameFromId = (id: unknown): string => String(id ?? '').split('@')[0];
 
+/**
+ * Claude 2.1.175 truncates large `plugin list --available --json` output when
+ * stdout is a Node pipe. Sending stdout to a file preserves the full JSON.
+ */
+async function runClaudeJsonViaFile(args: string[], timeout: number): Promise<any> {
+  const dir = await fs.mkdtemp(join(tmpdir(), 'ai-stepflow-claude-'));
+  const outPath = join(dir, 'stdout.json');
+  const out = await fs.open(outPath, 'w');
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn('claude', args, { stdio: ['ignore', out.fd, 'pipe'] });
+      let stderr = '';
+      let settled = false;
+      const timer = setTimeout(() => {
+        settle(() => {
+          child.kill();
+          reject(new Error(`claude ${args.join(' ')} timed out after ${timeout}ms`));
+        });
+      }, timeout);
+
+      const settle = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        fn();
+      };
+
+      child.stderr?.on('data', chunk => { stderr += String(chunk); });
+      child.on('error', error => settle(() => reject(error)));
+      child.on('close', code => {
+        settle(() => {
+          if (code === 0) {
+            resolve();
+          } else {
+            reject(new Error((stderr || `claude ${args.join(' ')} exited with code ${code}`).trim()));
+          }
+        });
+      });
+    });
+
+    const raw = await fs.readFile(outPath, 'utf8');
+    return JSON.parse(raw);
+  } finally {
+    await out.close().catch(() => {});
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 /** Map the CLI's installed-plugin JSON record to our {@link PluginInfo}. */
 function toPluginInfo(p: any): PluginInfo {
   return {
@@ -54,35 +106,19 @@ function toPluginInfo(p: any): PluginInfo {
  * Falls back to `plugin list --json` (installed only) if the marketplace probe fails.
  */
 export function listPluginCatalog(): Promise<PluginCatalog> {
-  return new Promise(resolve => {
-    execFile(
-      'claude',
-      ['plugin', 'list', '--available', '--json'],
-      { timeout: 20000, maxBuffer: 16 * 1024 * 1024 },
-      (error, stdout) => {
-        if (!error || stdout) {
-          try {
-            const data = JSON.parse(stdout);
-            const installed: PluginInfo[] = (data.installed || []).map(toPluginInfo);
-            const installedIds = new Set(installed.map(p => p.id));
-            const available: AvailablePlugin[] = (data.available || [])
-              .filter((p: any) => !installedIds.has(String(p?.pluginId ?? '')))
-              .map((p: any) => ({
-                id: String(p?.pluginId ?? ''),
-                name: p?.name || nameFromId(p?.pluginId),
-                description: p?.description || '',
-                marketplace: p?.marketplaceName || ''
-              }));
-            resolve({ installed, available });
-            return;
-          } catch {
-            /* fall through to the installed-only fallback */
-          }
-        }
-        listInstalledOnly().then(installed => resolve({ installed, available: [] }));
-      }
-    );
-  });
+  return runClaudeJsonViaFile(['plugin', 'list', '--available', '--json'], 20000).then(data => {
+    const installed: PluginInfo[] = (data.installed || []).map(toPluginInfo);
+    const installedIds = new Set(installed.map(p => p.id));
+    const available: AvailablePlugin[] = (data.available || [])
+      .filter((p: any) => !installedIds.has(String(p?.pluginId ?? '')))
+      .map((p: any) => ({
+        id: String(p?.pluginId ?? ''),
+        name: p?.name || nameFromId(p?.pluginId),
+        description: p?.description || '',
+        marketplace: p?.marketplaceName || ''
+      }));
+    return { installed, available };
+  }).catch(() => listInstalledOnly().then(installed => ({ installed, available: [] })));
 }
 
 /** Fallback when the marketplace probe is unavailable: installed plugins only. */

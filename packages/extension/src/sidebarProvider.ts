@@ -682,7 +682,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   function fmtDefaultName(name) {
-    return name.replace(/^aisf-(?:agent|skill|review|validator)?-?/, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    return name.replace(/^aisf-(?:agent|skill|review|validator)?-?/, '').replace(/-/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());
   }
 
   function renderDefaultsPanel() {

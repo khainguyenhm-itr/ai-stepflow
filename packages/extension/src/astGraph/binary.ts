@@ -104,7 +104,7 @@ export async function ensureAstGraphBinary(
   }
 
   await fs.promises.mkdir(dir, { recursive: true });
-  const archivePath = path.join(dir, spec.asset);
+  const archivePath = uniqueArchivePath(dir, spec.asset);
   const url = `${RELEASE_BASE}/${spec.asset}`;
 
   output.appendLine(`ast-graph: downloading ${url}`);
@@ -117,6 +117,11 @@ export async function ensureAstGraphBinary(
     throw new Error(`ast-graph: checksum mismatch for ${spec.asset} (got ${actual}, expected ${expected})`);
   }
   output.appendLine(`ast-graph: checksum OK (${actual.slice(0, 12)}…)`);
+
+  if (await isFileReady(exePath)) {
+    await fs.promises.unlink(archivePath).catch(() => {});
+    return { path: exePath, version: AST_GRAPH_VERSION };
+  }
 
   await extractArchive(archivePath, dir, spec.exe, output);
   await fs.promises.unlink(archivePath).catch(() => {});
@@ -146,6 +151,17 @@ async function isFileReady(p: string): Promise<boolean> {
   }
 }
 
+function uniqueArchivePath(dir: string, asset: string): string {
+  const id = `${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  if (asset.endsWith('.tar.xz')) {
+    return path.join(dir, asset.replace(/\.tar\.xz$/, `.${id}.tar.xz`));
+  }
+  if (asset.endsWith('.zip')) {
+    return path.join(dir, asset.replace(/\.zip$/, `.${id}.zip`));
+  }
+  return path.join(dir, `${asset}.${id}`);
+}
+
 /** Stream a URL to disk, following up to 5 redirects. Writes to `<dst>.part` and renames on success. */
 function downloadFile(url: string, dst: string, hops = 0): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -153,38 +169,40 @@ function downloadFile(url: string, dst: string, hops = 0): Promise<void> {
       reject(new Error(`ast-graph: too many redirects fetching ${url}`));
       return;
     }
-    const tmp = `${dst}.part`;
-    const file = fs.createWriteStream(tmp);
+    const tmp = `${dst}.${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.part`;
     https.get(url, { headers: { 'User-Agent': 'ai-stepflow-vscode' } }, (res) => {
       if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        file.close();
-        fs.promises.unlink(tmp).catch(() => {});
         const next = new URL(res.headers.location, url).toString();
         downloadFile(next, dst, hops + 1).then(resolve, reject);
         return;
       }
       if (res.statusCode !== 200) {
-        file.close();
-        fs.promises.unlink(tmp).catch(() => {});
+        res.resume();
         reject(new Error(`ast-graph: HTTP ${res.statusCode} fetching ${url}`));
         return;
       }
+
+      const file = fs.createWriteStream(tmp);
+      let settled = false;
+      const fail = (err: Error) => {
+        if (settled) return;
+        settled = true;
+        file.close(() => {
+          fs.promises.unlink(tmp).catch(() => {}).finally(() => reject(err));
+        });
+      };
+
       res.pipe(file);
+      file.on('error', fail);
       file.on('finish', () => {
         file.close(() => {
+          if (settled) return;
+          settled = true;
           fs.promises.rename(tmp, dst).then(resolve, reject);
         });
       });
-      res.on('error', (err) => {
-        file.close();
-        fs.promises.unlink(tmp).catch(() => {});
-        reject(err);
-      });
-    }).on('error', (err) => {
-      file.close();
-      fs.promises.unlink(tmp).catch(() => {});
-      reject(err);
-    });
+      res.on('error', fail);
+    }).on('error', reject);
   });
 }
 
