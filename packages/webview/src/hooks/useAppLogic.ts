@@ -11,6 +11,7 @@ import { previewFlow, previewAgents, previewSkills } from '../previewData';
 
 type Tab = 'flows' | 'agents' | 'skills';
 type SaveScope = 'project' | 'global';
+type FlowAiMessage = { role: 'user' | 'assistant'; content: string };
 
 const BOOKMARKS_STORAGE_KEY = 'ai-stepflow:resource-bookmarks';
 
@@ -58,6 +59,9 @@ export const useAppLogic = () => {
   const [stepError, setStepError] = useState<string | null>(null);
   const [builderError, setBuilderError] = useState<string | null>(null);
   const [newInputName, setNewInputName] = useState('');
+  const [flowAiPrompt, setFlowAiPrompt] = useState('');
+  const [flowAiMessages, setFlowAiMessages] = useState<FlowAiMessage[]>([]);
+  const [flowAiLoading, setFlowAiLoading] = useState(false);
 
   const [runInputsTarget, setRunInputsTarget] = useState<Flow | null>(null);
   const [runInputValues, setRunInputValues] = useState<Record<string, string>>({});
@@ -256,6 +260,20 @@ export const useAppLogic = () => {
         } else {
           setSkillForm(prev => ({ ...prev, instructions: message.content }));
           setSkillFormError(null);
+        }
+        break;
+      case 'flowGenerated':
+        setFlowAiLoading(false);
+        if (message.error) {
+          setBuilderError(`Flow generation failed: ${message.error}`);
+          break;
+        }
+        if (message.flow) {
+          setEditingFlow(message.flow);
+          setBuilderError(null);
+        }
+        if (message.reply) {
+          setFlowAiMessages(prev => [...prev, { role: 'assistant', content: message.reply }]);
         }
         break;
     }
@@ -525,6 +543,9 @@ export const useAppLogic = () => {
     stepError, setStepError,
     builderError, setBuilderError,
     newInputName, setNewInputName,
+    flowAiPrompt, setFlowAiPrompt,
+    flowAiMessages, setFlowAiMessages,
+    flowAiLoading, setFlowAiLoading,
     runInputsTarget, setRunInputsTarget,
     runInputValues, setRunInputValues,
     runInputsError, setRunInputsError,

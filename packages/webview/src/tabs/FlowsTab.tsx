@@ -82,7 +82,7 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
             className="btn primary"
             onClick={() => {
               onNew(
-                { id: `flow-${Date.now()}`, name: 'New Workflow', description: 'My custom workflow description', inputs: {}, steps: [], sourcePath: '' },
+                { id: `flow-${Date.now()}`, name: '', description: '', inputs: {}, steps: [], sourcePath: '' },
                 filter === 'global' ? 'global' : 'project'
               );
             }}

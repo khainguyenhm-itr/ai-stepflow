@@ -1,7 +1,7 @@
 import React from 'react';
 import { FlowStep, } from '@ai-stepflow/core/types';
 import './App.css';
-import { sendToVSCode } from './vscode';
+import { isVSCodeWebview, sendToVSCode } from './vscode';
 import { getStepSkills } from './flowUtils';
 import { useVsCodeBridge } from './hooks/useVsCodeBridge';
 import { useAppLogic } from './hooks/useAppLogic';
@@ -40,6 +40,9 @@ const App: React.FC = () => {
     stepError, setStepError,
     builderError, setBuilderError,
     newInputName, setNewInputName,
+    flowAiPrompt, setFlowAiPrompt,
+    flowAiMessages, setFlowAiMessages,
+    flowAiLoading, setFlowAiLoading,
     runInputsTarget, setRunInputsTarget,
     runInputValues, setRunInputValues,
     runInputsError, setRunInputsError,
@@ -127,6 +130,8 @@ const App: React.FC = () => {
             setEditingFlowScope(getFlowScope(flow));
             setBuilderError(null);
             setNewInputName('');
+            setFlowAiPrompt('');
+            setFlowAiMessages([]);
           }}
           onDetail={flow => setDetailItem({
             type: 'Flow',
@@ -141,6 +146,8 @@ const App: React.FC = () => {
             setEditingFlowScope(scope);
             setBuilderError(null);
             setNewInputName('');
+            setFlowAiPrompt('');
+            setFlowAiMessages([]);
           }}
           onBoardStepEditor={(flow, index) => {
             const step = flow.steps[index];
@@ -155,7 +162,7 @@ const App: React.FC = () => {
             const previous = flow.steps[flow.steps.length - 1];
             const newStep: FlowStep = {
               id: `step-${Date.now()}`,
-              title: 'New Step',
+              title: '',
               agent: '',
               skill: '',
               dependsOn: previous ? [previous.id] : [],
@@ -311,17 +318,65 @@ const App: React.FC = () => {
         agents={agents}
         skills={skills}
         newInputName={newInputName}
+        aiPrompt={flowAiPrompt}
+        aiMessages={flowAiMessages}
+        aiLoading={flowAiLoading}
         onClose={() => setEditingFlow(null)}
         onSave={saveEditingFlow}
         onChange={patch => setEditingFlow(prev => prev ? ({ ...prev, ...patch }) : null)}
         onChangeScope={setEditingFlowScope}
         onNewInputNameChange={setNewInputName}
+        onAiPromptChange={setFlowAiPrompt}
+        onGenerateFlow={() => {
+          if (!editingFlow || !flowAiPrompt.trim() || flowAiLoading) return;
+          const prompt = flowAiPrompt.trim();
+          const history = [...flowAiMessages, { role: 'user' as const, content: prompt }];
+          setFlowAiMessages(history);
+          setFlowAiPrompt('');
+          setBuilderError(null);
+          setFlowAiLoading(true);
+          if (!isVSCodeWebview()) {
+            const agent = agents[0]?.name || '';
+            const skill = skills[0]?.name || '';
+            setEditingFlow({
+              ...editingFlow,
+              name: editingFlow.name || 'Generated workflow',
+              description: editingFlow.description || prompt,
+              steps: [
+                {
+                  id: 'step-1',
+                  title: 'Plan the work',
+                  agent,
+                  skill,
+                  skills: skill ? [skill] : [],
+                  dependsOn: [],
+                  review: { required: false },
+                  completion: { requireMarkDone: true }
+                },
+                {
+                  id: 'step-2',
+                  title: 'Implement and verify',
+                  agent,
+                  skill,
+                  skills: skill ? [skill] : [],
+                  dependsOn: ['step-1'],
+                  review: { required: false },
+                  completion: { requireMarkDone: true }
+                }
+              ]
+            });
+            setFlowAiMessages([...history, { role: 'assistant', content: 'Preview workflow generated.' }]);
+            setFlowAiLoading(false);
+            return;
+          }
+          sendToVSCode('generateFlow', { description: prompt, flow: editingFlow, history });
+        }}
         onAddStep={() => {
           if (!editingFlow) return;
           const previous = editingFlow.steps[editingFlow.steps.length - 1];
           const newStep: FlowStep = {
             id: `step-${Date.now()}`,
-            title: 'New Step',
+            title: '',
             agent: '',
             skill: '',
             dependsOn: previous ? [previous.id] : [],

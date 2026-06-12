@@ -12,11 +12,16 @@ interface FlowBuilderModalProps {
   agents: Agent[];
   skills: Skill[];
   newInputName: string;
+  aiPrompt: string;
+  aiMessages: { role: 'user' | 'assistant'; content: string }[];
+  aiLoading: boolean;
   onClose: () => void;
   onSave: () => void;
   onChange: (patch: Partial<Flow>) => void;
   onChangeScope: (scope: SaveScope) => void;
   onNewInputNameChange: (name: string) => void;
+  onAiPromptChange: (value: string) => void;
+  onGenerateFlow: () => void;
   onAddStep: () => void;
   onEditStep: (step: FlowStep, index: number) => void;
   onDeleteStep: (index: number) => void;
@@ -35,11 +40,16 @@ export const FlowBuilderModal: React.FC<FlowBuilderModalProps> = ({
   agents,
   skills,
   newInputName,
+  aiPrompt,
+  aiMessages,
+  aiLoading,
   onClose,
   onSave,
   onChange,
   onChangeScope,
   onNewInputNameChange,
+  onAiPromptChange,
+  onGenerateFlow,
   onAddStep,
   onEditStep,
   onDeleteStep,
@@ -53,7 +63,7 @@ export const FlowBuilderModal: React.FC<FlowBuilderModalProps> = ({
 
   return (
     <Modal
-      title="Edit Flow"
+      title={flow.sourcePath ? 'Edit Flow' : 'New Workflow'}
       open={open}
       onClose={onClose}
       width={760}
@@ -66,16 +76,56 @@ export const FlowBuilderModal: React.FC<FlowBuilderModalProps> = ({
     >
       <div className="stack">
         {error && <div className="error-banner">{error}</div>}
+        <div className="flow-ai-section">
+          <div className="flow-ai-header">
+            <Icon.Sparkles size={15} className="flow-ai-icon" />
+            <div>
+              <span className="flow-ai-title">Generate with AI</span>
+              <span className="flow-ai-hint">Describe what you want — AI will build the steps for you</span>
+            </div>
+          </div>
+          {aiMessages.length > 0 && (
+            <div className="flow-ai-chat" aria-live="polite">
+              {aiMessages.map((message, index) => (
+                <div key={index} className={`flow-ai-message ${message.role}`}>
+                  <span className="flow-ai-role">{message.role === 'user' ? 'You' : 'AI'}</span>
+                  <span>{message.content}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flow-ai-compose">
+            <textarea
+              className="input"
+              rows={3}
+              placeholder="e.g. Create a workflow to analyze a bug, implement the fix, run tests, and review the patch."
+              value={aiPrompt}
+              onChange={e => onAiPromptChange(e.target.value)}
+            />
+            <div className="flow-ai-actions">
+              <button
+                type="button"
+                className="btn primary"
+                disabled={!aiPrompt.trim() || aiLoading}
+                onClick={onGenerateFlow}
+              >
+                <span className="btn-glyph">{aiLoading ? <Icon.RotateCw size={14} className="spin" /> : <Icon.Sparkles size={14} />}</span>
+                {aiMessages.length > 0 ? 'Regenerate' : 'Generate'}
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="divider-label">or configure manually</div>
         <div className="form-grid">
           <Field label="Save location">
             <SaveScopeSelect value={scope} onChange={onChangeScope} />
           </Field>
           <Field label="Flow name">
-            <input className="input" value={flow.name} onChange={e => onChange({ name: e.target.value })} />
+            <input className="input" placeholder="e.g. Release workflow" value={flow.name} onChange={e => onChange({ name: e.target.value })} />
           </Field>
         </div>
         <Field label="Description">
-          <textarea className="input" rows={2} value={flow.description} onChange={e => onChange({ description: e.target.value })} />
+          <textarea className="input" rows={2} placeholder="Describe what this workflow does." value={flow.description} onChange={e => onChange({ description: e.target.value })} />
         </Field>
         <Field label="Run inputs" hint="collected when a run starts; passed to Claude with every step">
           <div className="stack tight">
@@ -92,7 +142,7 @@ export const FlowBuilderModal: React.FC<FlowBuilderModalProps> = ({
                 onClick={() => {
                   const name = newInputName.trim();
                   onChange({
-                    inputs: { ...(flow.inputs || {}), [name]: { type: 'string', required: true, label: name } }
+                    inputs: { ...(flow.inputs || {}), [name]: { type: 'string', required: true, label: '' } }
                   });
                   onNewInputNameChange('');
                 }}

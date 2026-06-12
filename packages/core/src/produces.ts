@@ -18,7 +18,10 @@ export interface RequiresValidationResult {
 export function validateRequires(step: FlowStep, projectPath: string, inputs: Record<string, string> = {}): RequiresValidationResult {
   const requires = resolveTemplates(step.requires, inputs);
   if (requires.length === 0) return { ok: true };
-  const resolved = requires.map(p => (path.isAbsolute(p) ? p : path.join(projectPath, p)));
+  // Skip entries that are flow input keys (not file artifacts) — they are validated at flow start.
+  const fileRequires = requires.filter(r => !(r in inputs));
+  if (fileRequires.length === 0) return { ok: true };
+  const resolved = fileRequires.map(p => (path.isAbsolute(p) ? p : path.join(projectPath, p)));
   const missing = resolved.filter(p => !fs.existsSync(p));
   if (missing.length === 0) return { ok: true };
   return { ok: false, message: `missing required file(s): ${missing.map(p => path.relative(projectPath, p) || p).join(', ')}` };

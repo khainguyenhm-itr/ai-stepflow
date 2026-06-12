@@ -385,7 +385,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .shell { display: flex; flex-direction: column; height: 100vh; }
 
     /* header row */
-    .hdr { display: flex; align-items: center; gap: 7px; padding: 10px 0 0; flex: 0 0 auto; }
+    .hdr { display: flex; align-items: center; gap: 7px; padding: 10px 12px 0; flex: 0 0 auto; }
     .mark { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: var(--r); background: var(--btn); color: var(--btn-fg); font-size: 9px; font-weight: 700; flex: 0 0 auto; letter-spacing: .02em; }
     .brand-name { flex: 1; font-size: 12.5px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .ver { color: var(--muted); font-size: 10px; flex: 0 0 auto; }
@@ -393,7 +393,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .icon-btn:hover { color: var(--vscode-foreground); background: var(--hover); }
 
     /* scrollable content area */
-    .body { flex: 1 1 0; overflow-y: auto; overflow-x: hidden; padding: 0 0 16px; overscroll-behavior: contain; }
+    .body { flex: 1 1 0; overflow-y: auto; overflow-x: hidden; padding: 0 12px 16px; overscroll-behavior: contain; }
     .body::-webkit-scrollbar { display: none; }
     .body { scrollbar-width: none; }
 

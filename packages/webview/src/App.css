@@ -277,6 +277,24 @@ textarea.input::-webkit-scrollbar-thumb:hover,
   font-weight: 600;
 }
 
+.divider-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.divider-label::before,
+.divider-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
 /* ---------------------------- controls ---------------------------- */
 
 .btn {
@@ -499,6 +517,84 @@ textarea.input {
 
 .input::placeholder {
   color: var(--vscode-input-placeholderForeground, #818181);
+}
+
+.flow-ai-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--btn-bg, #0e639c);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--btn-bg, #0e639c) 6%, transparent);
+}
+
+.flow-ai-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.flow-ai-icon {
+  color: var(--btn-bg, #0e639c);
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.flow-ai-title {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.flow-ai-hint {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+.flow-ai-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 140px;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+}
+
+.flow-ai-message {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.flow-ai-role {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding-top: 1px;
+}
+
+.flow-ai-compose {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.flow-ai-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .select {

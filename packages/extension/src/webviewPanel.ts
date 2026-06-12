@@ -8,7 +8,7 @@ import { TerminalManager } from './terminalManager.js';
 import { RunOrchestrator } from './runOrchestrator.js';
 import { validateMessage, WebviewMessage, HostMessage } from './messages.js';
 import { listConnectedMcpServers, addMcpServer } from './mcp.js';
-import { Agent, Skill } from '@ai-stepflow/core';
+import { Agent, Flow, FlowStep, Skill } from '@ai-stepflow/core';
 
 export class CockpitPanel {
   public static currentPanel: CockpitPanel | undefined;
@@ -226,6 +226,9 @@ export class CockpitPanel {
       case 'generateDraft':
         await this._handleGenerateDraft(message.kind, message.name, message.description);
         return;
+      case 'generateFlow':
+        await this._handleGenerateFlow(message.description, message.flow, message.history);
+        return;
       case 'connectMcpServer':
         try {
           const res = await addMcpServer({
@@ -286,6 +289,127 @@ export class CockpitPanel {
         return;
       }
       this.postMessage({ type: 'draftGenerated', kind, content: (result.resultText || text).trim() });
+    });
+  }
+
+  private async _handleGenerateFlow(description: string, currentFlow?: Flow, history?: { role: 'user' | 'assistant'; content: string }[]): Promise<void> {
+    const projectPath = this.configManager.getProjectPath() || '';
+    const [agents, skills] = await Promise.all([
+      this.configManager.loadAgents().catch(() => [] as Agent[]),
+      this.configManager.loadSkills().catch(() => [] as Skill[])
+    ]);
+    const agentNames = new Set(agents.map(agent => agent.name));
+    const skillNames = new Set(skills.map(skill => skill.name));
+    const metaPrompt = [
+      'Generate an AI StepFlow workflow from the user request.',
+      '',
+      'Available agents:',
+      ...agents.map(agent => `- ${agent.name}: ${agent.description || '(no description)'}`),
+      '',
+      'Available skills:',
+      ...skills.map(skill => `- ${skill.name}: ${skill.description || '(no description)'}`),
+      '',
+      currentFlow ? `Current workflow JSON:\n${JSON.stringify(currentFlow, null, 2)}` : '',
+      history?.length ? `Conversation so far:\n${history.map(item => `${item.role}: ${item.content}`).join('\n')}` : '',
+      '',
+      `Latest user request: ${description}`,
+      '',
+      'Return ONLY compact JSON with this shape:',
+      '{"reply":"short summary for the user","flow":{"name":"...","description":"...","inputs":{"name":{"type":"string","required":true,"label":""}},"steps":[{"id":"step-1","title":"...","agent":"existing-agent-name","skills":["existing-skill-name"],"dependsOn":[],"requires":[],"produces":[],"producesContains":[],"review":{"required":false},"completion":{"requireMarkDone":true}}]}}',
+      '',
+      'Rules:',
+      '- Use only the available agent names and skill names exactly as written.',
+      '- Pick the most appropriate agent and one or more skills for each step.',
+      '- Keep step ids stable, lowercase, and unique.',
+      '- Each non-first step should usually depend on the previous step.',
+      '- Leave inputs empty unless the workflow genuinely needs run-time variables.'
+    ].filter(Boolean).join('\n');
+
+    await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Generating workflow...' }, async () => {
+      let text = '';
+      const result = await this._runner.spawnClaudeStreaming({ systemPrompt: '', userMessage: metaPrompt, projectPath, onText: chunk => { text += chunk; } });
+      if (!result.success) {
+        const why = result.timedOut ? 'run timed out' : `claude exited ${result.exitCode}`;
+        console.error('AI StepFlow: flow generation failed —', why);
+        this.postMessage({ type: 'flowGenerated', error: why });
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(this._extractJsonObject((result.resultText || text).trim())) as { reply?: string; flow?: Partial<Flow> };
+        const generated = parsed.flow;
+        if (!generated || !Array.isArray(generated.steps)) throw new Error('missing flow.steps');
+        const flow: Flow = {
+          id: currentFlow?.id || `flow-${Date.now()}`,
+          sourcePath: currentFlow?.sourcePath || '',
+          name: typeof generated.name === 'string' ? generated.name : currentFlow?.name || '',
+          description: typeof generated.description === 'string' ? generated.description : currentFlow?.description || '',
+          inputs: this._normalizeFlowInputs(generated.inputs),
+          steps: this._normalizeGeneratedSteps(generated.steps, agentNames, skillNames)
+        };
+        this.postMessage({ type: 'flowGenerated', flow, reply: parsed.reply || 'Workflow generated.' });
+      } catch (error) {
+        const why = error instanceof Error ? error.message : String(error);
+        console.error('AI StepFlow: flow generation parse failed —', why);
+        this.postMessage({ type: 'flowGenerated', error: `invalid AI response: ${why}` });
+      }
+    });
+  }
+
+  private _extractJsonObject(text: string): string {
+    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    const candidate = fenced?.[1]?.trim() || text;
+    const start = candidate.indexOf('{');
+    const end = candidate.lastIndexOf('}');
+    if (start < 0 || end < start) throw new Error('no JSON object found');
+    return candidate.slice(start, end + 1);
+  }
+
+  private _normalizeFlowInputs(inputs: unknown): Flow['inputs'] {
+    if (!inputs || typeof inputs !== 'object') return {};
+    const normalized: Flow['inputs'] = {};
+    for (const [name, raw] of Object.entries(inputs as Record<string, unknown>)) {
+      if (!name.trim()) continue;
+      const input = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+      normalized[name.trim()] = {
+        type: typeof input.type === 'string' ? input.type : 'string',
+        required: typeof input.required === 'boolean' ? input.required : true,
+        label: typeof input.label === 'string' ? input.label : ''
+      };
+    }
+    return normalized;
+  }
+
+  private _normalizeGeneratedSteps(steps: unknown[], agentNames: Set<string>, skillNames: Set<string>): FlowStep[] {
+    const usedIds = new Set<string>();
+    const normalizedIds: string[] = [];
+    return steps.map((raw, index) => {
+      const item = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+      const fallbackId = `step-${index + 1}`;
+      let id = typeof item.id === 'string' && item.id.trim() ? item.id.trim() : fallbackId;
+      id = id.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || fallbackId;
+      while (usedIds.has(id)) id = `${id}-${index + 1}`;
+      usedIds.add(id);
+      normalizedIds.push(id);
+
+      const rawSkills = Array.isArray(item.skills) ? item.skills : (typeof item.skill === 'string' ? [item.skill] : []);
+      const skills = rawSkills.filter((name): name is string => typeof name === 'string' && skillNames.has(name));
+      const agent = typeof item.agent === 'string' && agentNames.has(item.agent) ? item.agent : '';
+      const review = item.review && typeof item.review === 'object' ? item.review as Record<string, unknown> : {};
+      const completion = item.completion && typeof item.completion === 'object' ? item.completion as Record<string, unknown> : {};
+      return {
+        id,
+        title: typeof item.title === 'string' ? item.title : id,
+        agent,
+        skill: skills[0] || '',
+        skills,
+        dependsOn: Array.isArray(item.dependsOn) ? item.dependsOn.filter((value): value is string => typeof value === 'string') : (index > 0 ? [normalizedIds[index - 1]] : []),
+        requires: Array.isArray(item.requires) ? item.requires.filter((value): value is string => typeof value === 'string') : undefined,
+        produces: Array.isArray(item.produces) ? item.produces.filter((value): value is string => typeof value === 'string') : undefined,
+        producesContains: Array.isArray(item.producesContains) ? item.producesContains.filter((value): value is string => typeof value === 'string') : undefined,
+        review: { required: !!review.required },
+        completion: { requireMarkDone: completion.requireMarkDone !== false }
+      };
     });
   }
 
