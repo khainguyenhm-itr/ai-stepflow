@@ -1,4 +1,7 @@
 import { execFile } from 'child_process';
+import { readFileSync } from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
 
 export type McpStatus = 'connected' | 'needs-auth' | 'failed' | 'unknown';
 
@@ -6,6 +9,33 @@ export interface McpServer {
   name: string;
   status: McpStatus;
   target?: string;
+}
+
+/**
+ * Returns the absolute path of the config file that declares the given MCP server,
+ * or undefined if not found. Checks project-level first, then user-global.
+ */
+export function findMcpConfigFile(name: string, cwd?: string): string | undefined {
+  const candidates: string[] = [];
+  if (cwd) {
+    candidates.push(join(cwd, '.claude', 'settings.json'));
+    candidates.push(join(cwd, '.claude', 'settings.local.json'));
+  }
+  candidates.push(join(homedir(), '.claude.json'));
+
+  for (const filePath of candidates) {
+    try {
+      const raw = readFileSync(filePath, 'utf8');
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const servers = parsed['mcpServers'] as Record<string, unknown> | undefined;
+      if (servers && Object.prototype.hasOwnProperty.call(servers, name)) {
+        return filePath;
+      }
+    } catch {
+      // file missing or invalid JSON — skip
+    }
+  }
+  return undefined;
 }
 
 /** Classify one `claude mcp list` line by the status suffix the CLI appends. */

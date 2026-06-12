@@ -110,7 +110,8 @@ export function activate(context: vscode.ExtensionContext) {
     // AST graph: download the CLI, index the workspace, register it as a project-scoped MCP
     // server, and drop a CLAUDE.md hint so step runs answer structural questions cheaply
     // (one MCP query vs a grep+read sweep). Best-effort; never blocks activation.
-    registerAstGraph(context, output);
+    // Refresh sidebar after MCP registration so the "failed" → "connected" transition is visible.
+    registerAstGraph(context, output, () => void sidebar.refresh(true));
   } catch (err) {
     console.error('AI StepFlow: activation failed', err);
     vscode.window.showErrorMessage(`AI StepFlow: activation failed. ${err instanceof Error ? err.message : String(err)}`);

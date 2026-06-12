@@ -3,7 +3,7 @@ import * as crypto from 'node:crypto';
 import { ConfigManager } from './configManager.js';
 import type { BundledKind } from './configManager.js';
 import { StateManager } from './stateManager.js';
-import { listMcpServers, reconnectRemoteMcpServer } from './mcp.js';
+import { listMcpServers, reconnectRemoteMcpServer, findMcpConfigFile } from './mcp.js';
 import type { McpServer } from './mcp.js';
 import { listPluginCatalog, togglePlugin, installPlugin, updatePlugin, uninstallPlugin, pluginDetails } from './plugins.js';
 import type { PluginInfo, AvailablePlugin } from './plugins.js';
@@ -125,8 +125,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         }
       });
 
-      // Repaint when the view is revealed; refresh MCP on first paint.
-      view.onDidChangeVisibility(() => { if (view.visible) void this.refresh(false); });
+      // Repaint when the view is revealed; re-probe MCP if any server was last seen as failed.
+      view.onDidChangeVisibility(() => {
+        if (view.visible) {
+          const hasFailed = this._cachedMcp.some(s => s.status === 'failed' || s.status === 'unknown');
+          void this.refresh(hasFailed);
+        }
+      });
       void this.refresh(true);
     } catch (e) {
       console.error('AI StepFlow: failed to resolve sidebar view', e);
@@ -175,14 +180,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         // The running step, else the first step not yet done.
         const currentStep = flow?.steps.find(step => activeRun.steps[step.id]?.executionStatus === 'running')
           ?? flow?.steps.find(step => activeRun.steps[step.id]?.completionStatus !== 'done');
+        const activeRunFile = runFiles.find(f => f.runId === activeRun.runId);
+        const stepStatus = currentStep ? (activeRun.steps[currentStep.id]?.executionStatus || 'ready') : null;
         active = {
           flowName: flowName(activeRun.flowId),
           runId: activeRun.runId,
           completed,
           total,
           percent: total ? Math.round((completed / total) * 100) : 0,
+          filePath: activeRunFile?.filePath ?? null,
+          isRunning: stepStatus === 'running',
           currentStep: currentStep
-            ? { title: currentStep.title || currentStep.id, status: activeRun.steps[currentStep.id]?.executionStatus || 'ready' }
+            ? { title: currentStep.title || currentStep.id, status: stepStatus }
             : null
         };
       }
@@ -195,7 +204,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         mcp: this._cachedMcp,
         plugins: this._cachedPlugins,
         pluginsAvailable: this._cachedAvailable,
-        runFiles: runFiles.slice(0, 8).map(file => ({
+        runFiles: runFiles.map(file => ({
           flowName: flowName(file.flowId),
           runId: file.runId,
           completed: file.completedSteps,
@@ -286,10 +295,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       vscode.window.showWarningMessage(`AI StepFlow: MCP server '${name}' is no longer in the current list.`);
       return;
     }
+    const cwd = this.configManager.getProjectPath();
+    const configFile = findMcpConfigFile(name, cwd) ?? '(not found in local or global config)';
     const content = [
-      `Name: ${server.name}`,
-      `Status: ${server.status}`,
-      `Target: ${server.target || '(not reported)'}`,
+      `Name:        ${server.name}`,
+      `Status:      ${server.status}`,
+      `Target:      ${server.target || '(not reported)'}`,
+      `Config file: ${configFile}`,
       '',
       'Source: claude mcp list'
     ].join('\n');
@@ -373,7 +385,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .shell { display: flex; flex-direction: column; height: 100vh; }
 
     /* header row */
-    .hdr { display: flex; align-items: center; gap: 7px; padding: 10px 10px 0; flex: 0 0 auto; }
+    .hdr { display: flex; align-items: center; gap: 7px; padding: 10px 0 0; flex: 0 0 auto; }
     .mark { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: var(--r); background: var(--btn); color: var(--btn-fg); font-size: 9px; font-weight: 700; flex: 0 0 auto; letter-spacing: .02em; }
     .brand-name { flex: 1; font-size: 12.5px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .ver { color: var(--muted); font-size: 10px; flex: 0 0 auto; }
@@ -381,20 +393,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .icon-btn:hover { color: var(--vscode-foreground); background: var(--hover); }
 
     /* scrollable content area */
-    .body { flex: 1 1 0; overflow-y: auto; overflow-x: hidden; padding: 0 10px 16px; overscroll-behavior: contain; }
+    .body { flex: 1 1 0; overflow-y: auto; overflow-x: hidden; padding: 0 0 16px; overscroll-behavior: contain; }
     .body::-webkit-scrollbar { width: 5px; }
     .body::-webkit-scrollbar-thumb { background: var(--vscode-scrollbarSlider-background, rgba(121,121,121,.4)); border-radius: 999px; }
 
-    /* ── active run card ── */
-    .run-card { margin-top: 10px; padding: 9px 10px; border: 1px solid var(--border); border-left: 3px solid var(--btn); border-radius: var(--r); background: var(--panel-2); }
-    .run-card[hidden] { display: none; }
-    .run-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-    .run-name { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .run-pct { font-size: 10.5px; color: var(--muted); flex: 0 0 auto; font-variant-numeric: tabular-nums; }
-    .progress { height: 3px; border-radius: 2px; background: var(--border); overflow: hidden; margin-top: 8px; }
-    .progress-fill { height: 100%; background: var(--vscode-progressBar-background, #0e70c0); transition: width .25s ease; }
-    .run-step { display: flex; align-items: center; gap: 5px; margin-top: 6px; font-size: 11px; color: var(--muted); overflow: hidden; }
-    .run-step > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* ── active run inline (inside Runs list) ── */
+    .run-active { border-left: 2px solid var(--btn); background: rgba(14,99,156,.06); }
+    .run-active .item-acts { opacity: 1 !important; }
+    .run-prog { height: 3px; border-radius: 2px; background: var(--border); overflow: hidden; margin-top: 4px; }
+    .run-prog-fill { height: 100%; background: var(--vscode-progressBar-background, #0e70c0); transition: width .3s ease; }
+    .run-count { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
     /* badge */
     .badge { display: inline-flex; align-items: center; height: 16px; padding: 0 6px; border-radius: 9px; font-size: 9px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--badge-fg); background: var(--badge); white-space: nowrap; flex: 0 0 auto; }
@@ -470,13 +478,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .menu > summary::-webkit-details-marker { display: none; }
     .menu-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1px solid transparent; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 14px; font-weight: 700; cursor: pointer; line-height: 1; font-family: inherit; }
     .menu-btn:hover, .menu[open] .menu-btn { color: var(--vscode-foreground); background: var(--hover); border-color: var(--border); }
-    .menu-pop { position: absolute; top: 26px; right: 0; z-index: 20; min-width: 130px; padding: 3px; border: 1px solid var(--border); border-radius: var(--r); background: var(--vscode-dropdown-background, var(--panel-2)); box-shadow: 0 6px 20px rgba(0,0,0,.36); }
+    .menu-pop { position: fixed; z-index: 9999; min-width: 130px; padding: 3px; border: 1px solid var(--border); border-radius: var(--r); background: var(--vscode-dropdown-background, var(--panel-2)); box-shadow: 0 6px 20px rgba(0,0,0,.36); }
     .menu-item { display: flex; align-items: center; width: 100%; min-height: 26px; border: 0; border-radius: var(--r-sm); padding: 4px 8px; background: transparent; color: var(--vscode-foreground); font-size: 11.5px; font-family: inherit; text-align: left; cursor: pointer; }
     .menu-item:hover { background: var(--hover); }
     .menu-item.danger { color: var(--error); }
+    .menu-item[disabled] { opacity: .4; cursor: default; pointer-events: none; }
 
     /* list footer */
-    .list-more { font-size: 10.5px; color: var(--muted); padding: 5px 10px 6px; border-top: 1px solid rgba(127,127,127,.08); }
+    .list-more { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--muted); padding: 5px 10px 6px; border-top: 1px solid rgba(127,127,127,.08); }
+    /* Default Library tab bar: sticky so it stays visible while scrolling items */
+    .lib-panel .lib-tabs { position: sticky; top: 0; z-index: 1; background: var(--panel); }
 
     /* ── states ── */
     .empty { display: block; color: var(--muted); font-size: 11.5px; padding: 10px; font-style: italic; }
@@ -485,6 +496,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .skel-line:nth-child(2) { width: 68%; }
     .skel-line:nth-child(3) { width: 80%; }
     @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin { display: inline-block; width: 9px; height: 9px; border: 1.5px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin .65s linear infinite; vertical-align: middle; margin-right: 4px; flex-shrink: 0; }
+
+    /* ── fixed-height list containers: each section scrolls internally, scrollbar hidden ── */
+    #mcp, #plugins, #runs { max-height: 200px; overflow-y: auto; scrollbar-width: none; }
+    #mcp::-webkit-scrollbar, #plugins::-webkit-scrollbar, #runs::-webkit-scrollbar { display: none; }
+    .lib-panel { max-height: 180px; overflow-y: auto; scrollbar-width: none; }
+    .lib-panel::-webkit-scrollbar { display: none; }
 
     footer { display: none; }
   </style>
@@ -502,9 +521,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   <!-- scrollable content -->
   <div class="body">
-
-    <!-- active run (hidden when idle) -->
-    <div class="run-card" id="active-wrap" hidden><div id="active"></div></div>
 
     <!-- library stats -->
     <section class="sec">
@@ -549,13 +565,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       </div>
     </section>
 
-    <!-- recent runs -->
+    <!-- runs (active + recent) -->
     <section class="sec">
       <div class="sec-hdr">
-        <span class="sec-label">Recent Runs</span>
-        <span class="sec-count" id="files-count"></span>
+        <span class="sec-label">Runs</span>
+        <span class="sec-count" id="runs-count"></span>
       </div>
-      <div class="box" id="files"><span class="empty">No runs yet</span></div>
+      <div class="box" id="runs"><span class="empty">No runs yet</span></div>
     </section>
 
   </div><!-- /.body -->
@@ -569,23 +585,35 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const fmtTime = iso => { const d = new Date(iso); return !isNaN(d.getTime()) ? d.toLocaleString() : esc(iso); };
   const statusText = s => s === 'connected' ? 'Connected' : s === 'needs-auth' ? 'Needs auth' : s === 'failed' ? 'Failed' : s || 'Not added';
+  const spinHtml = '<span class="spin" aria-hidden="true"></span>';
   const actionMenu = items => items && items.length
     ? '<details class="menu"><summary class="menu-btn" title="More actions" aria-label="More">···</summary><div class="menu-pop">' + items.join('') + '</div></details>'
     : '';
-  const menuItem = (label, attrs, danger) =>
-    '<button class="menu-item' + (danger ? ' danger' : '') + '" type="button" ' + attrs + '>' + esc(label) + '</button>';
+  const menuItem = (label, attrs, danger, disabled) =>
+    '<button class="menu-item' + (danger ? ' danger' : '') + '" type="button" ' + (disabled ? 'disabled ' : '') + attrs + '>' + esc(label) + '</button>';
 
-  // Close any open menu when clicking outside it.
+  // Close any open menu when clicking outside it; position newly opened menu-pop via fixed coords.
   document.addEventListener('click', e => {
     const menu = e.target instanceof Element ? e.target.closest('.menu') : null;
     document.querySelectorAll('.menu[open]').forEach(n => { if (n !== menu) n.open = false; });
+    if (menu && menu.open) {
+      const btn = menu.querySelector('.menu-btn');
+      const pop = menu.querySelector('.menu-pop');
+      if (btn && pop) {
+        const r = btn.getBoundingClientRect();
+        pop.style.top = (r.bottom + 2) + 'px';
+        pop.style.right = (document.documentElement.clientWidth - r.right) + 'px';
+      }
+    }
   });
 
   let activePluginTab = 'installed';
   let pluginQuery = '';
   let installedPlugins = [];
   let availablePlugins = [];
-  const LIMITS = { mcp: 6, pluginsInstalled: 5, pluginsAvailable: 6, files: 5 };
+  let lastActiveRun = null;
+  let lastRunFiles = [];
+  let lastRunTotal = 0;
 
   // Plugin tab switcher
   document.querySelectorAll('#plugin-tabs .tab').forEach(n => {
@@ -610,23 +638,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   });
 
   // ── render functions ──
-
-  function renderActive(run) {
-    const wrap = document.getElementById('active-wrap');
-    const el = document.getElementById('active');
-    if (!run) { wrap.hidden = true; el.innerHTML = ''; return; }
-    wrap.hidden = false;
-    const step = run.currentStep
-      ? '<div class="run-step"><span class="badge ' + esc(run.currentStep.status) + '">' + esc(run.currentStep.status) + '</span><span>' + esc(run.currentStep.title) + '</span></div>'
-      : '';
-    el.innerHTML =
-      '<div class="run-head">' +
-      '<span class="run-name">' + esc(run.flowName) + '</span>' +
-      '<span class="run-pct">' + run.completed + '/' + run.total + ' · ' + run.percent + '%</span>' +
-      '</div>' +
-      '<div class="progress"><div class="progress-fill" style="width:' + run.percent + '%"></div></div>' +
-      step;
-  }
 
   function renderStats(s) {
     const items = [['flows', s.flows, 'Flows'], ['agents', s.agents, 'Agents'], ['skills', s.skills, 'Skills']];
@@ -718,7 +729,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         const kind = btn.getAttribute('data-kind');
         const filename = btn.getAttribute('data-filename');
         btn.disabled = true;
-        btn.textContent = act === 'installDefault' ? 'Installing…' : 'Removing…';
+        btn.innerHTML = spinHtml + (act === 'installDefault' ? 'Installing…' : 'Removing…');
         vscode.postMessage({ type: act === 'installDefault' ? 'installDefaultItem' : 'uninstallDefaultItem', kind, filename });
       };
     });
@@ -755,12 +766,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       el.innerHTML = '<span class="empty">No match for &ldquo;' + esc(q) + '&rdquo;</span>';
       return;
     }
-    const shown = rows.slice(0, LIMITS.mcp);
-    el.innerHTML = shown.map(s => {
+    el.innerHTML = rows.map(s => {
       const st = MCP_STATUS[s.status] || MCP_STATUS.unknown;
       const tgt = s.target || '';
       const isHttp = tgt.toLowerCase().startsWith('http://') || tgt.toLowerCase().startsWith('https://') || tgt.toUpperCase().endsWith('(HTTP)');
-      const canReconnect = (s.status === 'failed' || s.status === 'needs-auth') && tgt && isHttp;
+      const isClaudeAi = s.name.startsWith('claude.ai ');
+      const canReconnect = (s.status === 'failed' || s.status === 'needs-auth') && tgt && isHttp && !isClaudeAi;
+      const canBrowserAuth = isClaudeAi && s.status === 'needs-auth';
+      const canRetryLocal = s.status === 'failed' && !isHttp && !isClaudeAi;
       return '<div class="item">' +
         '<span class="item-dot" title="' + esc(s.status) + '" style="background:' + st.color + '"></span>' +
         '<span class="item-body">' +
@@ -773,10 +786,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             ? '<button class="pill accent" type="button" data-act="mcpReconnect" data-name="' + esc(s.name) + '" data-target="' + esc(tgt) + '">' +
               (s.status === 'failed' ? 'Retry' : 'Auth') + '</button>'
             : '') +
+          (canBrowserAuth
+            ? '<button class="pill accent" type="button" data-act="openExternal" data-url="https://claude.ai" title="Authenticate via claude.ai">Auth</button>'
+            : '') +
+          (canRetryLocal
+            ? '<button class="pill accent" type="button" data-act="refresh" title="Re-probe this server">Retry</button>'
+            : '') +
         '</span>' +
         '</div>';
-    }).join('') +
-    (rows.length > shown.length ? '<div class="list-more">Showing ' + shown.length + ' of ' + rows.length + '</div>' : '');
+    }).join('');
     bindActionButtons(el);
   }
 
@@ -800,8 +818,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       const rows = installedPlugins.filter(p => !q || p.name.toLowerCase().includes(q));
       if (!installedPlugins.length) { el.innerHTML = '<span class="empty">No plugins installed</span>'; return; }
       if (!rows.length) { el.innerHTML = '<span class="empty">No match for &ldquo;' + esc(q) + '&rdquo;</span>'; return; }
-      const shown = rows.slice(0, LIMITS.pluginsInstalled);
-      el.innerHTML = shown.map(p =>
+      el.innerHTML = rows.map(p =>
         '<div class="item">' +
         '<span class="item-dot" title="' + (p.enabled ? 'Enabled' : 'Disabled') + '" style="background:' +
           (p.enabled ? 'var(--vscode-charts-green, #73c991)' : 'var(--vscode-charts-red, #f48771)') + '"></span>' +
@@ -818,14 +835,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           ]) +
         '</span>' +
         '</div>'
-      ).join('') +
-      (rows.length > shown.length ? '<div class="list-more">Showing ' + shown.length + ' of ' + rows.length + '</div>' : '');
+      ).join('');
     } else {
       const rows = availablePlugins.filter(p => !q || p.name.toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q));
       if (!availablePlugins.length) { el.innerHTML = '<span class="empty">No marketplace configured</span>'; return; }
       if (!rows.length) { el.innerHTML = '<span class="empty">No match for &ldquo;' + esc(q) + '&rdquo;</span>'; return; }
-      const shown = rows.slice(0, LIMITS.pluginsAvailable);
-      el.innerHTML = shown.map(p =>
+      el.innerHTML = rows.map(p =>
         '<div class="item">' +
         '<span class="item-dot" style="background:var(--muted)"></span>' +
         '<span class="item-body">' +
@@ -836,8 +851,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           '<button class="pill accent" type="button" data-act="install" data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '">Install</button>' +
         '</span>' +
         '</div>'
-      ).join('') +
-      (rows.length > shown.length ? '<div class="list-more">Showing ' + shown.length + ' of ' + rows.length + '</div>' : '');
+      ).join('');
     }
     bindActionButtons(el);
   }
@@ -849,10 +863,23 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         const id = btn.getAttribute('data-id');
         const name = btn.getAttribute('data-name');
         const locks = ['install', 'update', 'uninstall', 'toggle', 'mcpReconnect', 'deleteRun'].includes(act);
-        if (locks) btn.closest('.item')?.querySelectorAll('button').forEach(b => b.disabled = true);
         const menu = btn.closest('.menu');
         if (menu) menu.open = false;
-        if (locks) btn.textContent = act === 'install' ? 'Installing…' : act === 'update' ? 'Updating…' : act === 'uninstall' ? 'Removing…' : act === 'mcpReconnect' ? 'Connecting…' : act === 'deleteRun' ? 'Deleting…' : '…';
+
+        if (locks) {
+          btn.closest('.item')?.querySelectorAll('button').forEach(b => b.disabled = true);
+          const label = act === 'install' ? 'Installing…' : act === 'update' ? 'Updating…'
+            : act === 'uninstall' ? 'Removing…' : act === 'mcpReconnect' ? 'Connecting…'
+            : act === 'deleteRun' ? 'Deleting…' : '…';
+          btn.innerHTML = spinHtml + label;
+        } else {
+          // Transient operations: show spinner briefly, auto-restore after 1.5 s
+          const prev = btn.innerHTML;
+          btn.disabled = true;
+          btn.innerHTML = spinHtml + btn.textContent.trim();
+          setTimeout(() => { btn.disabled = false; btn.innerHTML = prev; }, 1500);
+        }
+
         if (act === 'toggle') vscode.postMessage({ type: 'togglePlugin', pluginId: id, pluginName: name, enable: btn.getAttribute('data-enable') === 'true' });
         else if (act === 'install') vscode.postMessage({ type: 'installPlugin', pluginId: id, pluginName: name });
         else if (act === 'update') vscode.postMessage({ type: 'updatePlugin', pluginId: id, pluginName: name });
@@ -860,33 +887,90 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         else if (act === 'uninstall') vscode.postMessage({ type: 'uninstallPlugin', pluginId: id, pluginName: name });
         else if (act === 'mcpReconnect') vscode.postMessage({ type: 'reconnectMcp', mcpName: name, mcpTarget: btn.getAttribute('data-target') });
         else if (act === 'mcpDetails') vscode.postMessage({ type: 'mcpDetails', mcpName: name });
+        else if (act === 'openRun') vscode.postMessage({ type: 'openOverview' });
         else if (act === 'openFile') vscode.postMessage({ type: 'openFile', path: btn.getAttribute('data-path') });
         else if (act === 'deleteRun') vscode.postMessage({ type: 'deleteRun', path: btn.getAttribute('data-path') });
+        else if (act === 'openExternal') vscode.postMessage({ type: 'openExternal', url: btn.getAttribute('data-url') });
+        else if (act === 'refresh') vscode.postMessage({ type: 'refresh' });
       };
     });
   }
 
-  function renderFiles(files, total) {
-    document.getElementById('files-count').textContent = total ? String(total) : '';
-    const el = document.getElementById('files');
-    if (!files || !files.length) { el.innerHTML = '<span class="empty">No runs yet</span>'; return; }
-    const shown = files.slice(0, LIMITS.files);
-    el.innerHTML = shown.map(f =>
-      '<div class="item">' +
-      '<span class="item-dot" style="background:var(--muted)"></span>' +
-      '<span class="item-body">' +
-        '<span class="item-name" title="' + esc(f.flowName) + '">' + esc(f.flowName) + ' · ' + f.completed + '/' + f.total + '</span>' +
-        '<span class="item-sub">' + fmtTime(f.runId) + '</span>' +
-      '</span>' +
-      '<span class="item-acts">' +
-        actionMenu([
-          menuItem('Open', 'data-act="openFile" data-path="' + esc(f.filePath) + '"'),
-          menuItem('Delete', 'data-act="deleteRun" data-path="' + esc(f.filePath) + '"', true)
-        ]) +
-      '</span>' +
-      '</div>'
-    ).join('') +
-    (files.length > shown.length ? '<div class="list-more">Showing ' + shown.length + ' of ' + total + ' runs</div>' : '');
+  function bindRowClicks(root) {
+    root.querySelectorAll('.item[data-row-act]').forEach(row => {
+      row.style.cursor = 'pointer';
+      row.onclick = e => {
+        if (e.target.closest('button, details, .menu')) return;
+        const act = row.getAttribute('data-row-act');
+        if (act === 'openOverview') vscode.postMessage({ type: 'openOverview' });
+        else if (act === 'openFile') vscode.postMessage({ type: 'openFile', path: row.getAttribute('data-row-path') });
+      };
+    });
+  }
+
+  function renderRuns(activeRun, files, total) {
+    lastActiveRun = activeRun || null;
+    lastRunFiles = files || [];
+    lastRunTotal = total || 0;
+    const el = document.getElementById('runs');
+    const totalCount = (activeRun ? 1 : 0) + (total || 0);
+    document.getElementById('runs-count').textContent = totalCount ? String(totalCount) : '';
+
+    if (!activeRun && (!files || !files.length)) {
+      el.innerHTML = '<span class="empty">No runs yet</span>';
+      return;
+    }
+
+    let html = '';
+
+    if (activeRun) {
+      const step = activeRun.currentStep;
+      const stepHtml = step
+        ? '<span class="item-sub" style="display:flex;align-items:center;gap:4px;margin-top:3px">' +
+            '<span class="badge ' + esc(step.status) + '">' + esc(step.status) + '</span>' +
+            '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(step.title) + '</span>' +
+          '</span>'
+        : '';
+      const detailAttr = activeRun.filePath ? 'data-act="openFile" data-path="' + esc(activeRun.filePath) + '"' : 'data-act="openRun"';
+      html +=
+        '<div class="item run-active">' +
+        '<span class="item-dot" title="Running" style="background:var(--vscode-charts-blue,var(--focus));box-shadow:0 0 0 3px rgba(14,99,156,.2)"></span>' +
+        '<span class="item-body">' +
+          '<span class="item-name" title="' + esc(activeRun.flowName) + '">' + esc(activeRun.flowName) + '</span>' +
+          '<div class="run-prog"><div class="run-prog-fill" style="width:' + activeRun.percent + '%"></div></div>' +
+          stepHtml +
+        '</span>' +
+        '<span class="item-acts" style="gap:6px">' +
+          '<span class="run-count">' + activeRun.completed + '/' + activeRun.total + ' · ' + activeRun.percent + '%</span>' +
+          actionMenu([
+            menuItem('Open', 'data-act="openRun"'),
+            menuItem('Detail', detailAttr),
+            menuItem('Delete', 'data-act="deleteRun" data-path="' + esc(activeRun.filePath || '') + '"', true, activeRun.isRunning)
+          ]) +
+        '</span>' +
+        '</div>';
+    }
+
+    if (files && files.length) {
+      html += files.map(f =>
+        '<div class="item">' +
+        '<span class="item-dot" style="background:var(--muted)"></span>' +
+        '<span class="item-body">' +
+          '<span class="item-name" title="' + esc(f.flowName) + '">' + esc(f.flowName) + '</span>' +
+          '<span class="item-sub">' + f.completed + '/' + f.total + ' · ' + fmtTime(f.runId) + '</span>' +
+        '</span>' +
+        '<span class="item-acts">' +
+          actionMenu([
+            menuItem('Open', 'data-act="openRun"'),
+            menuItem('Detail', 'data-act="openFile" data-path="' + esc(f.filePath) + '"'),
+            menuItem('Delete', 'data-act="deleteRun" data-path="' + esc(f.filePath) + '"', true)
+          ]) +
+        '</span>' +
+        '</div>'
+      ).join('');
+    }
+
+    el.innerHTML = html;
     bindActionButtons(el);
   }
 
@@ -897,14 +981,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     try {
       const m = e.data;
       if (m.type === 'data') {
-        renderActive(m.activeRun);
         renderStats(m.stats);
         renderDefaults(m.defaultItems || []);
         mcpReceived = true;
         pluginsReceived = true;
         setMcpData(m.mcp);
         setPluginData(m.plugins, m.pluginsAvailable);
-        renderFiles(m.runFiles, m.totalRunFiles);
+        renderRuns(m.activeRun, m.runFiles, m.totalRunFiles);
       } else if (m.type === 'mcp') {
         mcpReceived = true;
         setMcpData(m.mcp);

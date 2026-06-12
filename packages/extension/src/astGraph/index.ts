@@ -31,7 +31,7 @@ interface FolderState {
   watcher: vscode.Disposable | null;
 }
 
-export function registerAstGraph(context: vscode.ExtensionContext, output: vscode.OutputChannel): void {
+export function registerAstGraph(context: vscode.ExtensionContext, output: vscode.OutputChannel, onMcpReady?: () => void): void {
   const cfg = () => vscode.workspace.getConfiguration(SETTING_NAMESPACE);
   if (!cfg().get<boolean>('enabled', true)) {
     output.appendLine('AST graph: disabled via ai-stepflow.astGraph.enabled.');
@@ -136,6 +136,7 @@ export function registerAstGraph(context: vscode.ExtensionContext, output: vscod
       output.appendLine(`AST graph: MCP already registered in ${folder.name}.`);
       await writeHint(folder);
       updateStatusBar();
+      onMcpReady?.();
       return;
     }
     const result = await registerMcpServer({ binPath, dbPath: state.lastScan.dbPath, cwd: folder.uri.fsPath });
@@ -144,6 +145,7 @@ export function registerAstGraph(context: vscode.ExtensionContext, output: vscod
     if (result.ok) {
       output.appendLine(`AST graph: registered MCP server in ${folder.name}.`);
       await writeHint(folder);
+      onMcpReady?.();
     } else {
       output.appendLine(`AST graph: MCP registration skipped — ${result.reason}`);
     }
