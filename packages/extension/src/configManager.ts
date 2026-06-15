@@ -68,7 +68,9 @@ export class ConfigManager {
           const installed = await this._isBundledItemInstalled(kind, filename);
           let name: string, description: string;
           if (filename.endsWith('.md')) {
-            const m = matter(content);
+            const leadingComments = content.match(/^(?:\s*<!--[\s\S]*?-->\s*)+(?=---(?:\r?\n|$))/);
+            const parseableContent = leadingComments ? content.slice(leadingComments[0].length) : content;
+            const m = matter(parseableContent);
             name = String(m.data.name || filename.replace('.md', ''));
             description = String(m.data.description || this._firstHeading(content) || '');
           } else {

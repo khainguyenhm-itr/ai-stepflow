@@ -13,7 +13,7 @@ import {
   seedStartedSteps,
   runValidator,
   renderVerifyReportMarkdown, verifyRun,
-  resolveTemplate
+  resolveTemplate, resolveTemplates
 } from '@ai-stepflow/core';
 import * as machine from '@ai-stepflow/core';
 
@@ -45,7 +45,14 @@ export class RunOrchestrator {
     private readonly stateManager: StateManager,
     private readonly terminals: TerminalManager,
     private readonly post: (message: HostMessage) => void
-  ) {}
+  ) {
+    this.terminals.onDidCloseRunningStep(stepId => {
+      if (this._currentFlow && this._runState && this._runState.steps[stepId]?.executionStatus === 'running') {
+        this._setRunState(machine.markCancelled(this._runState, this._currentFlow, stepId), { stepId, status: 'cancelled', message: 'Terminal closed by user' });
+        this.post({ type: 'stepUpdate', stepId, append: true, output: '\n[terminal closed — run cancelled]\n' });
+      }
+    });
+  }
 
   get currentFlow(): Flow | undefined { return this._currentFlow; }
   get runState(): FlowRunState | undefined { return this._runState; }
@@ -164,8 +171,10 @@ export class RunOrchestrator {
     // — no Enter, no "Mark step done" click.
     if (aiReview) {
       const skills = await this.configManager.loadSkills();
-      const systemPrompt = composeSystemPrompt(agent, stepSkillNames, skills);
-      const userMessage = resolveTemplate(description?.trim() || step.input?.prompt?.trim() || `Run step: ${step.title || step.id}`, this._runState?.inputs || {});
+      const runInputs = this._runState?.inputs || {};
+      const resolvedProduces = resolveTemplates(step.produces, runInputs);
+      const systemPrompt = composeSystemPrompt(agent, stepSkillNames, skills, resolvedProduces, runInputs);
+      const userMessage = resolveTemplate(description?.trim() || step.input?.prompt?.trim() || `Run step: ${step.title || step.id}`, runInputs);
       this._setRunState(machine.markRunning(this._runState, flow, stepId), { stepId, status: 'running', message: 'Run started (headless, auto-review)' });
 
       let output = '';

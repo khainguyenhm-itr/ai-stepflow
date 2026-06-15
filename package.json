@@ -32,8 +32,7 @@
     "compile:webview-test": "rm -rf packages/webview/out-test && tsc -p packages/webview/test/tsconfig.json",
     "test:webview": "npm run compile && npm run compile:webview-test && node --test packages/webview/out-test/test/*.test.js",
     "test:integration": "npm run compile && npm run compile:itest && node packages/extension/out-itest/test/runIntegration.js",
-    "test": "npm run test:unit && npm run test:webview",
-    "vscode:uninstall": "node packages/extension/out/uninstall.js"
+    "test": "npm run test:unit && npm run test:webview"
   },
   "devDependencies": {
     "@types/glob": "^8.1.0",

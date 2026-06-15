@@ -109,19 +109,41 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
     events.push(event);
   }
 
+  // Overall run status (summarized from steps).
+  const getRunStatus = () => {
+    const statuses = Object.values(runState.steps).map(s => s.executionStatus);
+    const completionStatuses = Object.values(runState.steps).map(s => s.completionStatus);
+    if (completionStatuses.every(s => s === 'done')) return { label: 'Done', className: 'success', Icon: Icon.Check };
+    if (statuses.includes('failed')) return { label: 'Failed', className: 'error', Icon: Icon.X };
+    if (statuses.includes('running')) return { label: 'Running', className: 'progress', Icon: Icon.Play };
+    if (statuses.includes('cancelled')) return { label: 'Cancelled', className: '', Icon: Icon.Info };
+    return { label: 'Ready', className: '', Icon: Icon.Info };
+  };
+
+  const runStatus = getRunStatus();
+
   return (
     <div className="runner">
       <div className="runner-head">
         <div className="runner-head-info">
-          <span className="small">
-            {flow.name} · {completedSteps}/{flow.steps.length} steps done · <span className="muted">{formatRunTime(runState.runId)}</span>
+          <div className="flex-row items-center gap-8 mb-4">
+            <span className="badge scope">{flow.name}</span>
+            <span className={`badge ${runStatus.className}`}>
+              <runStatus.Icon size={10} style={{ marginRight: 4 }} />
+              {runStatus.label}
+            </span>
+          </div>
+          <span className="small muted">
+            {completedSteps}/{flow.steps.length} steps done · {formatRunTime(runState.runId)}
           </span>
         </div>
         <div className="runner-head-actions">
           <button className="btn" onClick={() => sendToVSCode('verifyRun', {})}>Verify</button>
           <button className="btn" onClick={() => sendToVSCode('exportRunReport', {})}>Report</button>
-          <ProgressBar percent={activeProgress} />
-          <span className="small muted">{activeProgress}%</span>
+          <div className="runner-head-progress">
+            <ProgressBar percent={activeProgress} />
+            <span className="small muted">{activeProgress}%</span>
+          </div>
         </div>
       </div>
       <div className="runner-strip">

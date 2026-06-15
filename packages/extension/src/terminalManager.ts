@@ -16,7 +16,11 @@ export class TerminalManager {
   private _execution: vscode.TerminalShellExecution | undefined;
   /** The name of the agent currently running in our terminal, if any. */
   private _currentAgentName: string | undefined;
+  /** The ID of the step currently running in our terminal, if any. */
+  private _currentStepId: string | undefined;
   private _disposables: vscode.Disposable[] = [];
+  /** Callback to notify when the terminal is closed while a step is running. */
+  private _onDidCloseRunningStep: ((stepId: string) => void) | undefined;
 
   constructor(private readonly configManager: ConfigManager) {
     this._disposables.push(
@@ -24,15 +28,25 @@ export class TerminalManager {
         if (event.execution === this._execution) this._reset();
       }),
       vscode.window.onDidCloseTerminal(terminal => {
-        if (terminal === this._terminal) this._reset();
+        if (terminal === this._terminal) {
+          if (this._running && this._currentStepId && this._onDidCloseRunningStep) {
+            this._onDidCloseRunningStep(this._currentStepId);
+          }
+          this._reset();
+        }
       })
     );
+  }
+
+  public onDidCloseRunningStep(cb: (stepId: string) => void): void {
+    this._onDidCloseRunningStep = cb;
   }
 
   private _reset(): void {
     this._running = false;
     this._execution = undefined;
     this._currentAgentName = undefined;
+    this._currentStepId = undefined;
   }
 
   /**
@@ -40,16 +54,16 @@ export class TerminalManager {
    * When `submit` is false the prompt is typed into the chat box but NOT sent, so the
    * user can review the agent/skill/model context and press Enter to start the run.
    */
-  public async runInTerminal(prompt: string, projectPath: string, agent?: Agent | string, submit = true): Promise<void> {
+  public async runInTerminal(prompt: string, projectPath: string, agent?: Agent | string, submit = true, stepId?: string): Promise<void> {
     const terminal = this._getTerminal(projectPath);
     terminal.show();
 
     const agentName = typeof agent === 'string' ? agent : agent?.name;
-    if (this._running && agentName !== this._currentAgentName) {
+    if (this._running && (agentName !== this._currentAgentName || (stepId && stepId !== this._currentStepId))) {
       this._terminal?.dispose();
       this._terminal = undefined;
       this._running = false;
-      return this.runInTerminal(prompt, projectPath, agent, submit);
+      return this.runInTerminal(prompt, projectPath, agent, submit, stepId);
     }
 
     if (this._running) {
@@ -60,6 +74,7 @@ export class TerminalManager {
     const shellIntegration = await this._waitForShellIntegration(terminal);
     this._running = true;
     this._currentAgentName = agentName;
+    this._currentStepId = stepId;
 
     const agentObj = typeof agent === 'string' ? (await this.configManager.loadAgents()).find(a => a.name === agent) : agent;
     const launchArgs = this._constructClaudeArgs(agentObj);

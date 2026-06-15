@@ -131,8 +131,7 @@
   },
   "scripts": {
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "vscode:uninstall": "node ./out/uninstall.js"
+    "watch": "tsc -watch -p ./"
   },
   "devDependencies": {
     "@types/node": "^18.19.130",
