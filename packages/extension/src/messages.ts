@@ -64,7 +64,7 @@ export type WebviewMessage =
   | { type: 'cancelStep'; stepId: string }
   | { type: 'runAgent'; agent: Agent; description?: string }
   | { type: 'runSkill'; skill: Skill; description?: string }
-  | { type: 'submitHumanReview'; stepId: string; review: HumanReview; historyEvent?: { timestamp: string; status: string; message?: string } }
+  | { type: 'reviewStep'; stepId: string; decision: 'approved' | 'rejected' }
   | { type: 'markStepDone'; stepId: string; historyEvent?: { timestamp: string; status: string; message?: string } }
   | { type: 'verifyRun' }
   | { type: 'exportRunReport' }
@@ -114,10 +114,9 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   cancelStep: m => isString(m.stepId),
   runAgent: m => isAgentLike(m.agent),
   runSkill: m => isSkillLike(m.skill),
-  submitHumanReview: m =>
+  reviewStep: m =>
     isString(m.stepId) &&
-    isObject(m.review) &&
-    (m.review.decision === 'approved' || m.review.decision === 'rejected'),
+    (m.decision === 'approved' || m.decision === 'rejected'),
   markStepDone: m => isString(m.stepId),
   generateDraft: m => (m.kind === 'agent' || m.kind === 'skill') && isString(m.name),
   generateFlow: m => isString(m.description) && (m.flow === undefined || isFlowLike(m.flow)),

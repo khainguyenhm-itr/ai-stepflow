@@ -12,7 +12,8 @@ import {
   pickAutoAdvanceSteps,
   seedStartedSteps,
   runValidator,
-  renderVerifyReportMarkdown, verifyRun
+  renderVerifyReportMarkdown, verifyRun,
+  resolveTemplate
 } from '@ai-stepflow/core';
 import * as machine from '@ai-stepflow/core';
 
@@ -164,7 +165,7 @@ export class RunOrchestrator {
     if (aiReview) {
       const skills = await this.configManager.loadSkills();
       const systemPrompt = composeSystemPrompt(agent, stepSkillNames, skills);
-      const userMessage = description?.trim() || step.input?.prompt?.trim() || `Run step: ${step.title || step.id}`;
+      const userMessage = resolveTemplate(description?.trim() || step.input?.prompt?.trim() || `Run step: ${step.title || step.id}`, this._runState?.inputs || {});
       this._setRunState(machine.markRunning(this._runState, flow, stepId), { stepId, status: 'running', message: 'Run started (headless, auto-review)' });
 
       let output = '';
@@ -195,7 +196,7 @@ export class RunOrchestrator {
     // chat box with the step's skill + description WITHOUT submitting. The user presses Enter to
     // run, then clicks "Mark step done" to advance.
     const primarySkill = stepSkillNames[0];
-    const desc = description?.trim() || step.input?.prompt?.trim() || `Run step: ${step.title || step.id}`;
+    const desc = resolveTemplate(description?.trim() || step.input?.prompt?.trim() || `Run step: ${step.title || step.id}`, this._runState?.inputs || {});
     const message = primarySkill ? `/${primarySkill} ${desc}` : desc;
 
     this._setRunState(machine.markRunning(this._runState, flow, stepId), { stepId, status: 'running', message: 'Opened in Claude — press Enter to run' });
@@ -204,10 +205,16 @@ export class RunOrchestrator {
   }
 
   /** Approve/reject a step from the webview's human-review buttons. */
-  submitHumanReview(stepId: string, review: HumanReview): void {
+  reviewStep(stepId: string, decision: 'approved' | 'rejected'): void {
     if (!this._currentFlow || !this._runState) return;
-    const decision = review.decision;
-    this._setRunState(machine.applyHumanReview(this._runState, this._currentFlow, stepId, review), { stepId, status: decision, message: `Human review ${decision}` });
+    const flow = this._currentFlow;
+    const review = { decision };
+    this._setRunState(machine.applyHumanReview(this._runState, flow, stepId, review), { stepId, status: decision, message: `Human review ${decision}` });
+    
+    // If approved and not waiting for manual confirmation, advance the DAG.
+    if (decision === 'approved' && this._runState.steps[stepId]?.completionStatus === 'done') {
+      this._advanceReadySteps();
+    }
   }
 
   /**
@@ -234,6 +241,14 @@ export class RunOrchestrator {
     }
 
     const rs = this._runState.steps[stepId];
+    // Non-review terminal step still running: the user clicked the "Done in terminal" button to signal
+    // the terminal work is finished. Transition running → completed (which auto-marks done when
+    // requireMarkDone is false; otherwise the "Mark done" button appears for the final confirmation).
+    if (!step.review?.required && rs?.executionStatus === 'running') {
+      this._setRunState(machine.markCompleted(this._runState, flow, stepId), { stepId, status: 'completed', message: 'Terminal work done' });
+      if (this._runState.steps[stepId]?.completionStatus === 'done') this._advanceReadySteps();
+      return;
+    }
     // No review gate, or a reviewer already approved → finish and advance.
     if (!step.review?.required || rs?.reviewStatus === 'approved' || rs?.completionStatus === 'ready_to_mark_done') {
       this._setRunState(machine.markDone(this._runState, flow, stepId), { stepId, status: 'completed', message: 'Marked done' });

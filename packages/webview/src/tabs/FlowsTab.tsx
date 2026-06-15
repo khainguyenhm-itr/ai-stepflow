@@ -60,7 +60,7 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
   onCopyCommand,
   outputEndRef
 }) => {
-  const [filter, setFilter] = useState<ScopeFilter>('all');
+  const [filter, setFilter] = useState<ScopeFilter>('project');
 
   const getItemScope = (sourcePath: string): SaveScope => {
     if (globalPath && sourcePath.startsWith(globalPath)) return 'global';

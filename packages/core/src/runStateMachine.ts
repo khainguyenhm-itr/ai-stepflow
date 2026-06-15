@@ -132,11 +132,22 @@ export function markRunning(state: FlowRunState, flow: Flow, stepId: string): Fl
   return patchStep(baseState, flow, stepId, patch, { status: 'running', message: revision > 1 ? `rerun #${revision}` : undefined });
 }
 
-/** A finished run: "completed" is also "done" when the step has no review gate. */
+/** A finished run: transitions from 'running' to 'completed'. 
+ *  If no review is required, it can go straight to 'done'. 
+ */
 export function markCompleted(state: FlowRunState, flow: Flow, stepId: string, metrics: StepMetrics = {}): FlowRunState {
   const step = flow.steps.find(s => s.id === stepId);
   const patch: Partial<StepRunState> = { executionStatus: 'completed', completedAt: new Date().toISOString(), ...metrics };
-  if (!step?.review.required) patch.completionStatus = 'done';
+  
+  if (!step?.review.required) {
+    // No review: go to 'done' unless the user explicitly wants to manually mark it.
+    patch.completionStatus = step?.completion?.requireMarkDone ? 'ready_to_mark_done' : 'done';
+  } else {
+    // Review required: wait for decision.
+    patch.completionStatus = 'not_ready';
+    patch.reviewStatus = step.review.type === 'ai' ? 'ai_review_running' : 'waiting_human';
+  }
+  
   return patchStep(state, flow, stepId, patch, { status: 'completed' });
 }
 
@@ -150,23 +161,34 @@ export function markCancelled(state: FlowRunState, flow: Flow, stepId: string, m
 }
 
 export function applyAiReview(state: FlowRunState, flow: Flow, stepId: string, status: 'ai_review_running' | 'approved' | 'rejected' | 'waiting_human', aiReviewOutput?: string): FlowRunState {
+  const step = flow.steps.find(s => s.id === stepId);
   const patch: Partial<StepRunState> = { reviewStatus: status };
   if (aiReviewOutput !== undefined) patch.aiReviewOutput = aiReviewOutput;
-  if (status === 'approved') patch.completionStatus = 'done';
-  else if (status === 'rejected') { patch.completionStatus = 'not_ready'; patch.executionStatus = 'ready'; }
-  // The transient "running" state is not worth an audit entry; the verdicts are.
+  
+  if (status === 'approved') {
+    // AI Approved: go to 'done' unless manual confirmation is requested.
+    patch.completionStatus = step?.completion?.requireMarkDone ? 'ready_to_mark_done' : 'done';
+  } else if (status === 'rejected') {
+    patch.completionStatus = 'not_ready';
+    patch.executionStatus = 'ready';
+  }
+  
   const event = status === 'ai_review_running' ? undefined : { status: `ai-review ${status}` };
   return patchStep(state, flow, stepId, patch, event);
 }
 
 export function applyHumanReview(state: FlowRunState, flow: Flow, stepId: string, review: { decision: 'approved' | 'rejected'; comment?: string; checklist?: Record<string, boolean> }): FlowRunState {
+  const step = flow.steps.find(s => s.id === stepId);
   const approved = review.decision === 'approved';
-  return patchStep(state, flow, stepId, {
+  
+  const patch: Partial<StepRunState> = {
     humanReview: review,
     reviewStatus: approved ? 'approved' : 'rejected',
-    completionStatus: approved ? 'ready_to_mark_done' : 'not_ready',
+    completionStatus: approved ? (step?.completion?.requireMarkDone ? 'ready_to_mark_done' : 'done') : 'not_ready',
     ...(approved ? {} : { executionStatus: 'ready' as const })
-  }, { status: `human-review ${review.decision}`, message: review.comment });
+  };
+  
+  return patchStep(state, flow, stepId, patch, { status: `human-review ${review.decision}`, message: review.comment });
 }
 
 export function markDone(state: FlowRunState, flow: Flow, stepId: string): FlowRunState {

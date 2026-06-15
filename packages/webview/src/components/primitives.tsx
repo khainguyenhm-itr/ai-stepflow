@@ -20,7 +20,8 @@ import {
   GitBranch,
   Zap,
   AlertTriangle,
-  Terminal
+  Terminal,
+  Lock
 } from 'lucide-react';
 
 /* Small native UI primitives styled after VS Code. */
@@ -99,5 +100,6 @@ export const Icon = {
   GitBranch,
   Zap,
   Alert: AlertTriangle,
-  Terminal
+  Terminal,
+  Lock
 };

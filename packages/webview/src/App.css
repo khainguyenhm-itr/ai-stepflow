@@ -734,9 +734,10 @@ textarea.input {
   color: var(--muted);
   font-size: 12px;
 }
-.badge.error { color: var(--bg); background: var(--error); }
-.badge.warn { color: var(--bg); background: var(--warn); }
-.badge.running { color: var(--bg); background: var(--running); }
+.badge.error { color: #ffffff; background: var(--error); }
+.badge.warning { color: #1e1e1e; background: var(--warn); }
+.badge.success { color: #ffffff; background: var(--success); }
+.badge.running, .badge.progress { color: #ffffff; background: var(--running); }
 
 .error-banner {
   padding: 6px 10px;
@@ -1306,38 +1307,108 @@ textarea.input {
 .error-text { color: var(--error, var(--vscode-errorForeground, #f48771)); }
 
 .step-history {
-  margin-top: 12px;
-  padding-top: 12px;
+  margin-top: 20px;
+  padding-top: 16px;
   border-top: 1px solid var(--border);
 }
 
-.history-run-group + .history-run-group {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px dashed var(--border);
+.history-run-group {
+  position: relative;
+  margin-bottom: 24px;
 }
 
 .history-run-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 4px 8px;
+  background: var(--panel);
+  border-radius: 4px;
 }
 
-.history-list {
+.timeline {
+  position: relative;
+  padding-left: 20px;
+}
+
+.timeline::before {
+  content: '';
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  left: 6px;
+  width: 1px;
+  background: var(--border);
+}
+
+.timeline-item {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
+  padding-bottom: 16px;
 }
 
-.history-item {
+.timeline-item:last-child {
+  padding-bottom: 0;
+}
+
+.timeline-dot {
+  position: absolute;
+  left: -20px;
+  top: 4px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 2px solid var(--border);
+  z-index: 1;
+}
+
+.timeline-item.success .timeline-dot { border-color: var(--success); background: var(--success); }
+.timeline-item.error .timeline-dot { border-color: var(--error); background: var(--error); }
+.timeline-item.running .timeline-dot { border-color: var(--running); }
+
+.timeline-content {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
 }
 
-.history-message {
-  opacity: 0.8;
+.timeline-time {
+  flex: 0 0 65px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  padding-top: 1px;
+}
+
+.timeline-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.timeline-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.timeline-status.success { color: var(--success); }
+.timeline-status.error { color: var(--error); }
+.timeline-status.running { color: var(--running); }
+
+.timeline-message {
+  font-size: 12px;
+  color: var(--fg);
+  opacity: 0.9;
 }
 
 /* --------------------------- step builder ------------------------- */

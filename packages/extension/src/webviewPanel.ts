@@ -205,9 +205,10 @@ export class CockpitPanel {
       case 'runSkill':
         await this._handleRunSkill(message.skill, message.description);
         return;
-      case 'submitHumanReview':
-        this._runner.submitHumanReview(message.stepId, message.review);
-        return;
+      case 'reviewStep':
+        this._runner.reviewStep(message.stepId, message.decision);
+        break;
+
       case 'markStepDone':
         await this._runner.markStepDone(message.stepId);
         return;

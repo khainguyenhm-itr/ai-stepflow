@@ -45,14 +45,6 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   const totalTokens = stepCosts.reduce((sum, item) => sum + item.tokensUsed, 0);
   const stepHasStarted = activeStepState?.executionStatus === 'running' || activeStepState?.executionStatus === 'completed';
   const isLocked = activeStepState?.executionStatus === 'locked';
-  const canRunStep = !!activeStepState
-    && !isLocked
-    && activeStepState.executionStatus !== 'running'
-    && activeStepState.reviewStatus !== 'ai_review_running';
-  const isRerun = activeStepState?.completionStatus === 'done'
-    || activeStepState?.executionStatus === 'completed'
-    || activeStepState?.executionStatus === 'failed'
-    || activeStepState?.executionStatus === 'cancelled';
   const reviewStatus = activeStepState?.reviewStatus;
   const reviewRequired = !!activeStep?.review.required;
   const aiReviewing = reviewStatus === 'ai_review_running';
@@ -60,15 +52,22 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   // cancelled; interactive steps run in the terminal and have no child to kill.
   const isHeadless = reviewRequired && (activeStep?.review.type === 'ai' || !!activeStep?.review.reviewers?.some(r => r.type === 'ai'));
   const canCancel = isHeadless && activeStepState?.executionStatus === 'running';
-  // In the interactive-terminal model the human watches the run and decides, so
-  // any review-required step shows Approve/Reject until a decision is recorded.
-  const reviewDecided = reviewStatus === 'approved' || reviewStatus === 'rejected';
-  const showHumanReviewButtons = stepHasStarted && reviewRequired && !reviewDecided;
-  // Mark done finishes the step (and triggers the silent token capture). It is the
-  // completion action for non-review steps once their terminal run has started, and
-  // the post-approval action for review steps.
-  const needsManualDone = activeStepState?.completionStatus !== 'done'
-    && (reviewStatus === 'approved' || (!reviewRequired && stepHasStarted));
+
+  // Primary action button logic
+  const canRunStep = !!activeStepState && !isLocked && (activeStepState.executionStatus !== 'running' || !isHeadless);
+  
+  // "Done" action during execution: signals terminal work is finished.
+  const canSubmitWork = activeStepState?.executionStatus === 'running' && !isHeadless;
+  const submitLabel = reviewRequired ? 'Submit for Review' : 'Done & Continue';
+
+  // Review actions
+  const showReviewButtons = activeStepState?.executionStatus === 'completed' && reviewRequired && reviewStatus === 'waiting_human';
+
+  // Manual finalization (optional)
+  const needsManualDone = activeStepState?.completionStatus === 'ready_to_mark_done';
+
+  // Rerun is always available as a reset once the step has been touched.
+  const canRerun = activeStepState && (activeStepState.executionStatus !== 'ready' || (activeStepState.history?.length ?? 0) > 0);
 
   // A step's true state spans three axes (execution / review / completion); the badge collapses
   // them into one label, mirroring aidlc's StatusBadge. Order matters — the most final/specific
@@ -76,16 +75,16 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   const stepStatusBadge = (state: StepRunState | null | undefined) => {
     if (!state) return null;
     const { executionStatus, reviewStatus, completionStatus } = state;
-    if (completionStatus === 'done') return <span className="badge success">done</span>;
-    if (executionStatus === 'failed') return <span className="badge error">failed</span>;
-    if (reviewStatus === 'rejected') return <span className="badge error">rejected</span>;
-    if (executionStatus === 'running') return <span className="badge running">running</span>;
-    if (reviewStatus === 'ai_review_running') return <span className="badge running">reviewing</span>;
-    if (reviewStatus === 'approved' || completionStatus === 'ready_to_mark_done') return <span className="badge success">approved</span>;
-    if (reviewStatus === 'waiting_human' || (reviewRequired && executionStatus === 'completed')) return <span className="badge warn">awaiting review</span>;
-    if (executionStatus === 'completed') return <span className="badge success">completed</span>;
+    if (completionStatus === 'done') return <span className="badge success"><Icon.Check size={10} style={{ marginRight: 4 }} />done</span>;
+    if (executionStatus === 'failed') return <span className="badge error"><Icon.X size={10} style={{ marginRight: 4 }} />failed</span>;
+    if (reviewStatus === 'rejected') return <span className="badge error"><Icon.X size={10} style={{ marginRight: 4 }} />rejected</span>;
+    if (reviewStatus === 'approved' || completionStatus === 'ready_to_mark_done') return <span className="badge success"><Icon.Check size={10} style={{ marginRight: 4 }} />approved</span>;
+    if (executionStatus === 'running') return <span className="badge progress"><Icon.Play size={10} style={{ marginRight: 4 }} />running</span>;
+    if (reviewStatus === 'ai_review_running') return <span className="badge progress"><Icon.RotateCw size={10} style={{ marginRight: 4 }} className="spin" />reviewing</span>;
+    if (reviewStatus === 'waiting_human' || (reviewRequired && executionStatus === 'completed')) return <span className="badge warning"><Icon.Info size={10} style={{ marginRight: 4 }} />waiting review</span>;
+    if (executionStatus === 'completed') return <span className="badge progress">completed</span>;
     if (executionStatus === 'cancelled') return <span className="badge">cancelled</span>;
-    if (executionStatus === 'locked') return <span className="badge">locked</span>;
+    if (executionStatus === 'locked') return <span className="badge"><Icon.Lock size={10} style={{ marginRight: 4 }} />locked</span>;
     if (executionStatus === 'ready') return <span className="badge">ready</span>;
     return null;
   };
@@ -156,39 +155,53 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
           <div className="runner-detail-actions">
             {aiReviewing && <span className="small muted">AI reviewing…</span>}
 
-            {canCancel && (
-              <button className="btn danger" title="Stop this headless run" onClick={() => sendToVSCode('cancelStep', { stepId: activeStepId! })}>Cancel</button>
+            {canRunStep && (
+              <button className="btn primary" title="Run this step" onClick={() => onRunStep(activeStepId!, '')}>
+                <span className="btn-glyph"><Icon.Play size={14} /></span>Run Step
+              </button>
             )}
-
-            {showHumanReviewButtons && (
+            {canSubmitWork && (
+              <button className="btn primary" title={submitLabel} onClick={() => sendToVSCode('markStepDone', {
+                stepId: activeStepId!,
+                historyEvent: { timestamp: new Date().toISOString(), status: 'completed', message: 'Terminal work submitted by user' }
+              })}>
+                <span className="btn-glyph"><Icon.Check size={14} /></span>{submitLabel}
+              </button>
+            )}
+            {showReviewButtons && (
               <>
                 {activeStep?.review.filePath && (
                   <button className="btn" title={activeStep.review.filePath} onClick={() => onOpenFile(activeStep.review.filePath!)}>Open review file</button>
                 )}
-                <button className="btn" onClick={() => sendToVSCode('submitHumanReview', { 
-                  stepId: activeStepId!, 
-                  review: { decision: 'approved' },
-                  historyEvent: { timestamp: new Date().toISOString(), status: 'approved', message: 'User approved manually' }
+                <button className="btn success" title="Approve this step" onClick={() => sendToVSCode('reviewStep', {
+                  stepId: activeStepId!,
+                  decision: 'approved'
                 })}>Approve</button>
-                <button className="btn danger" onClick={() => sendToVSCode('submitHumanReview', { 
-                  stepId: activeStepId!, 
-                  review: { decision: 'rejected' },
-                  historyEvent: { timestamp: new Date().toISOString(), status: 'rejected', message: 'User rejected manually' }
+                <button className="btn error" title="Reject this step" onClick={() => sendToVSCode('reviewStep', {
+                  stepId: activeStepId!,
+                  decision: 'rejected'
                 })}>Reject</button>
               </>
             )}
             {needsManualDone && (
-              <button className="btn primary" title="Complete this step" onClick={() => sendToVSCode('markStepDone', { 
+              <button className="btn primary" title="Complete this step" onClick={() => sendToVSCode('markStepDone', {
                 stepId: activeStepId!,
                 historyEvent: { timestamp: new Date().toISOString(), status: 'completed', message: 'Marked done by user' }
               })}>
-                <span className="btn-glyph"><Icon.Check size={14} /></span>Mark done
+                <span className="btn-glyph"><Icon.Check size={14} /></span>Finish Step
               </button>
             )}
-            {/* While a review decision is pending, the slot belongs to Approve/Reject;
-                Re-run only appears once the user has approved or rejected. */}
-            {canRunStep && !showHumanReviewButtons && <button className="btn primary" onClick={() => onRunStep(activeStepId!, '')}><span className="btn-glyph"><Icon.Play size={14} /></span>{isRerun ? 'Re-run' : 'Run step'}</button>}
+            {canRerun && (
+              <button className="btn" title="Reset and rerun this step" onClick={() => onRunStep(activeStepId!, '')}>
+                <span className="btn-glyph"><Icon.RotateCw size={14} /></span>Rerun
+              </button>
+            )}
             {isLocked && <button className="btn" disabled title="Complete the steps this one depends on first">Locked</button>}
+            {canCancel && (
+              <button className="btn error" title="Cancel running step" onClick={() => sendToVSCode('cancelStep', { stepId: activeStepId! })}>
+                Cancel
+              </button>
+            )}
           </div>
         </div>
         {isHeadless && (
@@ -271,23 +284,40 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
         {/* Persistent Step History Log (Machine Local), grouped per run. */}
         {historyGroups.length > 0 && (
           <div className="step-history">
-            <div className="muted small mb-1">Execution History (Local Machine):</div>
+            <div className="divider-label mb-4">Execution History</div>
             {historyGroups.map(group => (
               <div key={group.runId} className="history-run-group">
                 <div className="history-run-head small">
                   <span className="muted mono">{group.runId === 'unknown' ? 'unknown run' : formatRunTime(group.runId)}</span>
                   {group.runId === runState.runId && <span className="badge running">current run</span>}
                 </div>
-                <div className="history-list">
-                  {group.events.map((event, i) => (
-                    <div key={i} className="history-item small">
-                      <span className="muted mono">{new Date(event.timestamp).toLocaleTimeString()}</span>
-                      <span className={`badge ${event.status === 'completed' || event.status === 'approved' ? 'success' : event.status === 'rejected' ? 'error' : event.status === 'running' ? 'running' : ''}`}>
-                        {event.status === 'completed' ? 'done' : event.status}
-                      </span>
-                      <span className="history-message">{event.message}</span>
-                    </div>
-                  ))}
+                <div className="timeline">
+                  {group.events.map((event, i) => {
+                    const isSuccess = event.status === 'completed' || event.status === 'approved' || event.status.includes('approved');
+                    const isError = event.status === 'failed' || event.status === 'rejected' || event.status.includes('rejected');
+                    const isRunning = event.status === 'running' || event.status.includes('running');
+                    
+                    let StatusIcon = Icon.Info;
+                    if (isSuccess) StatusIcon = Icon.Check;
+                    if (isError) StatusIcon = Icon.X;
+                    if (isRunning) StatusIcon = Icon.Play;
+
+                    return (
+                      <div key={i} className={`timeline-item ${isSuccess ? 'success' : isError ? 'error' : isRunning ? 'running' : ''}`}>
+                        <div className="timeline-dot" />
+                        <div className="timeline-content">
+                          <div className="timeline-time">{new Date(event.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
+                          <div className="timeline-body">
+                            <div className={`timeline-status ${isSuccess ? 'success' : isError ? 'error' : isRunning ? 'running' : ''}`}>
+                              <StatusIcon size={12} />
+                              {event.status}
+                            </div>
+                            {event.message && <div className="timeline-message">{event.message}</div>}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ))}

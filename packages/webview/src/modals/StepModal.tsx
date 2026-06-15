@@ -1,6 +1,6 @@
 import React from 'react';
 import { FlowStep, Agent, Skill } from '@ai-stepflow/core/types';
-import { Modal, Field, CheckRow, Icon } from '../components/primitives';
+import { Modal, Field, CheckRow } from '../components/primitives';
 import { getStepSkills } from '../flowUtils';
 import { SaveScope } from '../components/ScopeControls';
 
@@ -113,23 +113,38 @@ export const StepModal: React.FC<StepModalProps> = ({
             })}
           </div>
         </Field>
-        <Field label="Review" hint={step.review.type === 'ai' ? 'auto review — the step is marked done automatically when it passes' : 'human review — you must press “Mark done” to complete the step'}>
+        <Field label="Review" hint={!step.review.required ? 'no review — step advances immediately after execution' : (step.review.type === 'ai' ? 'auto review — marked done automatically on pass' : 'human review — requires manual approval')}>
           <select
             className="select"
-            value={step.review.type === 'ai' ? 'ai' : 'human'}
+            value={!step.review.required ? 'none' : (step.review.type === 'ai' ? 'ai' : 'human')}
             onChange={e => {
-              const value = e.target.value as 'human' | 'ai';
-              onChange({
-                review: { ...step.review, required: true, type: value },
-                completion: { requireMarkDone: value === 'human' }
-              });
+              const value = e.target.value as 'none' | 'human' | 'ai';
+              if (value === 'none') {
+                onChange({
+                  review: { ...step.review, required: false },
+                  completion: { requireMarkDone: false }
+                });
+              } else {
+                onChange({
+                  review: { ...step.review, required: true, type: value },
+                  completion: { requireMarkDone: value === 'human' }
+                });
+              }
             }}
           >
+            <option value="none">No review (auto-advance)</option>
             <option value="human">Human review</option>
             <option value="ai">Auto review</option>
           </select>
         </Field>
-        {step.review.type === 'ai' && (
+        <div style={{ marginLeft: '12px', borderLeft: '2px solid var(--vscode-widget-border)', paddingLeft: '12px', marginBottom: '12px' }}>
+          <CheckRow
+            label="Wait for manual 'Mark done' (no auto-advance)"
+            checked={step.completion.requireMarkDone}
+            onChange={checked => onChange({ completion: { requireMarkDone: checked } })}
+          />
+        </div>
+        {step.review.required && step.review.type === 'ai' && (
           <>
             <Field label="Validator module" hint="optional — JS/TS module that returns { decision, reason } for deterministic auto-review">
               <input
