@@ -13,7 +13,7 @@ import {
   seedStartedSteps,
   runValidator,
   renderVerifyReportMarkdown, verifyRun,
-  resolveTemplate, resolveTemplates
+  resolveTemplate, resolveTemplates, resolveFlowPath, resolveFlowRelativePath, flowOutputDir
 } from '@ai-stepflow/core';
 import * as machine from '@ai-stepflow/core';
 
@@ -172,7 +172,9 @@ export class RunOrchestrator {
     if (aiReview) {
       const skills = await this.configManager.loadSkills();
       const runInputs = this._runState?.inputs || {};
-      const resolvedProduces = resolveTemplates(step.produces, runInputs);
+      // Relative paths for agent prompt (cleaner than full system paths)
+      const resolvedProduces = resolveTemplates(step.produces, runInputs)
+        .map(p => resolveFlowRelativePath(p, flow.name));
       const systemPrompt = composeSystemPrompt(agent, stepSkillNames, skills, resolvedProduces, runInputs);
       const userMessage = resolveTemplate(description?.trim() || step.input?.prompt?.trim() || `Run step: ${step.title || step.id}`, runInputs);
       this._setRunState(machine.markRunning(this._runState, flow, stepId), { stepId, status: 'running', message: 'Run started (headless, auto-review)' });
@@ -188,12 +190,12 @@ export class RunOrchestrator {
       const metrics: machine.StepMetrics = { modelUsed: result.model, tokensUsed: result.tokensUsed, costUsd: result.costUsd, output };
       if (!result.success) {
         const why = result.timedOut ? 'run timed out' : `claude exited ${result.exitCode}`;
-        this._setRunState(machine.markFailed(this._runState, flow, stepId, { ...metrics, output: output + `\n[step failed: ${why}]\n` }), { stepId, status: 'failed', message: result.timedOut ? 'Run timed out' : 'Run failed' });
+        this._setRunState(machine.markFailed(this._runState, flow, stepId, { ...metrics, error: why, output: output + `\n[step failed: ${why}]\n` }), { stepId, status: 'failed', message: result.timedOut ? 'Run timed out' : 'Run failed' });
         return;
       }
       const prod = this._validateProduces(step);
       if (!prod.ok) {
-        this._setRunState(machine.markFailed(this._runState, flow, stepId, { ...metrics, output: output + `\n[produces check failed: ${prod.message}]\n` }), { stepId, status: 'failed', message: `Produces check failed: ${prod.message}` });
+        this._setRunState(machine.markFailed(this._runState, flow, stepId, { ...metrics, error: `produces check failed: ${prod.message}`, output: output + `\n[produces check failed: ${prod.message}]\n` }), { stepId, status: 'failed', message: `Produces check failed: ${prod.message}` });
         return;
       }
       this._setRunState(machine.markCompleted(this._runState, flow, stepId, metrics), { stepId, status: 'completed', message: 'Run completed — reviewing' });
@@ -204,9 +206,15 @@ export class RunOrchestrator {
     // Human / no-review steps run INTERACTIVELY: open Claude with `--agent --model`, pre-fill the
     // chat box with the step's skill + description WITHOUT submitting. The user presses Enter to
     // run, then clicks "Mark step done" to advance.
+    const runInputs = this._runState?.inputs || {};
+    const resolvedProduces = resolveTemplates(step.produces, runInputs)
+      .map(p => resolveFlowRelativePath(p, flow.name));
     const primarySkill = stepSkillNames[0];
-    const desc = resolveTemplate(description?.trim() || step.input?.prompt?.trim() || `Run step: ${step.title || step.id}`, this._runState?.inputs || {});
-    const message = primarySkill ? `/${primarySkill} ${desc}` : desc;
+    const desc = resolveTemplate(description?.trim() || step.input?.prompt?.trim() || `Run step: ${step.title || step.id}`, runInputs);
+    let message = primarySkill ? `/${primarySkill} ${desc}` : desc;
+    if (resolvedProduces.length > 0) {
+      message += `\n\nMandatory output files (relative to workspace root, you MUST create these):\n${resolvedProduces.map(p => `- ${p}`).join('\n')}`;
+    }
 
     this._setRunState(machine.markRunning(this._runState, flow, stepId), { stepId, status: 'running', message: 'Opened in Claude — press Enter to run' });
     this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[opened in the Claude terminal — review the pre-filled message, press Enter to run, then click "Mark step done"]\n` });
@@ -391,7 +399,7 @@ export class RunOrchestrator {
     // Read the kit + artifacts up front so we only flip to the transient "review running" state
     // when an actual LLM call will happen.
     const reviewKit = deep ? machine.loadReviewKit(projectPath) : '';
-    const artifacts = deep ? machine.readProducedArtifacts(step, projectPath, this._runState.inputs || {}) : { text: '', count: 0 };
+    const artifacts = deep ? machine.readProducedArtifacts(step, projectPath, this._runState.inputs || {}, flow.name) : { text: '', count: 0 };
     if (deep && reviewKit && artifacts.count > 0) {
       this._setRunState(machine.applyAiReview(this._runState, flow, stepId, 'ai_review_running', ''));
     }
@@ -432,12 +440,12 @@ export class RunOrchestrator {
   }
 
   private _validateRequires(step: FlowStep): { ok: boolean; message?: string } {
-    return validateRequires(step, this.configManager.getProjectPath() || '', this._runState?.inputs || {});
+    return validateRequires(step, this.configManager.getProjectPath() || '', this._runState?.inputs || {}, this._currentFlow?.name || '');
   }
 
   /** Verify a step's declared `produces` files exist and contain any required markers. */
   private _validateProduces(step: FlowStep): { ok: boolean; message?: string } {
-    return validateProduces(step, this.configManager.getProjectPath() || '', this._runState?.inputs || {});
+    return validateProduces(step, this.configManager.getProjectPath() || '', this._runState?.inputs || {}, this._currentFlow?.name || '');
   }
 
   /** True when a step runs headless (AI review), so it has no shared UI surface and can run concurrently. */
@@ -453,25 +461,18 @@ export class RunOrchestrator {
    */
   private _advanceReadySteps(): void {
     if (!this._currentFlow || !this._runState) return;
-    this._resetBookkeepingIfNewRun();
-    const flow = this._currentFlow;
-    const done = machine.doneStepIds(this._runState);
-    const ready = pickAutoAdvanceSteps(flow.steps, done, this._startedStepIds)
-      .map(id => flow.steps.find(s => s.id === id))
-      .filter((s): s is FlowStep => !!s);
-    if (!ready.length) return;
+    const orch = new machine.FlowOrchestrator(this._currentFlow, this._runState);
+    const actions = orch.getAutoAdvanceActions();
+    this._startedStepIds = orch.getStartedStepIds();
 
-    const headless = ready.filter(s => this._isHeadlessStep(s));
-    const interactive = ready.filter(s => !this._isHeadlessStep(s));
-
-    for (const step of headless) void this._run(step.id);
-
-    const [first, ...waiting] = interactive;
-    if (first) void this._run(first.id);
-    for (const step of waiting) {
-      if (this._parkedStepIds.has(step.id)) continue;
-      this._parkedStepIds.add(step.id);
-      this.post({ type: 'stepUpdate', stepId: step.id, append: true, output: '\n[ready — waiting for an interactive slot; click to launch this step when you are ready]\n' });
+    for (const action of actions) {
+      if (action.type === 'launch_headless' || action.type === 'launch_interactive') {
+        void this._run(action.stepId);
+      } else if (action.type === 'park_interactive') {
+        if (this._parkedStepIds.has(action.stepId)) continue;
+        this._parkedStepIds.add(action.stepId);
+        this.post({ type: 'stepUpdate', stepId: action.stepId, append: true, output: '\n[ready — waiting for an interactive slot; click to launch this step when you are ready]\n' });
+      }
     }
   }
 
@@ -479,7 +480,7 @@ export class RunOrchestrator {
     const runId = this._runState?.runId;
     if (runId === this._bookkeepingRunId) return;
     this._bookkeepingRunId = runId;
-    this._startedStepIds = this._runState ? seedStartedSteps(this._runState.steps) : new Set<string>();
+    this._startedStepIds = this._runState ? machine.seedStartedSteps(this._runState.steps) : new Set<string>();
     this._parkedStepIds = new Set<string>();
   }
 }

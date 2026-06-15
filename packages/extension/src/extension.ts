@@ -52,7 +52,7 @@ export function activate(context: vscode.ExtensionContext) {
       // Run files are rewritten on every step event, so watching them keeps the
       // sidebar's active-run and generated-files sections live as a run progresses.
       const runsWatcher = vscode.workspace.createFileSystemWatcher(
-        new vscode.RelativePattern(vscode.Uri.joinPath(vscode.Uri.file(projectPath), '.claude-flow', 'runs'), '**')
+        new vscode.RelativePattern(vscode.Uri.joinPath(vscode.Uri.file(projectPath), '.ai-stepflow', 'runs'), '**')
       );
       const refreshSidebar = () => void sidebar.refresh(false);
       runsWatcher.onDidCreate(refreshSidebar);

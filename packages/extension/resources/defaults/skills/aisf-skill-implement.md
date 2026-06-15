@@ -1,17 +1,14 @@
-<!-- ai-stepflow built-in -->
 ---
 name: aisf-skill-implement
 description: Implement features or fixes. Writes production-quality code and unit tests.
 ---
+<!-- ai-stepflow built-in -->
 
-Implement the feature or fix as specified in the PRD and Technical Design.
+Implement the feature per the PRD and TDD:
+1. Read design docs and CLAUDE.md.
+2. Define types and interfaces first.
+3. Write logic — surgical changes only, no unrelated edits.
+4. Write unit tests for happy paths and edge cases.
+5. Run tests and verify against ACs.
 
-Process:
-1. **Read & Map**: Analyze existing code, CLAUDE.md, and design docs.
-2. **Skeleton**: Define types, interfaces, and function signatures first.
-3. **Implementation**: Write logic using the "Surgical Changes" principle — only touch what is necessary.
-4. **Testing**: Write unit tests to cover happy paths and edge cases.
-5. **Verification**: Run tests and verify the code against the Acceptance Criteria.
-
-Rules: No placeholders. No over-engineering. Rigorous type safety.
-Output: Source code and unit tests.
+No placeholders. No over-engineering.

@@ -16,7 +16,7 @@ import { FlowRunState, FlowStep } from './types.js';
 import { StepRunner } from './claudeRunner.js';
 import { runValidator } from './validatorRunner.js';
 import { parseVerdict } from './runUtils.js';
-import { resolveTemplates } from './pathTemplates.js';
+import { resolveTemplates, resolveFlowPath } from './pathTemplates.js';
 
 /** Layer-1 validator applied to AI reviews that don't name their own `validatorPath`. */
 export const DEFAULT_REVIEW_VALIDATOR = 'aisf-produces-complete.mjs';
@@ -40,11 +40,12 @@ export interface ReviewResult {
 export function readProducedArtifacts(
   step: FlowStep,
   workspaceRoot: string,
-  inputs: Record<string, string>
+  inputs: Record<string, string>,
+  flowName = ''
 ): { text: string; count: number } {
   const reviewPath = step.review.filePath ? [step.review.filePath] : [];
   const paths = resolveTemplates([...reviewPath, ...(step.produces ?? [])], inputs)
-    .map(p => (path.isAbsolute(p) ? p : path.join(workspaceRoot, p)));
+    .map(p => resolveFlowPath(p, flowName, workspaceRoot));
   const seen = new Set<string>();
   const parts: string[] = [];
   let total = 0;

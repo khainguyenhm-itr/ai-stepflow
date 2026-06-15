@@ -106,6 +106,15 @@ body {
   height: 3px;
 }
 
+/* Modals: hide scrollbar thumb — content still scrolls, bar stays invisible. */
+.modal-body {
+  scrollbar-width: none;
+}
+
+.modal-body::-webkit-scrollbar {
+  display: none;
+}
+
 /* Force a thin, consistent scrollbar on textareas and the console. The VS Code
    extension host (Electron) and the browser preview otherwise render very
    different default scrollbars for form controls. */
@@ -329,13 +338,25 @@ textarea.input::-webkit-scrollbar-thumb:hover,
   background: var(--btn-hover);
 }
 
-.btn.danger {
+.btn.danger,
+.btn.error {
   border-color: var(--error);
   color: var(--error);
 }
 
-.btn.danger:hover:not(:disabled) {
+.btn.danger:hover:not(:disabled),
+.btn.error:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--error) 12%, transparent);
   border-color: var(--error);
+}
+
+.btn.success {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.btn.success:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--success) 12%, transparent);
 }
 
 .btn.block {
@@ -747,6 +768,41 @@ textarea.input {
   font-size: 12px;
 }
 
+.warning-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--warn);
+  border-radius: 2px;
+  color: var(--warn);
+  font-size: 12px;
+}
+
+.result-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 2px;
+  font-size: 12px;
+}
+.result-banner.success { border: 1px solid var(--success); color: var(--success); }
+.result-banner.error { border: 1px solid var(--error); color: var(--error); }
+
+.console-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+
+.runner-flow-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
 .runner-head-progress {
   display: flex;
   flex-direction: column;
@@ -755,7 +811,7 @@ textarea.input {
   min-width: 90px;
 }
 
-.progress {
+.progress-bar {
   width: 100%;
   height: 4px;
   border-radius: 2px;
@@ -763,7 +819,7 @@ textarea.input {
   overflow: hidden;
 }
 
-.progress-fill {
+.progress-bar-fill {
   height: 100%;
   background: var(--vscode-progressBar-background, #0e70c0);
   transition: width 0.2s ease;
@@ -1168,19 +1224,45 @@ textarea.input {
 .runner-detail {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px 14px;
+  gap: 10px;
+  padding: 12px 14px 16px;
 }
 
 .runner-detail-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
 }
 
 .runner-detail-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.runner-detail-step-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.runner-detail-step-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runner-detail-title-row {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1192,6 +1274,7 @@ textarea.input {
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
+  padding-top: 2px;
 }
 
 /* Grouped action buttons (e.g. Done / Limit / Cancel) need their own spacing
@@ -1274,20 +1357,13 @@ textarea.input {
 .runner-costs {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 4px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  background: var(--panel);
+  gap: 6px;
 }
 
 .runner-costs-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  flex-wrap: wrap;
 }
 
 .runner-cost-table {

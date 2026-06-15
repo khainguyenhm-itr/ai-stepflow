@@ -13,6 +13,8 @@ export interface StepMetrics {
   costUsd?: number;
   /** The run's captured output, folded into the step so a state broadcast stays self-consistent. */
   output?: string;
+  /** High-level error description. */
+  error?: string;
 }
 
 /** Lock steps whose dependencies are not all done; unlock them once they are. */
@@ -112,6 +114,7 @@ function invalidateForRerun(state: FlowRunState, flow: Flow, stepId: string): Fl
       executionStatus: id === stepId ? prev.executionStatus : 'ready',
       reviewStatus: step?.review.required ? 'pending' : 'not_required',
       completionStatus: 'not_ready',
+      error: undefined,
       aiReviewOutput: undefined,
       humanReview: undefined
     };
@@ -124,7 +127,7 @@ export function markRunning(state: FlowRunState, flow: Flow, stepId: string): Fl
   const baseState = rerunDoneStep ? invalidateForRerun(state, flow, stepId) : state;
   const step = flow.steps.find(s => s.id === stepId);
   const revision = (baseState.steps[stepId]?.revision ?? 0) + 1;
-  const patch: Partial<StepRunState> = { executionStatus: 'running', completionStatus: 'not_ready', output: '', startedAt: new Date().toISOString(), revision };
+  const patch: Partial<StepRunState> = { executionStatus: 'running', completionStatus: 'not_ready', output: '', error: undefined, startedAt: new Date().toISOString(), revision };
   if (step?.review.required) {
     patch.reviewStatus = 'pending';
     patch.aiReviewOutput = '';

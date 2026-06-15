@@ -58,7 +58,7 @@ async function loadRunFile(filePath: string): Promise<FlowRunState> {
 }
 
 async function saveRun(projectPath: string, run: FlowRunState): Promise<string> {
-  const runsDir = path.join(projectPath, '.claude-flow', 'runs');
+  const runsDir = path.join(projectPath, '.ai-stepflow', 'runs');
   await fs.mkdir(runsDir, { recursive: true });
   const safe = (value: string) => value.replace(/[^a-zA-Z0-9_-]+/g, '-');
   const filePath = path.join(runsDir, `${safe(run.flowId)}-${safe(run.runId)}.json`);
@@ -67,20 +67,10 @@ async function saveRun(projectPath: string, run: FlowRunState): Promise<string> 
 }
 
 async function saveReport(projectPath: string, flowId: string, runId: string, content: string, out?: string): Promise<string> {
-  const filePath = out ?? path.join(projectPath, '.claude-flow', 'reports', `${flowId.replace(/[^a-zA-Z0-9_-]+/g, '-')}-${runId.replace(/[^a-zA-Z0-9_-]+/g, '-')}.md`);
+  const filePath = out ?? path.join(projectPath, '.ai-stepflow', 'reports', `${flowId.replace(/[^a-zA-Z0-9_-]+/g, '-')}-${runId.replace(/[^a-zA-Z0-9_-]+/g, '-')}.md`);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, content, 'utf8');
   return filePath;
-}
-
-function readySteps(flow: Flow, state: FlowRunState, started: Set<string>): FlowStep[] {
-  const done = machine.doneStepIds(state);
-  return flow.steps.filter(step => {
-    if (started.has(step.id)) return false;
-    const stepState = state.steps[step.id];
-    if (!stepState || stepState.completionStatus === 'done' || stepState.executionStatus === 'running') return false;
-    return (step.dependsOn ?? []).every(dep => done.has(dep));
-  });
 }
 
 async function runAiReview(runState: FlowRunState, step: FlowStep, projectPath: string): Promise<{ status: 'approved' | 'rejected' | 'waiting_human'; output: string }> {
@@ -102,10 +92,17 @@ async function runFlow(projectPath: string, flowRef: string, inputs: Record<stri
   if (!flow) throw new Error(`Flow not found: ${flowRef}`);
   const [agents, skills] = await Promise.all([loadAgents({ projectPath }), loadSkills({ projectPath })]);
   let runState = machine.initRunState(flow, { runId: new Date().toISOString(), projectPath, inputs });
-  const started = new Set<string>();
+  
+  const orch = new machine.FlowOrchestrator(flow, runState);
 
-  for (let next = readySteps(flow, runState, started)[0]; next; next = readySteps(flow, runState, started)[0]) {
+  while (true) {
+    const actions = orch.getAutoAdvanceActions();
+    const action = actions.find(a => a.type === 'launch_headless' || a.type === 'launch_interactive');
+    if (!action) break;
+
+    const next = flow.steps.find(s => s.id === action.stepId);
     if (!next) break;
+
     const stepState = runState.steps[next.id];
     if (!stepState || stepState.completionStatus === 'done') continue;
 
@@ -135,7 +132,6 @@ async function runFlow(projectPath: string, flowRef: string, inputs: Record<stri
       return 1;
     }
 
-    started.add(next.id);
     runState = machine.markRunning(runState, flow, next.id);
     await saveRun(projectPath, runState);
     process.stdout.write(`\n=== ${next.title || next.id} ===\n`);
@@ -151,14 +147,16 @@ async function runFlow(projectPath: string, flowRef: string, inputs: Record<stri
 
     const metrics: machine.StepMetrics = { modelUsed: result.model, tokensUsed: result.tokensUsed, costUsd: result.costUsd, output };
     if (!result.success) {
-      runState = machine.markFailed(runState, flow, next.id, { ...metrics, output: `${output}\n[step failed: claude exited ${result.exitCode}]\n` });
+      const why = `claude exited ${result.exitCode}`;
+      runState = machine.markFailed(runState, flow, next.id, { ...metrics, error: why, output: `${output}\n[step failed: ${why}]\n` });
       await saveRun(projectPath, runState);
       return 1;
     }
 
     const prod = validateProduces(next, projectPath, runState.inputs);
     if (!prod.ok) {
-      runState = machine.markFailed(runState, flow, next.id, { ...metrics, output: `${output}\n[produces check failed: ${prod.message}]\n` });
+      const why = `produces check failed: ${prod.message}`;
+      runState = machine.markFailed(runState, flow, next.id, { ...metrics, error: why, output: `${output}\n[${why}]\n` });
       await saveRun(projectPath, runState);
       return 1;
     }
@@ -170,7 +168,7 @@ async function runFlow(projectPath: string, flowRef: string, inputs: Record<stri
       continue;
     }
 
-    if (next.review.type !== 'ai' && !next.review.reviewers?.some(item => item.type === 'ai') && !next.review.validatorPath) {
+    if (!orch.isHeadlessStep(next) && !next.review.validatorPath) {
       await saveRun(projectPath, runState);
       process.stderr.write(`Step '${next.title || next.id}' requires human review and cannot finish in headless mode.\n`);
       return 3;

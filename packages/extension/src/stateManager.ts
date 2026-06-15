@@ -22,7 +22,7 @@ export class StateManager {
   public async saveRun(run: FlowRunState): Promise<void> {
     if (!this.projectPath) return;
 
-    const runsDir = path.join(this.projectPath, '.claude-flow', 'runs');
+    const runsDir = path.join(this.projectPath, '.ai-stepflow', 'runs');
     await fs.mkdir(runsDir, { recursive: true });
 
     const safe = (value: string) => value.replace(/[^a-zA-Z0-9_-]+/g, '-');
@@ -34,7 +34,7 @@ export class StateManager {
   /** Save a generated markdown report inside the repo so it can be shared or committed. */
   public async saveReport(flowId: string, runId: string, content: string): Promise<string | undefined> {
     if (!this.projectPath) return undefined;
-    const reportsDir = path.join(this.projectPath, '.claude-flow', 'reports');
+    const reportsDir = path.join(this.projectPath, '.ai-stepflow', 'reports');
     await fs.mkdir(reportsDir, { recursive: true });
     const safe = (value: string) => value.replace(/[^a-zA-Z0-9_-]+/g, '-');
     const filePath = path.join(reportsDir, `${safe(flowId)}-${safe(runId)}.md`);
@@ -77,7 +77,7 @@ export class StateManager {
   public async loadLatestRun(): Promise<FlowRunState | undefined> {
     if (!this.projectPath) return undefined;
 
-    const runsDir = path.join(this.projectPath, '.claude-flow', 'runs');
+    const runsDir = path.join(this.projectPath, '.ai-stepflow', 'runs');
     let files: string[];
     try {
       files = (await fs.readdir(runsDir)).filter(f => f.endsWith('.json'));
@@ -85,23 +85,28 @@ export class StateManager {
       return undefined;
     }
 
-    let best: { run: FlowRunState; mtimeMs: number } | undefined;
+    let bestUnfinished: { run: FlowRunState; mtimeMs: number } | undefined;
+    let bestAny: { run: FlowRunState; mtimeMs: number } | undefined;
     for (const file of files) {
       const filePath = path.join(runsDir, file);
       try {
         const stat = await fs.stat(filePath);
         const run = JSON.parse(await fs.readFile(filePath, 'utf8')) as FlowRunState;
         const unfinished = Object.values(run.steps || {}).some(step => step.completionStatus !== 'done');
-        if (!unfinished) continue;
-        if (!best || stat.mtimeMs > best.mtimeMs) {
-          best = { run, mtimeMs: stat.mtimeMs };
+        if (unfinished && (!bestUnfinished || stat.mtimeMs > bestUnfinished.mtimeMs)) {
+          bestUnfinished = { run, mtimeMs: stat.mtimeMs };
+        }
+        if (!bestAny || stat.mtimeMs > bestAny.mtimeMs) {
+          bestAny = { run, mtimeMs: stat.mtimeMs };
         }
       } catch (e) {
         console.error(`Error loading run file ${filePath}:`, e);
       }
     }
 
-    return best?.run;
+    // Prefer an in-progress run so it can be resumed; fall back to the most recent
+    // completed run so Cost Analysis remains viewable after a run finishes.
+    return (bestUnfinished ?? bestAny)?.run;
   }
 
   /**
@@ -112,7 +117,7 @@ export class StateManager {
   public async listRunFiles(): Promise<{ flowId: string; runId: string; filePath: string; completedSteps: number; totalSteps: number; mtimeMs: number }[]> {
     if (!this.projectPath) return [];
 
-    const runsDir = path.join(this.projectPath, '.claude-flow', 'runs');
+    const runsDir = path.join(this.projectPath, '.ai-stepflow', 'runs');
     let files: string[];
     try {
       files = (await fs.readdir(runsDir)).filter(f => f.endsWith('.json'));
@@ -147,7 +152,7 @@ export class StateManager {
   public async loadRuns(): Promise<FlowRunState[]> {
     if (!this.projectPath) return [];
 
-    const runsDir = path.join(this.projectPath, '.claude-flow', 'runs');
+    const runsDir = path.join(this.projectPath, '.ai-stepflow', 'runs');
     let files: string[];
     try {
       files = (await fs.readdir(runsDir)).filter(f => f.endsWith('.json'));

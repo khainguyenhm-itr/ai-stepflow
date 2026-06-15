@@ -448,6 +448,8 @@ export const useAppLogic = () => {
 
   const validateFlow = (flow: Flow): string | null => {
     if (!flow.name.trim()) return 'Flow name is required.';
+    if (flow.name.trim().length > 60) return 'Flow name must be 60 characters or fewer.';
+    if (!/^[\x20-\x7E]+$/.test(flow.name.trim())) return 'Flow name must use English (ASCII) characters only.';
     const ids = new Set<string>();
     for (const step of flow.steps) {
       const label = step.title || step.id;

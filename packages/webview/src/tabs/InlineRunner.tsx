@@ -35,12 +35,16 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
 }) => {
   const activeStep = flow.steps.find(step => step.id === activeStepId);
   const activeStepState = activeStepId ? runState.steps[activeStepId] : null;
-  const stepCosts = flow.steps.map(step => ({
-    step,
-    state: runState.steps[step.id],
-    costUsd: runState.steps[step.id]?.costUsd ?? 0,
-    tokensUsed: runState.steps[step.id]?.tokensUsed ?? 0
-  }));
+  const stepCosts = flow.steps.map(step => {
+    const isHeadless = !!step.review?.required && (step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai'));
+    return {
+      step,
+      state: runState.steps[step.id],
+      costUsd: runState.steps[step.id]?.costUsd ?? 0,
+      tokensUsed: runState.steps[step.id]?.tokensUsed ?? 0,
+      isHeadless
+    };
+  });
   const totalCostUsd = stepCosts.reduce((sum, item) => sum + item.costUsd, 0);
   const totalTokens = stepCosts.reduce((sum, item) => sum + item.tokensUsed, 0);
   const stepHasStarted = activeStepState?.executionStatus === 'running' || activeStepState?.executionStatus === 'completed';
@@ -127,7 +131,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
       <div className="runner-head">
         <div className="runner-head-info">
           <div className="flex-row items-center gap-8 mb-4">
-            <span className="badge scope">{flow.name}</span>
+            <span className="runner-flow-name">{flow.name}</span>
             <span className={`badge ${runStatus.className}`}>
               <runStatus.Icon size={10} style={{ marginRight: 4 }} />
               {runStatus.label}
@@ -170,12 +174,23 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
       <div className="runner-detail">
         <div className="runner-detail-head">
           <div className="runner-detail-title">
-            <span className="muted small">STEP {activeStep ? flow.steps.findIndex(step => step.id === activeStep.id) + 1 : '-'}/{flow.steps.length}</span>
-            <strong>{activeStep ? activeStep.title || activeStep.id : 'No step selected'}</strong>
-            {stepStatusBadge(activeStepState)}
+            <span className="runner-detail-step-label">
+              Step {activeStep ? flow.steps.findIndex(step => step.id === activeStep.id) + 1 : '–'} / {flow.steps.length}
+            </span>
+            <div className="runner-detail-title-row">
+              <span className="runner-detail-step-title">
+                {activeStep ? activeStep.title || activeStep.id : 'No step selected'}
+              </span>
+              {stepStatusBadge(activeStepState)}
+            </div>
           </div>
           <div className="runner-detail-actions">
-            {aiReviewing && <span className="small muted">AI reviewing…</span>}
+            {aiReviewing && (
+              <span className="badge progress">
+                <Icon.RotateCw size={10} style={{ marginRight: 4 }} className="spin" />
+                AI reviewing…
+              </span>
+            )}
 
             {canRunStep && (
               <button className="btn primary" title="Run this step" onClick={() => onRunStep(activeStepId!, '')}>
@@ -227,8 +242,9 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
           </div>
         </div>
         {isHeadless && (
-          <div className="small muted" title="Headless AI-reviewed steps run with --permission-mode acceptEdits">
-            ⚠ Runs headless — Claude may create or edit files automatically without confirmation (acceptEdits).
+          <div className="warning-banner">
+            <Icon.Alert size={13} />
+            Runs headless — Claude may create or edit files automatically without confirmation (acceptEdits).
           </div>
         )}
         <div className="runner-meta">
@@ -237,18 +253,6 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
             {metaValue(activeStep?.agent, 'no agent assigned', true)}
             <span className="muted small">skill</span>
             {metaValue(activeStep ? getStepSkills(activeStep).join(', ') : '', 'no skill assigned', true)}
-          </div>
-          <div className="meta-group">
-            <span className="muted small">input</span>
-            {metaValue(Object.entries(runState.inputs || {}).map(([key, value]) => `${key}=${value}`).join(' · '), 'no run inputs')}
-            <span className="muted small">model</span>
-            {metaValue(activeStepState?.modelUsed, 'not reported yet', true)}
-            <span className="muted small">tokens</span>
-            {metaValue(activeStepState?.tokensUsed != null ? activeStepState.tokensUsed.toLocaleString() : '', 'not reported yet', true)}
-            <span className="muted small">cost</span>
-            {metaValue(activeStepState?.costUsd != null ? `$${activeStepState.costUsd.toFixed(4)}` : '', 'not reported yet', true)}
-          </div>
-          <div className="meta-group">
             <span className="muted small">command</span>
             <span className="mono small command-cell">
               {activeStep && getStepSkills(activeStep).length ? getStepSkills(activeStep).map(name => `/${name}`).join(' · ') : '/skill'}
@@ -261,15 +265,45 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
               </button>
             </span>
           </div>
+          <div className="meta-group">
+            <span className="muted small">input</span>
+            {metaValue(Object.entries(runState.inputs || {}).map(([key, value]) => `${key}=${value}`).join(' · '), 'no run inputs')}
+            <span className="muted small">model</span>
+            {metaValue(activeStepState?.modelUsed, 'not reported yet', true)}
+            <span className="muted small">tokens</span>
+            {metaValue(activeStepState?.tokensUsed != null ? activeStepState.tokensUsed.toLocaleString() : '', 'not reported yet', true)}
+            <span className="muted small">cost</span>
+            {metaValue(activeStepState?.costUsd != null ? `$${activeStepState.costUsd.toFixed(4)}` : '', 'not reported yet', true)}
+          </div>
         </div>
-        <pre className="console">
-          {activeStepState?.output || (activeStep ? 'Waiting for run command...' : 'No active step selected.')}
-          <div ref={outputEndRef} />
-        </pre>
+        <div className="console-wrap">
+          <div className="divider-label">Output</div>
+          <pre className="console">
+            {activeStepState?.output || (activeStep ? 'Waiting for run command...' : 'No active step selected.')}
+            <div ref={outputEndRef} />
+          </pre>
+        </div>
+
+        {activeStepState?.aiReviewOutput && (
+          <div className="console-wrap">
+            <div className="divider-label">AI Review</div>
+            <pre className="console ai-review">{activeStepState.aiReviewOutput}</pre>
+          </div>
+        )}
+        {reviewStatus === 'approved' && (
+          <div className="result-banner success">
+            <Icon.Check size={13} /> Approved — step will advance automatically.
+          </div>
+        )}
+        {reviewStatus === 'rejected' && (
+          <div className="result-banner error">
+            <Icon.X size={13} /> Rejected — fix the issues and re-run the step.
+          </div>
+        )}
 
         <div className="runner-costs">
+          <div className="divider-label">Cost Analysis</div>
           <div className="runner-costs-head">
-            <div className="muted small">Cost Analysis</div>
             <div className="small muted">
               Total {totalCostUsd > 0 ? `$${totalCostUsd.toFixed(4)}` : '$0.0000'} · {totalTokens.toLocaleString()} tokens
             </div>
@@ -286,13 +320,15 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
               </tr>
             </thead>
             <tbody>
-              {stepCosts.map(({ step, state, costUsd, tokensUsed }) => {
+              {stepCosts.map(({ step, state, costUsd, tokensUsed, isHeadless }) => {
                 const share = totalCostUsd > 0 ? (costUsd / totalCostUsd) * 100 : 0;
+                const hasRun = state?.executionStatus !== 'ready' && state?.executionStatus !== 'locked' && state?.executionStatus != null;
+                const modelLabel = state?.modelUsed || (hasRun && !isHeadless ? 'interactive' : '—');
                 return (
                   <tr key={step.id} className={activeStepId === step.id ? 'active' : ''}>
                     <td>{step.title || step.id}</td>
                     <td>{state?.executionStatus || 'ready'}</td>
-                    <td>{state?.modelUsed || '—'}</td>
+                    <td className={!state?.modelUsed && hasRun && !isHeadless ? 'muted' : ''}>{modelLabel}</td>
                     <td>{tokensUsed > 0 ? tokensUsed.toLocaleString() : '—'}</td>
                     <td>{costUsd > 0 ? `$${costUsd.toFixed(4)}` : '—'}</td>
                     <td>{costUsd > 0 ? `${share.toFixed(1)}%` : '—'}</td>
@@ -318,7 +354,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
                     const isSuccess = event.status === 'completed' || event.status === 'approved' || event.status.includes('approved');
                     const isError = event.status === 'failed' || event.status === 'rejected' || event.status.includes('rejected');
                     const isRunning = event.status === 'running' || event.status.includes('running');
-                    
+
                     let StatusIcon = Icon.Info;
                     if (isSuccess) StatusIcon = Icon.Check;
                     if (isError) StatusIcon = Icon.X;
@@ -344,19 +380,6 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
               </div>
             ))}
           </div>
-        )}
-
-        {activeStepState?.aiReviewOutput && (
-          <>
-            <div className="muted small">AI review</div>
-            <pre className="console ai-review">{activeStepState.aiReviewOutput}</pre>
-          </>
-        )}
-        {reviewStatus === 'approved' && (
-          <div className="small success-text"><Icon.Check size={14} /> Approved</div>
-        )}
-        {reviewStatus === 'rejected' && (
-          <div className="small error-text"><Icon.X size={14} /> Rejected — re-run the step</div>
         )}
       </div>
     </div>

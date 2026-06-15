@@ -109,6 +109,8 @@ export interface StepRunState {
   revision?: number;
   history?: { timestamp: string; status: string; message?: string }[];
   output?: string;
+  /** Error message if the step failed or was blocked by a gate. */
+  error?: string;
   aiReviewOutput?: string;
   humanReview?: {
     decision: "approved" | "rejected";

@@ -1,18 +1,16 @@
-<!-- ai-stepflow built-in -->
 ---
 name: aisf-skill-test-cases
 description: Generate detailed, executable test cases from a PRD or Test Plan.
 ---
+<!-- ai-stepflow built-in -->
 
-Generate test cases for the feature.
-
-Format:
+Generate test cases for the feature. Format per case:
 - **ID**: TC-XXX
-- **Title**: Short descriptive title.
-- **Preconditions**: State of the system before the test.
-- **Steps**: Numbered list of actions.
-- **Expected Result**: What the system should do.
-- **Acceptance Criterion**: Which AC from the PRD this covers.
+- **Title**: short description
+- **Preconditions**: system state before the test
+- **Steps**: numbered actions
+- **Expected Result**: what should happen
+- **AC Ref**: which PRD acceptance criterion this covers
 
-Rules: Group by functionality. Include both positive and negative scenarios.
-Output: Write to `docs/test/cases/<feature-name>.md`.
+Group by functionality. Include positive and negative scenarios.
+Write to the path specified in Mandatory Output Files.

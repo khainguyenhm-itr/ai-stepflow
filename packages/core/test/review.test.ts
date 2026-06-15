@@ -46,17 +46,17 @@ test('deep=false approves when the validator passes (no LLM)', async () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('validator-only review waits for a human when the default validator is missing', async () => {
+test('validator-only review rejects when the explicit validator is missing', async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-review-'));
   try {
     const result = await reviewStepArtifacts({
-      workspaceRoot: dir, step: step(), runState, deep: false,
+      workspaceRoot: dir, step: step({ validatorPath: 'non-existent.mjs' }), runState, deep: false,
       reviewKit: 'kit', artifacts: { text: 'x', count: 1 },
       runner: stubRunner('')
     });
-    assert.equal(result.status, 'waiting_human');
-    assert.equal(result.source, 'review-setup');
-    assert.match(result.note, /Validator-only review could not run/);
+    assert.equal(result.status, 'rejected');
+    assert.equal(result.source, 'validator');
+    assert.match(result.note, /Validator: reject — Failed to load validator/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

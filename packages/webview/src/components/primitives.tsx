@@ -67,8 +67,8 @@ export const CheckRow: React.FC<{ label: string; checked: boolean; disabled?: bo
   );
 
 export const ProgressBar: React.FC<{ percent: number }> = ({ percent }) => (
-  <div className="progress">
-    <div className="progress-fill" style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
+  <div className="progress-bar">
+    <div className="progress-bar-fill" style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
   </div>
 );
 

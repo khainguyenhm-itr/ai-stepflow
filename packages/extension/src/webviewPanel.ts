@@ -8,7 +8,7 @@ import { TerminalManager } from './terminalManager.js';
 import { RunOrchestrator } from './runOrchestrator.js';
 import { validateMessage, WebviewMessage, HostMessage } from './messages.js';
 import { listConnectedMcpServers, addMcpServer } from './mcp.js';
-import { Agent, Flow, FlowStep, Skill } from '@ai-stepflow/core';
+import { Agent, Flow, FlowStep, Skill, sanitizeFlowName } from '@ai-stepflow/core';
 
 export class CockpitPanel {
   public static currentPanel: CockpitPanel | undefined;
@@ -323,7 +323,8 @@ export class CockpitPanel {
       '- Pick the most appropriate agent and one or more skills for each step.',
       '- Keep step ids stable, lowercase, and unique.',
       '- Each non-first step should usually depend on the previous step.',
-      '- Leave inputs empty unless the workflow genuinely needs run-time variables.'
+      '- Leave inputs empty unless the workflow genuinely needs run-time variables.',
+      '- For "produces" and "requires", use plain filenames only — no directory prefix (e.g. "design.md", "review-report.md"). The system automatically places them in .ai-stepflow/output/{flowName}/. Only use a path with "/" if you specifically need a different location.'
     ].filter(Boolean).join('\n');
 
     await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Generating workflow...' }, async () => {
@@ -340,13 +341,14 @@ export class CockpitPanel {
         const parsed = JSON.parse(this._extractJsonObject((result.resultText || text).trim())) as { reply?: string; flow?: Partial<Flow> };
         const generated = parsed.flow;
         if (!generated || !Array.isArray(generated.steps)) throw new Error('missing flow.steps');
+        const flowName = typeof generated.name === 'string' ? generated.name : currentFlow?.name || '';
         const flow: Flow = {
           id: currentFlow?.id || `flow-${Date.now()}`,
           sourcePath: currentFlow?.sourcePath || '',
-          name: typeof generated.name === 'string' ? generated.name : currentFlow?.name || '',
+          name: flowName,
           description: typeof generated.description === 'string' ? generated.description : currentFlow?.description || '',
           inputs: this._normalizeFlowInputs(generated.inputs),
-          steps: this._normalizeGeneratedSteps(generated.steps, agentNames, skillNames)
+          steps: this._resolveStepPaths(this._normalizeGeneratedSteps(generated.steps, agentNames, skillNames), flowName)
         };
         this.postMessage({ type: 'flowGenerated', flow, reply: parsed.reply || 'Workflow generated.' });
       } catch (error) {
@@ -412,6 +414,20 @@ export class CockpitPanel {
         completion: { requireMarkDone: completion.requireMarkDone !== false }
       };
     });
+  }
+
+  /**
+   * Resolve plain filenames in produces/requires to the flow's output folder.
+   * Paths that already contain "/" are left as-is (explicit paths).
+   */
+  private _resolveStepPaths(steps: FlowStep[], flowName: string): FlowStep[] {
+    const folder = `.ai-stepflow/output/${sanitizeFlowName(flowName)}`;
+    const resolve = (p: string) => (p.includes('/') || p.includes('\\') ? p : `${folder}/${p}`);
+    return steps.map(step => ({
+      ...step,
+      produces: step.produces?.map(resolve),
+      requires: step.requires?.map(resolve)
+    }));
   }
 
   public async refreshData(): Promise<void> {

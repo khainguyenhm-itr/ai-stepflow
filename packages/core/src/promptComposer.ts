@@ -9,13 +9,13 @@ export function composeSystemPrompt(agent: Agent | undefined, skillNames: string
     parts.push(`## Run Metadata\nRelevant values for this run:\n${Object.entries(inputs).map(([k, v]) => `- ${k}: ${v}`).join('\n')}`);
   }
 
-  if (produces && produces.length > 0) {
-    parts.push(`## Mandatory Output Files\nFor this task, you MUST create or update the following files:\n${produces.map(p => `- ${p}`).join('\n')}\n\nThe system will verify the existence of these files before allowing the task to be marked as complete.`);
-  }
-
   for (const name of skillNames) {
     const skill = skills.find(item => item.name === name);
     if (skill?.instructions?.trim()) parts.push(`# Skill: ${skill.name}\n${skill.instructions.trim()}`);
+  }
+
+  if (produces && produces.length > 0) {
+    parts.push(`## Mandatory Output Files\nFor this task, you MUST create or update the following files (these override any paths mentioned in the skill instructions above):\n${produces.map(p => `- ${p}`).join('\n')}\n\nPaths are relative to the workspace root. The system will verify these files exist before marking the task complete.`);
   }
   return parts.join('\n\n');
 }

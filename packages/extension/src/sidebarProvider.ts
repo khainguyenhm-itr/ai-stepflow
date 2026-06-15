@@ -75,6 +75,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 await this.refresh(false);
               }
               return;
+            case 'updateDefaultItem':
+              if (message.kind && message.filename) {
+                await this.configManager.installBundledItem(message.kind, message.filename, message.isGlobal !== false);
+                await this.refresh(false);
+              }
+              return;
             case 'openExternal':
               if (message.url) await vscode.env.openExternal(vscode.Uri.parse(message.url));
               return;
@@ -787,7 +793,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           '</span>' +
           '<span class="item-acts">' +
             (item.installed
-              ? (item.inUse
+              ? (item.hasUpdate ? '<button class="pill accent" type="button" data-act="updateDefault" data-kind="' + esc(item.kind) + '" data-filename="' + esc(item.filename) + '">Update</button>' : '') +
+                (item.inUse
                   ? '<button class="pill" type="button" disabled title="Used by a flow — remove from flows first">Remove</button>'
                   : '<button class="pill danger" type="button" data-act="uninstallDefault" data-kind="' + esc(item.kind) + '" data-filename="' + esc(item.filename) + '">Remove</button>')
               : '<button class="pill accent" type="button" data-act="installDefault" data-kind="' + esc(item.kind) + '" data-filename="' + esc(item.filename) + '">Install</button>') +
@@ -807,8 +814,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         const kind = btn.getAttribute('data-kind');
         const filename = btn.getAttribute('data-filename');
         btn.disabled = true;
-        btn.innerHTML = spinHtml + (act === 'installDefault' ? 'Installing…' : 'Removing…');
-        vscode.postMessage({ type: act === 'installDefault' ? 'installDefaultItem' : 'uninstallDefaultItem', kind, filename });
+        btn.innerHTML = spinHtml + (act === 'installDefault' ? 'Installing…' : act === 'updateDefault' ? 'Updating…' : 'Removing…');
+        vscode.postMessage({ type: act === 'installDefault' ? 'installDefaultItem' : act === 'updateDefault' ? 'updateDefaultItem' : 'uninstallDefaultItem', kind, filename });
       };
     });
   }

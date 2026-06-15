@@ -120,7 +120,7 @@ export const FlowBuilderModal: React.FC<FlowBuilderModalProps> = ({
           <Field label="Save location">
             <SaveScopeSelect value={scope} onChange={onChangeScope} />
           </Field>
-          <Field label="Flow name">
+          <Field label="Flow name" hint="English only, max 60 chars — used as output folder name">
             <input className="input" placeholder="e.g. Release workflow" value={flow.name} onChange={e => onChange({ name: e.target.value })} />
           </Field>
         </div>

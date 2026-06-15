@@ -66,11 +66,11 @@ test('applyHumanReview transitions status', () => {
   st = markCompleted(st, flow, 'a');
   st = markRunning(st, flow, 'b');
   st = markCompleted(st, flow, 'b');
-  assert.equal(st.steps.b.reviewStatus, 'pending');
+  assert.equal(st.steps.b.reviewStatus, 'waiting_human');
   
   st = applyHumanReview(st, flow, 'b', { decision: 'approved' });
   assert.equal(st.steps.b.reviewStatus, 'approved');
-  assert.equal(st.steps.b.completionStatus, 'ready_to_mark_done');
+  assert.equal(st.steps.b.completionStatus, 'done');
 });
 
 test('markDone transitions status to done', () => {

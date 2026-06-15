@@ -1,18 +1,14 @@
-<!-- ai-stepflow built-in -->
 ---
 name: aisf-skill-prd
 description: Draft or refine a Product Requirements Document (PRD). Focuses on problem/goal, user flows, and testable ACs.
 ---
+<!-- ai-stepflow built-in -->
 
-Generate a comprehensive Product Requirements Document (PRD) for the feature described.
+Write a PRD scoped strictly to what the input describes — do not invent features, personas, or analytics not mentioned in the source.
 
-Core Sections:
-1. **Context & Goals**: Why are we building this? What is the measurable success criteria?
-2. **User Personas**: Who is the target user for this feature?
-3. **User Flows**: Detailed happy path and critical error paths.
-4. **Acceptance Criteria**: Gherkin-style (Given/When/Then) points. Must be testable.
-5. **Technical Constraints**: Non-functional requirements (performance, security, privacy).
-6. **Analytics**: What events should we track?
+Scale depth to complexity:
+- Small/well-defined issue → emit only: goal, user story, 3-5 Gherkin ACs.
+- Large/multi-faceted issue → add personas, user flows (happy + error paths), technical constraints, analytics events as needed.
 
-Rules: Focus on "What", not "How". Ensure every AC is verifiable.
-Output: Write to `docs/prd/<feature-name>.md`.
+Focus on "What", not "How". Every AC must be measurable and verifiable by QA.
+Write to the path specified in Mandatory Output Files.

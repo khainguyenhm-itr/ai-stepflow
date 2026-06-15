@@ -46,10 +46,10 @@ export class ConfigManager {
     } catch { /* not present — nothing to remove */ }
   }
 
-  /** Returns every bundled default item with name, description, and whether it is installed. */
-  public async listBundledDefaults(): Promise<Array<{ kind: BundledKind; filename: string; name: string; description: string; installed: boolean }>> {
+  /** Returns every bundled default item with name, description, installed status, and whether an update is available. */
+  public async listBundledDefaults(): Promise<Array<{ kind: BundledKind; filename: string; name: string; description: string; installed: boolean; hasUpdate: boolean }>> {
     if (!this.extensionPath) return [];
-    const result: Array<{ kind: BundledKind; filename: string; name: string; description: string; installed: boolean }> = [];
+    const result: Array<{ kind: BundledKind; filename: string; name: string; description: string; installed: boolean; hasUpdate: boolean }> = [];
     const KINDS: Array<{ kind: BundledKind; exts: string[] }> = [
       { kind: 'agents', exts: ['.md'] },
       { kind: 'skills', exts: ['.md'] },
@@ -65,7 +65,9 @@ export class ConfigManager {
       for (const filename of files) {
         try {
           const content = await fs.readFile(path.join(srcDir, filename), 'utf8');
-          const installed = await this._isBundledItemInstalled(kind, filename);
+          const installedContent = await this._readInstalledBundledContent(kind, filename);
+          const installed = installedContent !== null;
+          const hasUpdate = installed && installedContent !== content;
           let name: string, description: string;
           if (filename.endsWith('.md')) {
             const leadingComments = content.match(/^(?:\s*<!--[\s\S]*?-->\s*)+(?=---(?:\r?\n|$))/);
@@ -77,7 +79,7 @@ export class ConfigManager {
             name = filename.replace(/\.(mjs|js)$/, '');
             description = this._firstJsComment(content);
           }
-          result.push({ kind, filename, name, description, installed });
+          result.push({ kind, filename, name, description, installed, hasUpdate });
         } catch { /* skip */ }
       }
     }
@@ -110,6 +112,18 @@ export class ConfigManager {
       } catch { /* not present */ }
     }
     return false;
+  }
+
+  private async _readInstalledBundledContent(kind: BundledKind, filename: string): Promise<string | null> {
+    const roots = [this.globalPath];
+    if (this.projectPath) roots.push(path.join(this.projectPath, '.claude'));
+    for (const base of roots) {
+      try {
+        const content = await fs.readFile(path.join(base, kind, filename), 'utf8');
+        if (content.includes(ConfigManager.BUILT_IN_MARKER)) return content;
+      } catch { /* not present */ }
+    }
+    return null;
   }
 
   /** Install a single bundled default item to global or project scope. */
@@ -229,20 +243,50 @@ export class ConfigManager {
         continue; // bundle missing (e.g. dev run without resources) — nothing to install
       }
       await fs.mkdir(destDir, { recursive: true });
-      for (const file of files) {
-        const destPath = path.join(destDir, file);
-        try {
-          const existing = await fs.readFile(destPath, 'utf8').catch(() => undefined);
-          if (existing !== undefined && !existing.includes(ConfigManager.BUILT_IN_MARKER)) {
-            continue; // user took ownership of this name — never overwrite it
+
+      if (kind === 'skills') {
+        // Skills must be installed as <name>/SKILL.md folders so Claude Code registers them as slash commands.
+        const folderNames = new Set<string>();
+        for (const file of files) {
+          const skillName = path.basename(file, '.md');
+          folderNames.add(skillName);
+          const folderPath = path.join(destDir, skillName);
+          const destPath = path.join(folderPath, 'SKILL.md');
+          try {
+            // Migration: delete old flat file if we installed it.
+            const oldFlatPath = path.join(destDir, file);
+            const oldFlat = await fs.readFile(oldFlatPath, 'utf8').catch(() => undefined);
+            if (oldFlat !== undefined && oldFlat.includes(ConfigManager.BUILT_IN_MARKER)) {
+              await fs.rm(oldFlatPath, { force: true });
+            }
+            const existing = await fs.readFile(destPath, 'utf8').catch(() => undefined);
+            if (existing !== undefined && !existing.includes(ConfigManager.BUILT_IN_MARKER)) {
+              continue; // user took ownership of this skill
+            }
+            const content = await fs.readFile(path.join(srcDir, file), 'utf8');
+            await fs.mkdir(folderPath, { recursive: true });
+            await fs.writeFile(destPath, content, 'utf8');
+          } catch (e) {
+            console.error(`AI StepFlow: failed to install bundled skill ${file}`, e);
           }
-          const content = await fs.readFile(path.join(srcDir, file), 'utf8');
-          await fs.writeFile(destPath, content, 'utf8');
-        } catch (e) {
-          console.error(`AI StepFlow: failed to install bundled ${kind} ${file}`, e);
         }
+        await this.pruneRenamedSkillFolders(destDir, folderNames);
+      } else {
+        for (const file of files) {
+          const destPath = path.join(destDir, file);
+          try {
+            const existing = await fs.readFile(destPath, 'utf8').catch(() => undefined);
+            if (existing !== undefined && !existing.includes(ConfigManager.BUILT_IN_MARKER)) {
+              continue; // user took ownership of this name — never overwrite it
+            }
+            const content = await fs.readFile(path.join(srcDir, file), 'utf8');
+            await fs.writeFile(destPath, content, 'utf8');
+          } catch (e) {
+            console.error(`AI StepFlow: failed to install bundled ${kind} ${file}`, e);
+          }
+        }
+        await this.pruneRenamedDefaults(destDir, new Set(files), exts);
       }
-      await this.pruneRenamedDefaults(destDir, new Set(files), exts);
     }
   }
 
@@ -284,6 +328,26 @@ export class ConfigManager {
           await fs.rm(filePath, { force: true });
         }
       } catch { /* ignore unreadable entries */ }
+    }
+  }
+
+  /** Remove folder-based skills we installed that are no longer in the bundle. */
+  private async pruneRenamedSkillFolders(destDir: string, currentFolders: Set<string>): Promise<void> {
+    let entries: import('fs').Dirent[];
+    try {
+      entries = await fs.readdir(destDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || currentFolders.has(entry.name)) continue;
+      const skillMd = path.join(destDir, entry.name, 'SKILL.md');
+      try {
+        const content = await fs.readFile(skillMd, 'utf8');
+        if (content.includes(ConfigManager.BUILT_IN_MARKER)) {
+          await fs.rm(path.join(destDir, entry.name), { recursive: true, force: true });
+        }
+      } catch { /* ignore */ }
     }
   }
 
@@ -459,9 +523,9 @@ export class ConfigManager {
   ): Promise<Skill | undefined> {
     try {
       const content = await fs.readFile(filePath, 'utf8');
-      const leadingComments = content.match(/^(?:\s*<!--[\s\S]*?-->\s*)+(?=---(?:\r?\n|$))/);
-      const parseableContent = leadingComments ? content.slice(leadingComments[0].length) : content;
-      const { data, content: body } = matter(parseableContent);
+      // Strip leading HTML comment (e.g. built-in marker) so gray-matter can find --- frontmatter
+      const stripped = content.replace(/^<!--[\s\S]*?-->\s*\n/, '');
+      const { data, content: body } = matter(stripped);
       const fallbackName = path.basename(filePath).toUpperCase() === 'SKILL.MD'
         ? path.basename(path.dirname(filePath))
         : path.basename(filePath, '.md');
@@ -470,7 +534,7 @@ export class ConfigManager {
         description: data.description || '',
         instructions: body.trim(),
         sourcePath: filePath,
-        builtIn: this.hasBuiltInMarker(leadingComments)
+        builtIn: this.hasBuiltInMarker(content)
       };
     } catch (e: any) {
       if (logMissing || e?.code !== 'ENOENT') {
@@ -547,9 +611,9 @@ export class ConfigManager {
   private async parseAgentFile(filePath: string): Promise<Agent | undefined> {
     try {
       const content = await fs.readFile(filePath, 'utf8');
-      const leadingComments = content.match(/^(?:\s*<!--[\s\S]*?-->\s*)+(?=---(?:\r?\n|$))/);
-      const parseableContent = leadingComments ? content.slice(leadingComments[0].length) : content;
-      const { data, content: body } = matter(parseableContent);
+      // Strip leading HTML comment (e.g. built-in marker) so gray-matter can find --- frontmatter
+      const stripped = content.replace(/^<!--[\s\S]*?-->\s*\n/, '');
+      const { data, content: body } = matter(stripped);
       return {
         name: data.name || path.basename(filePath, '.md'),
         description: data.description || '',
@@ -557,7 +621,7 @@ export class ConfigManager {
         tools: data.tools,
         systemPrompt: body.trim(),
         sourcePath: filePath,
-        builtIn: this.hasBuiltInMarker(leadingComments)
+        builtIn: this.hasBuiltInMarker(content)
       };
     } catch (e) {
       console.error(`Error parsing agent file ${filePath}:`, e);
@@ -567,8 +631,8 @@ export class ConfigManager {
 
   /** True only for files this extension installed — those stamped with {@link BUILT_IN_MARKER}.
    *  A user's own file (or one installed by a different tool) is never flagged built-in. */
-  private hasBuiltInMarker(leadingComments: RegExpMatchArray | null): boolean {
-    return !!leadingComments && leadingComments[0].toLowerCase().includes(ConfigManager.BUILT_IN_MARKER);
+  private hasBuiltInMarker(content: string): boolean {
+    return content.toLowerCase().includes(ConfigManager.BUILT_IN_MARKER);
   }
 
   private async parseSkillFolder(folderPath: string): Promise<Skill | undefined> {
