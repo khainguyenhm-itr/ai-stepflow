@@ -59,11 +59,12 @@ export class FlowOrchestrator {
   }
 
   /**
-   * True when a step runs headless (AI review), so it has no shared UI surface and
+   * True when a step runs headless (AI review or no review), so it has no shared UI surface and
    * can run concurrently.
    */
   isHeadlessStep(step: FlowStep): boolean {
-    return !!step.review?.required && (step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai'));
+    if (!step.review?.required) return true;
+    return step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai');
   }
 
   /**

@@ -105,7 +105,7 @@ test('readProducedArtifacts enforces per-file and total caps', () => {
   try {
     const big = 'x'.repeat(REVIEW_ARTIFACT_CHAR_CAP + 5000);
     writeFileSync(path.join(dir, 'a.txt'), big, 'utf8');
-    const { text, count } = readProducedArtifacts(step({}, { produces: ['a.txt'] }), dir, {});
+    const { text, count } = readProducedArtifacts(step({}, { produces: ['./a.txt'] }), dir, {});
     assert.equal(count, 1);
     assert.match(text, /…\[truncated\]/);
     assert.ok(text.length <= REVIEW_TOTAL_CHAR_CAP + 200, 'payload stays within the total cap (plus headers)');
@@ -128,7 +128,7 @@ test('readProducedArtifacts de-duplicates review.filePath and produces', () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-review-artifact-'));
   try {
     writeFileSync(path.join(dir, 'review.md'), 'same file', 'utf8');
-    const { count } = readProducedArtifacts(step({ filePath: 'review.md' }, { produces: ['review.md'] }), dir, {});
+    const { count } = readProducedArtifacts(step({ filePath: './review.md' }, { produces: ['./review.md'] }), dir, {});
     assert.equal(count, 1);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

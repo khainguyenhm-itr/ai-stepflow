@@ -39,6 +39,7 @@ export class RunOrchestrator {
   /** Interactive steps we've already told the user are parked (waiting for the terminal), so the notice isn't repeated each advance. Reset with the run. */
   private _parkedStepIds = new Set<string>();
   private _bookkeepingRunId: string | undefined;
+  private _stateUpdateQueue = Promise.resolve();
 
   constructor(
     private readonly configManager: ConfigManager,
@@ -46,9 +47,9 @@ export class RunOrchestrator {
     private readonly terminals: TerminalManager,
     private readonly post: (message: HostMessage) => void
   ) {
-    this.terminals.onDidCloseRunningStep(stepId => {
+    this.terminals.onDidCloseRunningStep(async stepId => {
       if (this._currentFlow && this._runState && this._runState.steps[stepId]?.executionStatus === 'running') {
-        this._setRunState(machine.markCancelled(this._runState, this._currentFlow, stepId), { stepId, status: 'cancelled', message: 'Terminal closed by user' });
+        await this._setRunState(machine.markCancelled(this._runState, this._currentFlow, stepId), { stepId, status: 'cancelled', message: 'Terminal closed by user' });
         this.post({ type: 'stepUpdate', stepId, append: true, output: '\n[terminal closed — run cancelled]\n' });
       }
     });
@@ -127,7 +128,7 @@ export class RunOrchestrator {
 
     const lockedSteps = machine.applyDependencyLocks(flow, this._runState.steps);
     if (!machine.lockStatesEqual(lockedSteps, this._runState.steps)) {
-      this._setRunState({ ...this._runState, steps: lockedSteps });
+      await this._setRunState({ ...this._runState, steps: lockedSteps });
     }
     const stepState = lockedSteps[stepId];
     if (stepState?.executionStatus === 'locked') {
@@ -164,12 +165,12 @@ export class RunOrchestrator {
     this._startedStepIds.add(stepId);
     const projectPath = this.configManager.getProjectPath() || '';
 
-    const aiReview = this._isHeadlessStep(step);
+    const isHeadless = this._isHeadlessStep(step);
 
     // AI-reviewed steps run HEADLESS so the run completion is observable: when claude exits we
     // capture the output, then automatically run the two-layer review and auto-advance on a pass
     // — no Enter, no "Mark step done" click.
-    if (aiReview) {
+    if (isHeadless) {
       const skills = await this.configManager.loadSkills();
       const runInputs = this._runState?.inputs || {};
       // Relative paths for agent prompt (cleaner than full system paths)
@@ -177,7 +178,7 @@ export class RunOrchestrator {
         .map(p => resolveFlowRelativePath(p, flow.name));
       const systemPrompt = composeSystemPrompt(agent, stepSkillNames, skills, resolvedProduces, runInputs);
       const userMessage = resolveTemplate(description?.trim() || step.input?.prompt?.trim() || `Run step: ${step.title || step.id}`, runInputs);
-      this._setRunState(machine.markRunning(this._runState, flow, stepId), { stepId, status: 'running', message: 'Run started (headless, auto-review)' });
+      await this._setRunState(s => machine.markRunning(s, flow, stepId), { stepId, status: 'running', message: 'Run started (headless)' });
 
       let output = '';
       const result = await this._spawnClaudeStreaming({
@@ -190,16 +191,23 @@ export class RunOrchestrator {
       const metrics: machine.StepMetrics = { modelUsed: result.model, tokensUsed: result.tokensUsed, costUsd: result.costUsd, output };
       if (!result.success) {
         const why = result.timedOut ? 'run timed out' : `claude exited ${result.exitCode}`;
-        this._setRunState(machine.markFailed(this._runState, flow, stepId, { ...metrics, error: why, output: output + `\n[step failed: ${why}]\n` }), { stepId, status: 'failed', message: result.timedOut ? 'Run timed out' : 'Run failed' });
+        await this._setRunState(s => machine.markFailed(s, flow, stepId, { ...metrics, error: why, output: output + `\n[step failed: ${why}]\n` }), { stepId, status: 'failed', message: result.timedOut ? 'Run timed out' : 'Run failed' });
         return;
       }
       const prod = this._validateProduces(step);
       if (!prod.ok) {
-        this._setRunState(machine.markFailed(this._runState, flow, stepId, { ...metrics, error: `produces check failed: ${prod.message}`, output: output + `\n[produces check failed: ${prod.message}]\n` }), { stepId, status: 'failed', message: `Produces check failed: ${prod.message}` });
+        await this._setRunState(s => machine.markFailed(s, flow, stepId, { ...metrics, error: `produces check failed: ${prod.message}`, output: output + `\n[produces check failed: ${prod.message}]\n` }), { stepId, status: 'failed', message: `Produces check failed: ${prod.message}` });
         return;
       }
-      this._setRunState(machine.markCompleted(this._runState, flow, stepId, metrics), { stepId, status: 'completed', message: 'Run completed — reviewing' });
-      await this._runAiReview(step, stepId, projectPath);
+
+      const reviewMsg = step.review?.required ? 'Run completed — reviewing' : 'Run completed';
+      await this._setRunState(s => machine.markCompleted(s, flow, stepId, metrics), { stepId, status: 'completed', message: reviewMsg });
+      
+      if (step.review?.required) {
+        await this._runAiReview(step, stepId, projectPath);
+      } else {
+        this._advanceReadySteps();
+      }
       return;
     }
 
@@ -216,17 +224,17 @@ export class RunOrchestrator {
       message += `\n\nMandatory output files (relative to workspace root, you MUST create these):\n${resolvedProduces.map(p => `- ${p}`).join('\n')}`;
     }
 
-    this._setRunState(machine.markRunning(this._runState, flow, stepId), { stepId, status: 'running', message: 'Opened in Claude — press Enter to run' });
+    await this._setRunState(s => machine.markRunning(s, flow, stepId), { stepId, status: 'running', message: 'Opened in Claude — press Enter to run' });
     this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[opened in the Claude terminal — review the pre-filled message, press Enter to run, then click "Mark step done"]\n` });
     await this.terminals.runInTerminal(message, projectPath, agent, false, stepId);
   }
 
   /** Approve/reject a step from the webview's human-review buttons. */
-  reviewStep(stepId: string, decision: 'approved' | 'rejected'): void {
+  async reviewStep(stepId: string, decision: 'approved' | 'rejected'): Promise<void> {
     if (!this._currentFlow || !this._runState) return;
     const flow = this._currentFlow;
     const review = { decision };
-    this._setRunState(machine.applyHumanReview(this._runState, flow, stepId, review), { stepId, status: decision, message: `Human review ${decision}` });
+    await this._setRunState(s => machine.applyHumanReview(s, flow, stepId, review), { stepId, status: decision, message: `Human review ${decision}` });
     
     // If approved and not waiting for manual confirmation, advance the DAG.
     if (decision === 'approved' && this._runState.steps[stepId]?.completionStatus === 'done') {
@@ -259,16 +267,15 @@ export class RunOrchestrator {
 
     const rs = this._runState.steps[stepId];
     // Non-review terminal step still running: the user clicked the "Done in terminal" button to signal
-    // the terminal work is finished. Transition running → completed (which auto-marks done when
-    // requireMarkDone is false; otherwise the "Mark done" button appears for the final confirmation).
+    // the terminal work is finished. Transition directly to 'done' and advance.
     if (!step.review?.required && rs?.executionStatus === 'running') {
-      this._setRunState(machine.markCompleted(this._runState, flow, stepId), { stepId, status: 'completed', message: 'Terminal work done' });
-      if (this._runState.steps[stepId]?.completionStatus === 'done') this._advanceReadySteps();
+      await this._setRunState(s => machine.markDone(machine.markCompleted(s, flow, stepId), flow, stepId), { stepId, status: 'completed', message: 'Terminal work done' });
+      this._advanceReadySteps();
       return;
     }
     // No review gate, or a reviewer already approved → finish and advance.
     if (!step.review?.required || rs?.reviewStatus === 'approved' || rs?.completionStatus === 'ready_to_mark_done') {
-      this._setRunState(machine.markDone(this._runState, flow, stepId), { stepId, status: 'completed', message: 'Marked done' });
+      await this._setRunState(s => machine.markDone(s, flow, stepId), { stepId, status: 'completed', message: 'Marked done' });
       this._advanceReadySteps();
       return;
     }
@@ -276,7 +283,7 @@ export class RunOrchestrator {
     // Review required and not yet satisfied: record the run as completed (this opens the
     // review gate, setting reviewStatus to 'pending'), then run the artifact review or
     // wait for a human decision.
-    this._setRunState(machine.markCompleted(this._runState, flow, stepId), { stepId, status: 'completed', message: 'Run completed — reviewing' });
+    await this._setRunState(s => machine.markCompleted(s, flow, stepId), { stepId, status: 'completed', message: 'Run completed — reviewing' });
     await this._reviewStep(step, stepId);
   }
 
@@ -310,14 +317,14 @@ export class RunOrchestrator {
   }
 
   /** Kill the in-flight headless run for a step and record it as cancelled. No-op for terminal runs. */
-  cancelStep(stepId: string): void {
+  async cancelStep(stepId: string): Promise<void> {
     const child = this._runChildrenByStep.get(stepId);
     if (!child) return;
     this._cancelledStepIds.add(stepId);
     child.kill();
     this.post({ type: 'stepUpdate', stepId, append: true, output: '\n[run cancelled by user]\n' });
     if (this._currentFlow && this._runState) {
-      this._setRunState(machine.markCancelled(this._runState, this._currentFlow, stepId), { stepId, status: 'cancelled', message: 'Cancelled by user' });
+      await this._setRunState(machine.markCancelled(this._runState, this._currentFlow, stepId), { stepId, status: 'cancelled', message: 'Cancelled by user' });
     }
   }
 
@@ -341,15 +348,26 @@ export class RunOrchestrator {
   /**
    * Adopt a new authoritative run state: persist it and broadcast it to the webview, which
    * renders it without computing transitions of its own. Optionally records an audit event.
+   * All updates are enqueued to ensure atomicity and prevent race conditions during concurrent runs.
    */
-  private _setRunState(next: FlowRunState, audit?: { stepId: string; status: string; message?: string }): void {
-    this._runState = next;
-    void this.stateManager.saveRun(next);
-    const historyEvent = audit ? { timestamp: new Date().toISOString(), ...audit } : undefined;
-    if (historyEvent) {
-      void this.stateManager.appendAuditLog(next.flowId, next.runId, historyEvent.stepId, { timestamp: historyEvent.timestamp, status: historyEvent.status, message: historyEvent.message });
-    }
-    this.post({ type: 'runStateChanged', runState: next, historyEvent });
+  private _setRunState(next: FlowRunState | ((prev: FlowRunState) => FlowRunState), audit?: { stepId: string; status: string; message?: string }): Promise<void> {
+    const promise = this._stateUpdateQueue.then(async () => {
+      if (!this._runState) return;
+      const resolvedNext = typeof next === 'function' ? next(this._runState) : next;
+      this._runState = resolvedNext;
+      await this.stateManager.saveRun(resolvedNext);
+      const historyEvent = audit ? { timestamp: new Date().toISOString(), ...audit } : undefined;
+      if (historyEvent) {
+        await this.stateManager.appendAuditLog(resolvedNext.flowId, resolvedNext.runId, historyEvent.stepId, {
+          timestamp: historyEvent.timestamp,
+          status: historyEvent.status,
+          message: historyEvent.message
+        });
+      }
+      this.post({ type: 'runStateChanged', runState: resolvedNext, historyEvent });
+    });
+    this._stateUpdateQueue = promise;
+    return promise;
   }
 
   /**
@@ -371,7 +389,7 @@ export class RunOrchestrator {
       const verdict = await runValidator({ workspaceRoot: projectPath, step, runState: this._runState, stepOutput: '' });
       const status: 'approved' | 'rejected' = verdict.decision === 'pass' ? 'approved' : 'rejected';
       const note = `Validator review: ${status} — ${verdict.reason}`;
-      this._setRunState(machine.applyAiReview(this._runState, flow, stepId, status, note + '\n'), { stepId, status, message: `Validator review ${status}` });
+      await this._setRunState(machine.applyAiReview(this._runState, flow, stepId, status, note + '\n'), { stepId, status, message: `Validator review ${status}` });
       this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[${note}]\n` });
       if (status === 'approved') this._advanceReadySteps();
       return;
@@ -401,14 +419,14 @@ export class RunOrchestrator {
     const reviewKit = deep ? machine.loadReviewKit(projectPath) : '';
     const artifacts = deep ? machine.readProducedArtifacts(step, projectPath, this._runState.inputs || {}, flow.name) : { text: '', count: 0 };
     if (deep && reviewKit && artifacts.count > 0) {
-      this._setRunState(machine.applyAiReview(this._runState, flow, stepId, 'ai_review_running', ''));
+      await this._setRunState(s => machine.applyAiReview(s, flow, stepId, 'ai_review_running', ''));
     }
 
     let reviewOut = '';
     const result = await machine.reviewStepArtifacts({
       workspaceRoot: projectPath,
       step,
-      runState: this._runState,
+      runState: this._runState!,
       deep,
       reviewKit,
       artifacts,
@@ -421,7 +439,7 @@ export class RunOrchestrator {
     const reviewMetrics = (result.reviewTokensUsed != null || result.reviewCostUsd != null)
       ? { tokensUsed: result.reviewTokensUsed, costUsd: result.reviewCostUsd }
       : undefined;
-    this._setRunState(machine.applyAiReview(this._runState, flow, stepId, result.status, detail, reviewMetrics), { stepId, status: result.status, message: `Review ${result.status}` });
+    await this._setRunState(s => machine.applyAiReview(s, flow, stepId, result.status, detail, reviewMetrics), { stepId, status: result.status, message: `Review ${result.status}` });
     this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[review (${result.source}): ${result.status} — ${result.note}]\n` });
     if (result.status === 'approved') this._advanceReadySteps();
   }
