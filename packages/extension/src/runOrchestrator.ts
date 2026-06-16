@@ -218,7 +218,7 @@ export class RunOrchestrator {
 
     this._setRunState(machine.markRunning(this._runState, flow, stepId), { stepId, status: 'running', message: 'Opened in Claude — press Enter to run' });
     this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[opened in the Claude terminal — review the pre-filled message, press Enter to run, then click "Mark step done"]\n` });
-    await this.terminals.runInTerminal(message, projectPath, agent, false);
+    await this.terminals.runInTerminal(message, projectPath, agent, false, stepId);
   }
 
   /** Approve/reject a step from the webview's human-review buttons. */
@@ -418,7 +418,10 @@ export class RunOrchestrator {
     });
 
     const detail = (reviewOut ? `${reviewOut}\n` : '') + `Review (${result.source}): ${result.status} — ${result.note}\n`;
-    this._setRunState(machine.applyAiReview(this._runState, flow, stepId, result.status, detail), { stepId, status: result.status, message: `Review ${result.status}` });
+    const reviewMetrics = (result.reviewTokensUsed != null || result.reviewCostUsd != null)
+      ? { tokensUsed: result.reviewTokensUsed, costUsd: result.reviewCostUsd }
+      : undefined;
+    this._setRunState(machine.applyAiReview(this._runState, flow, stepId, result.status, detail, reviewMetrics), { stepId, status: result.status, message: `Review ${result.status}` });
     this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[review (${result.source}): ${result.status} — ${result.note}]\n` });
     if (result.status === 'approved') this._advanceReadySteps();
   }
@@ -466,12 +469,14 @@ export class RunOrchestrator {
     this._startedStepIds = orch.getStartedStepIds();
 
     for (const action of actions) {
-      if (action.type === 'launch_headless' || action.type === 'launch_interactive') {
+      if (action.type === 'launch_headless') {
         void this._run(action.stepId);
-      } else if (action.type === 'park_interactive') {
+      } else if (action.type === 'launch_interactive' || action.type === 'park_interactive') {
+        // Interactive (human-review) steps are never auto-launched: the user must click "Run Step".
+        // We just notify once that the step is ready and waiting.
         if (this._parkedStepIds.has(action.stepId)) continue;
         this._parkedStepIds.add(action.stepId);
-        this.post({ type: 'stepUpdate', stepId: action.stepId, append: true, output: '\n[ready — waiting for an interactive slot; click to launch this step when you are ready]\n' });
+        this.post({ type: 'stepUpdate', stepId: action.stepId, append: true, output: '\n[step ready — click "Run Step" to start]\n' });
       }
     }
   }

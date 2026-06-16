@@ -163,11 +163,24 @@ export function markCancelled(state: FlowRunState, flow: Flow, stepId: string, m
   return patchStep(state, flow, stepId, { executionStatus: 'cancelled', ...metrics }, { status: 'cancelled' });
 }
 
-export function applyAiReview(state: FlowRunState, flow: Flow, stepId: string, status: 'ai_review_running' | 'approved' | 'rejected' | 'waiting_human', aiReviewOutput?: string): FlowRunState {
+export function applyAiReview(
+  state: FlowRunState,
+  flow: Flow,
+  stepId: string,
+  status: 'ai_review_running' | 'approved' | 'rejected' | 'waiting_human',
+  aiReviewOutput?: string,
+  reviewMetrics?: { tokensUsed?: number; costUsd?: number }
+): FlowRunState {
   const step = flow.steps.find(s => s.id === stepId);
   const patch: Partial<StepRunState> = { reviewStatus: status };
   if (aiReviewOutput !== undefined) patch.aiReviewOutput = aiReviewOutput;
-  
+
+  if (reviewMetrics && state.steps[stepId]) {
+    const prev = state.steps[stepId];
+    if (reviewMetrics.tokensUsed != null) patch.tokensUsed = (prev.tokensUsed ?? 0) + reviewMetrics.tokensUsed;
+    if (reviewMetrics.costUsd != null) patch.costUsd = (prev.costUsd ?? 0) + reviewMetrics.costUsd;
+  }
+
   if (status === 'approved') {
     // AI Approved: go to 'done' unless manual confirmation is requested.
     patch.completionStatus = step?.completion?.requireMarkDone ? 'ready_to_mark_done' : 'done';
@@ -175,7 +188,7 @@ export function applyAiReview(state: FlowRunState, flow: Flow, stepId: string, s
     patch.completionStatus = 'not_ready';
     patch.executionStatus = 'ready';
   }
-  
+
   const event = status === 'ai_review_running' ? undefined : { status: `ai-review ${status}` };
   return patchStep(state, flow, stepId, patch, event);
 }

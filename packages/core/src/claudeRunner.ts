@@ -81,16 +81,22 @@ export function runClaudeStreaming(opts: ClaudeStreamingRunOptions, spawnFn: Spa
 
     const handleEvent = (evt: any) => {
       if (!evt || typeof evt !== 'object') return;
-      if (evt.type === 'assistant' && evt.message?.content) {
-        for (const block of evt.message.content) {
-          if (block?.type === 'text' && typeof block.text === 'string') opts.onText(block.text);
+      if (evt.type === 'assistant') {
+        if (Array.isArray(evt.message?.content)) {
+          for (const block of evt.message.content) {
+            if (block?.type === 'text' && typeof block.text === 'string') opts.onText(block.text);
+          }
         }
-        if (typeof evt.message.model === 'string' && evt.message.model !== '<synthetic>') model = evt.message.model;
+        if (typeof evt.message?.model === 'string' && evt.message.model !== '<synthetic>') model = evt.message.model;
+        // Accumulate per-turn token counts; result event overrides with the authoritative total.
+        const u = summarizeUsage(evt.message?.usage);
+        if (u !== undefined) tokensUsed = (tokensUsed ?? 0) + u;
       } else if (evt.type === 'result') {
         if (typeof evt.total_cost_usd === 'number') costUsd = evt.total_cost_usd;
         if (typeof evt.result === 'string') resultText = evt.result;
         if (typeof evt.model === 'string') model = evt.model;
-        tokensUsed = summarizeUsage(evt.usage);
+        const u = summarizeUsage(evt.usage);
+        if (u !== undefined) tokensUsed = u;
       }
     };
 

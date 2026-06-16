@@ -34,6 +34,9 @@ export interface ReviewResult {
   note: string;
   /** Which layer produced the verdict — useful for logging/audit. */
   source: 'validator' | 'validator-only' | 'llm' | 'review-setup';
+  /** Usage from the LLM review call; absent for validator-only or skipped paths. */
+  reviewTokensUsed?: number;
+  reviewCostUsd?: number;
 }
 
 /** Resolve and read a step's produced files into one capped payload for the LLM reviewer. */
@@ -136,8 +139,12 @@ export async function reviewStepArtifacts(opts: ReviewOptions): Promise<ReviewRe
     onText: opts.onText ?? (() => {})
   });
 
+  const reviewMetrics = {
+    reviewTokensUsed: result.tokensUsed,
+    reviewCostUsd: result.costUsd,
+  };
   const parsed = parseVerdict(result.resultText);
-  if (!parsed) return { status: 'waiting_human', note: 'could not parse an automated verdict; waiting for human review', source: 'llm' };
-  if (parsed.decision === 'pass') return { status: 'approved', note: parsed.reason || 'approved', source: 'llm' };
-  return { status: 'rejected', note: parsed.reason || 'rejected', source: 'llm' };
+  if (!parsed) return { status: 'waiting_human', note: 'could not parse an automated verdict; waiting for human review', source: 'llm', ...reviewMetrics };
+  if (parsed.decision === 'pass') return { status: 'approved', note: parsed.reason || 'approved', source: 'llm', ...reviewMetrics };
+  return { status: 'rejected', note: parsed.reason || 'rejected', source: 'llm', ...reviewMetrics };
 }

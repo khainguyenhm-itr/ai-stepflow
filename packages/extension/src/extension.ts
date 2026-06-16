@@ -4,6 +4,7 @@ import { CockpitPanel } from './webviewPanel.js';
 import { StateManager } from './stateManager.js';
 import { SidebarProvider } from './sidebarProvider.js';
 import { registerAstGraph } from './astGraph/index.js';
+import { ensureLocalExcludeEntry } from './astGraph/scanner.js';
 
 export function activate(context: vscode.ExtensionContext) {
   try {
@@ -47,6 +48,12 @@ export function activate(context: vscode.ExtensionContext) {
     watchRoot(vscode.Uri.file(configManager.getGlobalPath()));
     const projectPath = configManager.getProjectPath();
     if (projectPath) {
+      // Ensure .ai-stepflow/ (run state, artifacts) and related dirs are excluded from git
+      // locally, without touching the shared .gitignore. Best-effort — never blocks activation.
+      const folder = vscode.workspace.workspaceFolders?.find(f => f.uri.fsPath === projectPath)
+        ?? vscode.workspace.workspaceFolders?.[0];
+      if (folder) void ensureLocalExcludeEntry(folder);
+
       watchRoot(vscode.Uri.joinPath(vscode.Uri.file(projectPath), '.claude'));
 
       // Run files are rewritten on every step event, so watching them keeps the

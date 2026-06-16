@@ -57,8 +57,9 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   const isHeadless = reviewRequired && (activeStep?.review.type === 'ai' || !!activeStep?.review.reviewers?.some(r => r.type === 'ai'));
   const canCancel = isHeadless && activeStepState?.executionStatus === 'running';
 
-  // Primary action button logic
-  const canRunStep = !!activeStepState && !isLocked && (activeStepState.executionStatus !== 'running' || !isHeadless);
+  // Primary action button logic — hide "Run Step" while the step is actively running
+  // (headless or interactive); for interactive running steps only "Submit for Review" shows.
+  const canRunStep = !!activeStepState && !isLocked && activeStepState.executionStatus !== 'running';
   
   // "Done" action during execution: signals terminal work is finished.
   const canSubmitWork = activeStepState?.executionStatus === 'running' && !isHeadless;
@@ -70,8 +71,10 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   // Manual finalization (optional)
   const needsManualDone = activeStepState?.completionStatus === 'ready_to_mark_done';
 
-  // Rerun is always available as a reset once the step has been touched.
-  const canRerun = activeStepState && (activeStepState.executionStatus !== 'ready' || (activeStepState.history?.length ?? 0) > 0);
+  // Rerun only shows after the step has been run at least once (has history), is not locked,
+  // and is not currently running. Using history.length avoids accidentally enabling Rerun for
+  // locked steps (which satisfy executionStatus !== 'ready' but have never been touched).
+  const canRerun = !!activeStepState && !isLocked && activeStepState.executionStatus !== 'running' && (activeStepState.history?.length ?? 0) > 0;
 
   // A step's true state spans three axes (execution / review / completion); the badge collapses
   // them into one label, mirroring aidlc's StatusBadge. Order matters — the most final/specific
@@ -305,7 +308,11 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
           <div className="divider-label">Cost Analysis</div>
           <div className="runner-costs-head">
             <div className="small muted">
-              Total {totalCostUsd > 0 ? `$${totalCostUsd.toFixed(4)}` : '$0.0000'} · {totalTokens.toLocaleString()} tokens
+              {totalCostUsd > 0
+                ? `Total $${totalCostUsd.toFixed(4)} · ${totalTokens.toLocaleString()} tokens`
+                : totalTokens > 0
+                  ? `Total — · ${totalTokens.toLocaleString()} tokens`
+                  : 'Cost data available after AI-review steps complete'}
             </div>
           </div>
           <table className="runner-cost-table">
@@ -323,14 +330,16 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
               {stepCosts.map(({ step, state, costUsd, tokensUsed, isHeadless }) => {
                 const share = totalCostUsd > 0 ? (costUsd / totalCostUsd) * 100 : 0;
                 const hasRun = state?.executionStatus !== 'ready' && state?.executionStatus !== 'locked' && state?.executionStatus != null;
-                const modelLabel = state?.modelUsed || (hasRun && !isHeadless ? 'interactive' : '—');
+                const isRunning = state?.executionStatus === 'running';
+                const modelLabel = state?.modelUsed
+                  || (isRunning ? '…' : hasRun && !isHeadless ? 'interactive' : '—');
                 return (
                   <tr key={step.id} className={activeStepId === step.id ? 'active' : ''}>
                     <td>{step.title || step.id}</td>
                     <td>{state?.executionStatus || 'ready'}</td>
                     <td className={!state?.modelUsed && hasRun && !isHeadless ? 'muted' : ''}>{modelLabel}</td>
-                    <td>{tokensUsed > 0 ? tokensUsed.toLocaleString() : '—'}</td>
-                    <td>{costUsd > 0 ? `$${costUsd.toFixed(4)}` : '—'}</td>
+                    <td>{tokensUsed > 0 ? tokensUsed.toLocaleString() : isRunning ? '…' : '—'}</td>
+                    <td>{costUsd > 0 ? `$${costUsd.toFixed(4)}` : isRunning ? '…' : '—'}</td>
                     <td>{costUsd > 0 ? `${share.toFixed(1)}%` : '—'}</td>
                   </tr>
                 );
