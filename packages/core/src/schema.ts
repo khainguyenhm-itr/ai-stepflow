@@ -62,12 +62,18 @@ const inputSchema = z.object({
   label: z.coerce.string().default('')
 });
 
+const flowAiMessageSchema = z.object({
+  role: z.enum(['user', 'assistant']),
+  content: z.string()
+});
+
 const flowSchema = z.object({
   id: z.coerce.string().optional(),
   name: z.coerce.string().optional(),
   description: z.coerce.string().optional(),
   inputs: z.record(z.string(), inputSchema).default({}),
-  steps: z.array(stepSchema).default([])
+  steps: z.array(stepSchema).default([]),
+  aiConversation: z.array(flowAiMessageSchema).optional()
 });
 
 /** Validate parsed YAML and produce a {@link Flow}. Throws {@link z.ZodError} on hard failures. */
@@ -79,6 +85,7 @@ export function parseFlow(data: unknown, fallbackId: string, sourcePath: string)
     description: parsed.description || '',
     inputs: parsed.inputs as Flow['inputs'],
     steps: parsed.steps as FlowStep[],
+    aiConversation: parsed.aiConversation,
     sourcePath
   };
 }

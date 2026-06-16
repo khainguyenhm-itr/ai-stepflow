@@ -131,7 +131,7 @@ const App: React.FC = () => {
             setBuilderError(null);
             setNewInputName('');
             setFlowAiPrompt('');
-            setFlowAiMessages([]);
+            setFlowAiMessages(flow.aiConversation || []);
           }}
           onDetail={flow => setDetailItem({
             type: 'Flow',
@@ -147,7 +147,7 @@ const App: React.FC = () => {
             setBuilderError(null);
             setNewInputName('');
             setFlowAiPrompt('');
-            setFlowAiMessages([]);
+            setFlowAiMessages(flow.aiConversation || []);
           }}
           onBoardStepEditor={(flow, index) => {
             const step = flow.steps[index];

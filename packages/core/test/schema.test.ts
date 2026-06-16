@@ -58,6 +58,15 @@ test('parseFlow degrades an unknown review type to undefined instead of failing'
   assert.equal(flow.steps[0].review.type, undefined);
 });
 
+test('parseFlow preserves aiConversation history', () => {
+  const history = [
+    { role: 'user', content: 'build a flow' },
+    { role: 'assistant', content: 'here it is' }
+  ];
+  const flow = parseFlow({ id: 'f', steps: [], aiConversation: history }, 'f', '/x/f.yaml');
+  assert.deepEqual(flow.aiConversation, history);
+});
+
 test('isFlowShape accepts a well-formed flow and rejects malformed payloads', () => {
   assert.equal(isFlowShape({ id: 'f', sourcePath: '/f.yaml', steps: [{ id: 's' }] }), true);
   assert.equal(isFlowShape({ id: 'f', sourcePath: '/f.yaml', steps: [] }), true);

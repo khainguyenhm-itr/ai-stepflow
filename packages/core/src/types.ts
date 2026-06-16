@@ -88,6 +88,11 @@ export interface FlowStep {
   };
 }
 
+export interface FlowAiMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export interface Flow {
   id: string;
   name: string;
@@ -99,6 +104,8 @@ export interface Flow {
   }>;
   steps: FlowStep[];
   sourcePath: string;
+  /** Optional history of the AI conversation that generated this flow. */
+  aiConversation?: FlowAiMessage[];
 }
 
 export interface StepRunState {

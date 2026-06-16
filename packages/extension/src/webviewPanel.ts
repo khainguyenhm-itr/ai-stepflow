@@ -342,15 +342,17 @@ export class CockpitPanel {
         const generated = parsed.flow;
         if (!generated || !Array.isArray(generated.steps)) throw new Error('missing flow.steps');
         const flowName = typeof generated.name === 'string' ? generated.name : currentFlow?.name || '';
+        const aiReply = parsed.reply || 'Workflow generated.';
         const flow: Flow = {
           id: currentFlow?.id || `flow-${Date.now()}`,
           sourcePath: currentFlow?.sourcePath || '',
           name: flowName,
           description: typeof generated.description === 'string' ? generated.description : currentFlow?.description || '',
           inputs: this._normalizeFlowInputs(generated.inputs),
-          steps: this._resolveStepPaths(this._normalizeGeneratedSteps(generated.steps, agentNames, skillNames), flowName)
+          steps: this._resolveStepPaths(this._normalizeGeneratedSteps(generated.steps, agentNames, skillNames), flowName),
+          aiConversation: history ? [...history, { role: 'assistant', content: aiReply }] : undefined
         };
-        this.postMessage({ type: 'flowGenerated', flow, reply: parsed.reply || 'Workflow generated.' });
+        this.postMessage({ type: 'flowGenerated', flow, reply: aiReply });
       } catch (error) {
         const why = error instanceof Error ? error.message : String(error);
         console.error('AI StepFlow: flow generation parse failed —', why);

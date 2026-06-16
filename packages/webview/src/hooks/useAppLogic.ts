@@ -480,7 +480,10 @@ export const useAppLogic = () => {
       setBuilderError(error);
       return;
     }
-    sendToVSCode('saveFlow', { flow: editingFlow, isGlobal: editingFlowScope === 'global' });
+    sendToVSCode('saveFlow', {
+      flow: { ...editingFlow, aiConversation: flowAiMessages },
+      isGlobal: editingFlowScope === 'global'
+    });
     setEditingFlow(null);
     setEditingStep(null);
     setBuilderError(null);

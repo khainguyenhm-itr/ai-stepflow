@@ -419,7 +419,8 @@ export class ConfigManager {
       name: flow.name,
       description: flow.description,
       inputs: flow.inputs,
-      steps: flow.steps
+      steps: flow.steps,
+      aiConversation: flow.aiConversation
     };
 
     let baseContent: string | undefined;
