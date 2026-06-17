@@ -51,15 +51,18 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   const reviewStatus = activeStepState?.reviewStatus;
   const reviewRequired = !!activeStep?.review.required;
   const aiReviewing = reviewStatus === 'ai_review_running';
-  // AI-reviewed steps run headless (tracked child); others open in the Claude terminal.
-  // Cancel works for both: headless kills the child process, terminal disposes the terminal window.
+  // AI-reviewed steps run headless (a tracked `claude` child), so their in-flight run can be
+  // cancelled; interactive steps (no-review or human-review) run in the terminal.
   const isHeadless = !!activeStep?.review?.required && (activeStep?.review.type === 'ai' || !!activeStep?.review.reviewers?.some(r => r.type === 'ai'));
+
   // Primary action button logic — show "Run Step" ONLY for the initial run when ready.
   // Subsequent runs (after failure, rejection, or completion) are handled by "Re-run".
   const canRunStep = !!activeStepState && activeStepState.executionStatus === 'ready' && (activeStepState.history?.length ?? 0) === 0;
 
-  // Review actions
-  const showReviewButtons = activeStepState?.executionStatus === 'completed' && reviewRequired && reviewStatus === 'waiting_human';
+  // Review actions: show while terminal is running (interactive) OR after terminal ends waiting human
+  const isInteractiveRunning = !isHeadless && activeStepState?.executionStatus === 'running';
+  const showReviewButtons = isInteractiveRunning ||
+    (activeStepState?.executionStatus === 'completed' && reviewRequired && reviewStatus === 'waiting_human');
 
   // Finish shows after human approval when the step needs an explicit "done" click to advance.
   const showFinish = activeStepState?.completionStatus === 'ready_to_mark_done';

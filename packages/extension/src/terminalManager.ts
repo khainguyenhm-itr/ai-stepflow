@@ -21,16 +21,17 @@ export class TerminalManager {
   private _disposables: vscode.Disposable[] = [];
   /** Callback to notify when the terminal is closed while a step is running. */
   private _onDidCloseRunningStep: ((stepId: string) => void) | undefined;
-  /** Callback to notify when the shell execution for a step ends normally (claude exited). */
-  private _onDidEndStepExecution: ((stepId: string) => void) | undefined;
+  /** Callback to notify when the shell execution (claude session) ends while a step is running. */
+  private _onDidEndRunningStep: ((stepId: string) => void) | undefined;
 
   constructor(private readonly configManager: ConfigManager) {
     this._disposables.push(
       vscode.window.onDidEndTerminalShellExecution(event => {
         if (event.execution === this._execution) {
-          const stepId = this._currentStepId;
+          if (this._running && this._currentStepId && this._onDidEndRunningStep) {
+            this._onDidEndRunningStep(this._currentStepId);
+          }
           this._reset();
-          if (stepId) this._onDidEndStepExecution?.(stepId);
         }
       }),
       vscode.window.onDidCloseTerminal(terminal => {
@@ -48,8 +49,8 @@ export class TerminalManager {
     this._onDidCloseRunningStep = cb;
   }
 
-  public onDidEndStepExecution(cb: (stepId: string) => void): void {
-    this._onDidEndStepExecution = cb;
+  public onDidEndRunningStep(cb: (stepId: string) => void): void {
+    this._onDidEndRunningStep = cb;
   }
 
   private _reset(): void {
