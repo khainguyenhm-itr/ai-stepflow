@@ -12,6 +12,11 @@ import { previewFlow, previewAgents, previewSkills } from '../previewData';
 type Tab = 'flows' | 'agents' | 'skills';
 type SaveScope = 'project' | 'global';
 type FlowAiMessage = { role: 'user' | 'assistant'; content: string };
+type ScopeFilter = 'all' | 'project' | 'global';
+
+const VALID_FILTERS: ScopeFilter[] = ['all', 'project', 'global'];
+const parseFilter = (v: string | undefined): ScopeFilter =>
+  VALID_FILTERS.includes(v as ScopeFilter) ? (v as ScopeFilter) : 'all';
 
 const BOOKMARKS_STORAGE_KEY = 'ai-stepflow:resource-bookmarks';
 
@@ -89,6 +94,7 @@ export const useAppLogic = () => {
   const [agentFormError, setAgentFormError] = useState<string | null>(null);
   const [skillFormError, setSkillFormError] = useState<string | null>(null);
   const [draftLoading, setDraftLoading] = useState<'agent' | 'skill' | null>(null);
+  const [scopeFilters, setScopeFilters] = useState<{ flows: ScopeFilter; agents: ScopeFilter; skills: ScopeFilter }>({ flows: 'all', agents: 'all', skills: 'all' });
   const [agentAiPrompt, setAgentAiPrompt] = useState('');
   const [agentAiMessages, setAgentAiMessages] = useState<FlowAiMessage[]>([]);
   const [skillAiPrompt, setSkillAiPrompt] = useState('');
@@ -194,6 +200,13 @@ export const useAppLogic = () => {
         setGlobalPath(message.globalPath);
         setProjectPath(message.projectPath);
         setConnectedMcpServers(message.connectedMcpServers || []);
+        if (message.uiPrefs) {
+          setScopeFilters({
+            flows: parseFilter(message.uiPrefs['scopeFilter:flows']),
+            agents: parseFilter(message.uiPrefs['scopeFilter:agents']),
+            skills: parseFilter(message.uiPrefs['scopeFilter:skills']),
+          });
+        }
         break;
       case 'mcpServers':
         setConnectedMcpServers(message.connectedMcpServers || []);
@@ -582,6 +595,7 @@ export const useAppLogic = () => {
     editingAgentSource, setEditingAgentSource,
     agentForm, setAgentForm,
     skillForm, setSkillForm,
+    scopeFilters,
     agentFormError, setAgentFormError,
     skillFormError, setSkillFormError,
     draftLoading, setDraftLoading,

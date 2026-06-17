@@ -34,6 +34,7 @@ export type HostMessage =
       auditLogs: Record<string, AuditEntry[]>;
       globalPath: string;
       projectPath: string;
+      uiPrefs: Record<string, string>;
     }
   | { type: 'mcpServers'; connectedMcpServers: string[] }
   | { type: 'restoreRun'; flow: Flow; runState: FlowRunState }
@@ -71,6 +72,7 @@ export type WebviewMessage =
   | { type: 'importAgentFile' }
   | { type: 'importSkillFile' }
   | { type: 'generateDraft'; kind: 'agent' | 'skill'; prompt: string; history?: { role: 'user' | 'assistant'; content: string }[] }
+  | { type: 'savePref'; key: string; value: string }
   | { type: 'generateFlow'; description: string; flow?: Flow; history?: { role: 'user' | 'assistant'; content: string }[] }
   | { type: 'connectMcpServer'; config: { name: string; scope: 'global' | 'local'; command: string; args: string[]; env?: Record<string, string> } }
   | { type: 'alert'; text: string };
@@ -121,6 +123,7 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   generateDraft: m => (m.kind === 'agent' || m.kind === 'skill') && isString(m.prompt),
   generateFlow: m => isString(m.description) && (m.flow === undefined || isFlowLike(m.flow)),
   connectMcpServer: m => isObject(m.config) && isString(m.config.name) && isString(m.config.command),
+  savePref: m => isString(m.key) && isString(m.value),
   alert: m => isString(m.text)
 };
 

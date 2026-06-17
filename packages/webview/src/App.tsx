@@ -54,6 +54,7 @@ const App: React.FC = () => {
     editingAgentSource, setEditingAgentSource,
     agentForm, setAgentForm,
     skillForm, setSkillForm,
+    scopeFilters,
     agentFormError, setAgentFormError,
     skillFormError, setSkillFormError,
     draftLoading, setDraftLoading,
@@ -205,6 +206,8 @@ const App: React.FC = () => {
             window.setTimeout(() => setCommandCopied(false), 1200);
           }}
           outputEndRef={outputEndRef}
+          initialFilter={scopeFilters.flows}
+          onScopeFilterChange={v => sendToVSCode('savePref', { key: 'scopeFilter:flows', value: v })}
         />
       )}
 
@@ -213,6 +216,8 @@ const App: React.FC = () => {
           agents={agents}
           globalPath={globalPath}
           projectPath={projectPath}
+          initialFilter={scopeFilters.agents}
+          onScopeFilterChange={v => sendToVSCode('savePref', { key: 'scopeFilter:agents', value: v })}
           onOpenEditor={openAgentEditor}
           onRun={agent => {
             setStandaloneRun({ type: 'agent', agent });
@@ -237,6 +242,8 @@ const App: React.FC = () => {
           skills={skills}
           globalPath={globalPath}
           projectPath={projectPath}
+          initialFilter={scopeFilters.skills}
+          onScopeFilterChange={v => sendToVSCode('savePref', { key: 'scopeFilter:skills', value: v })}
           onOpenEditor={openSkillEditor}
           onRun={skill => {
             setStandaloneRun({ type: 'skill', skill });

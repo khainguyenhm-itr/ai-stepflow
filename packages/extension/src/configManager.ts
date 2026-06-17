@@ -574,6 +574,30 @@ export class ConfigManager {
     return this.projectPath;
   }
 
+  public async loadUiPrefs(): Promise<Record<string, string>> {
+    if (!this.projectPath) return {};
+    const prefsPath = path.join(this.projectPath, '.ai-stepflow', 'ui-prefs.json');
+    try {
+      return JSON.parse(await fs.readFile(prefsPath, 'utf8'));
+    } catch {
+      return {};
+    }
+  }
+
+  public async saveUiPref(key: string, value: string): Promise<void> {
+    if (!this.projectPath) return;
+    const prefsPath = path.join(this.projectPath, '.ai-stepflow', 'ui-prefs.json');
+    try {
+      await fs.mkdir(path.dirname(prefsPath), { recursive: true });
+      let prefs: Record<string, string> = {};
+      try { prefs = JSON.parse(await fs.readFile(prefsPath, 'utf8')); } catch { /* none yet */ }
+      prefs[key] = value;
+      await fs.writeFile(prefsPath, JSON.stringify(prefs, null, 2), 'utf8');
+    } catch (e) {
+      console.error('AI StepFlow: failed to save ui pref', e);
+    }
+  }
+
   /** Global dir first so project entries override entries with the same name. */
   private scopedDirs(kind: 'agents' | 'skills' | 'flows'): string[] {
     const dirs = [path.join(this.globalPath, kind)];

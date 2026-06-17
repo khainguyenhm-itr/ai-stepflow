@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Agent, Skill } from '@ai-stepflow/core/types';
 import { Icon } from '../components/primitives';
 import { ResourceCard, EmptyState } from '../components/ResourceCard';
 import { ScopeFilterSelect, ScopeFilter, SaveScope } from '../components/ScopeControls';
 import { sendToVSCode } from '../vscode';
+import { useScopeFilter } from '../hooks/useScopeFilter';
 
 interface AgentsTabProps {
   agents: Agent[];
@@ -15,6 +16,8 @@ interface AgentsTabProps {
   onNew: (scope: SaveScope) => void;
   isBookmarked: (agent: Agent) => boolean;
   onToggleBookmark: (agent: Agent) => void;
+  initialFilter: ScopeFilter;
+  onScopeFilterChange: (v: ScopeFilter) => void;
 }
 
 export const AgentsTab: React.FC<AgentsTabProps> = ({
@@ -26,9 +29,11 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
   onDetail,
   onNew,
   isBookmarked,
-  onToggleBookmark
+  onToggleBookmark,
+  initialFilter,
+  onScopeFilterChange
 }) => {
-  const [filter, setFilter] = useState<ScopeFilter>('all');
+  const [filter, setFilter] = useScopeFilter(initialFilter, onScopeFilterChange);
 
   const getItemScope = (sourcePath: string): SaveScope => {
     if (globalPath && sourcePath.startsWith(globalPath)) return 'global';

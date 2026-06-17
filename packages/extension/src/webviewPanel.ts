@@ -224,6 +224,9 @@ export class CockpitPanel {
       case 'importSkillFile':
         await this._handleImportFile('skill');
         return;
+      case 'savePref':
+        await this.configManager.saveUiPref(message.key, message.value);
+        return;
       case 'generateDraft':
         await this._handleGenerateDraft(message.kind, message.prompt, message.history);
         return;
@@ -494,6 +497,7 @@ export class CockpitPanel {
 
       const projectPath = this.configManager.getProjectPath() || '';
       const globalPath = this.configManager.getGlobalPath() || '';
+      const uiPrefs = await this.configManager.loadUiPrefs().catch(() => ({} as Record<string, string>));
 
       console.log('AI StepFlow: posting loadData message to webview...');
       this.postMessage({
@@ -502,7 +506,8 @@ export class CockpitPanel {
         connectedMcpServers: [],
         auditLogs,
         globalPath,
-        projectPath
+        projectPath,
+        uiPrefs
       });
 
       if (projectPath) {
@@ -520,7 +525,8 @@ export class CockpitPanel {
         connectedMcpServers: [],
         auditLogs: {},
         globalPath: '',
-        projectPath: ''
+        projectPath: '',
+        uiPrefs: {}
       });
     }
   }

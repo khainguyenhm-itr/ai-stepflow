@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Flow, FlowRunState, Agent, Skill } from '@ai-stepflow/core/types';
 import { Icon } from '../components/primitives';
 import { EmptyState } from '../components/ResourceCard';
 import { ScopeFilterSelect, ScopeFilter, SaveScope } from '../components/ScopeControls';
 import { FlowBoard } from './FlowBoard';
+import { useScopeFilter } from '../hooks/useScopeFilter';
 
 interface FlowsTabProps {
   flows: Flow[];
@@ -31,6 +32,8 @@ interface FlowsTabProps {
   onOpenFile: (path: string) => void;
   onCopyCommand: () => void;
   outputEndRef: React.RefObject<HTMLDivElement | null>;
+  initialFilter: ScopeFilter;
+  onScopeFilterChange: (v: ScopeFilter) => void;
 }
 
 export const FlowsTab: React.FC<FlowsTabProps> = ({
@@ -58,9 +61,11 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
   onRunStep,
   onOpenFile,
   onCopyCommand,
-  outputEndRef
+  outputEndRef,
+  initialFilter,
+  onScopeFilterChange
 }) => {
-  const [filter, setFilter] = useState<ScopeFilter>('project');
+  const [filter, setFilter] = useScopeFilter(initialFilter, onScopeFilterChange);
 
   const getItemScope = (sourcePath: string): SaveScope => {
     if (globalPath && sourcePath.startsWith(globalPath)) return 'global';
