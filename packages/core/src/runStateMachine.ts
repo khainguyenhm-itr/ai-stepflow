@@ -146,9 +146,9 @@ export function markCompleted(state: FlowRunState, flow: Flow, stepId: string, m
     // No review: go to 'done' unless the user explicitly wants to manually mark it.
     patch.completionStatus = step?.completion?.requireMarkDone ? 'ready_to_mark_done' : 'done';
   } else {
-    // Review required: wait for decision.
+    // Review required: always wait for human decision.
     patch.completionStatus = 'not_ready';
-    patch.reviewStatus = step.review.type === 'ai' ? 'ai_review_running' : 'waiting_human';
+    patch.reviewStatus = 'waiting_human';
   }
   
   return patchStep(state, flow, stepId, patch, { status: 'completed' });

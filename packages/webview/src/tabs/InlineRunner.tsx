@@ -36,7 +36,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   const activeStep = flow.steps.find(step => step.id === activeStepId);
   const activeStepState = activeStepId ? runState.steps[activeStepId] : null;
   const stepCosts = flow.steps.map(step => {
-    const isHeadless = !step.review?.required || (step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai'));
+    const isHeadless = !!step.review?.required && (step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai'));
     return {
       step,
       state: runState.steps[step.id],
@@ -52,22 +52,15 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   const reviewStatus = activeStepState?.reviewStatus;
   const reviewRequired = !!activeStep?.review.required;
   const aiReviewing = reviewStatus === 'ai_review_running';
-  // AI-reviewed steps (and no-review steps) run headless (a tracked `claude` child), so their
-  // in-flight run can be cancelled; interactive steps run in the terminal and have no child to kill.
-  const isHeadless = !activeStep?.review?.required || (activeStep?.review.type === 'ai' || !!activeStep?.review.reviewers?.some(r => r.type === 'ai'));
+  // AI-reviewed steps run headless (a tracked `claude` child), so their in-flight run can be
+  // cancelled; interactive steps (no-review or human-review) run in the terminal.
+  const isHeadless = !!activeStep?.review?.required && (activeStep?.review.type === 'ai' || !!activeStep?.review.reviewers?.some(r => r.type === 'ai'));
   const canCancel = isHeadless && activeStepState?.executionStatus === 'running';
 
   // Primary action button logic — show "Run Step" ONLY for the initial run when ready.
   // Subsequent runs (after failure, rejection, or completion) are handled by "Rerun".
   const canRunStep = !!activeStepState && activeStepState.executionStatus === 'ready' && (activeStepState.history?.length ?? 0) === 0;
   
-  // "Done" action during execution: signals terminal work is finished.
-  // Hide if no output yet or only the initial system message is present.
-  const hasActualOutput = !!activeStepState?.output && 
-    activeStepState.output.replace(/\[opened in the Claude terminal.*?\]/gs, '').trim().length > 0;
-  const canSubmitWork = activeStepState?.executionStatus === 'running' && !isHeadless && hasActualOutput;
-  const submitLabel = reviewRequired ? 'Submit for Review' : 'Done & Continue';
-
   // Review actions
   const showReviewButtons = activeStepState?.executionStatus === 'completed' && reviewRequired && reviewStatus === 'waiting_human';
 
@@ -201,14 +194,6 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
             {canRunStep && (
               <button className="btn primary" title="Run this step" onClick={() => onRunStep(activeStepId!, '')}>
                 <span className="btn-glyph"><Icon.Play size={14} /></span>Run Step
-              </button>
-            )}
-            {canSubmitWork && (
-              <button className="btn primary" title={submitLabel} onClick={() => sendToVSCode('markStepDone', {
-                stepId: activeStepId!,
-                historyEvent: { timestamp: new Date().toISOString(), status: 'completed', message: 'Terminal work submitted by user' }
-              })}>
-                <span className="btn-glyph"><Icon.Check size={14} /></span>{submitLabel}
               </button>
             )}
             {showReviewButtons && (

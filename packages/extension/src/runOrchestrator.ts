@@ -47,6 +47,18 @@ export class RunOrchestrator {
     private readonly terminals: TerminalManager,
     private readonly post: (message: HostMessage) => void
   ) {
+    this.terminals.onDidEndRunningStep(async stepId => {
+      if (!this._currentFlow || !this._runState) return;
+      if (this._runState.steps[stepId]?.executionStatus !== 'running') return;
+      const step = this._currentFlow.steps.find(s => s.id === stepId);
+      if (step?.review?.required) {
+        await this._setRunState(s => machine.markCompleted(s, this._currentFlow!, stepId), { stepId, status: 'completed', message: 'Terminal session ended — awaiting review' });
+        this.post({ type: 'stepUpdate', stepId, append: true, output: '\n[terminal session ended — approve or reject to continue]\n' });
+      } else {
+        await this._setRunState(s => machine.markDone(machine.markCompleted(s, this._currentFlow!, stepId), this._currentFlow!, stepId), { stepId, status: 'completed', message: 'Terminal work done' });
+        this._advanceReadySteps();
+      }
+    });
     this.terminals.onDidCloseRunningStep(async stepId => {
       if (this._currentFlow && this._runState && this._runState.steps[stepId]?.executionStatus === 'running') {
         await this._setRunState(machine.markCancelled(this._runState, this._currentFlow, stepId), { stepId, status: 'cancelled', message: 'Terminal closed by user' });
@@ -200,11 +212,11 @@ export class RunOrchestrator {
         return;
       }
 
-      const reviewMsg = step.review?.required ? 'Run completed — reviewing' : 'Run completed';
+      const reviewMsg = step.review?.required ? 'Run completed — awaiting review' : 'Run completed';
       await this._setRunState(s => machine.markCompleted(s, flow, stepId, metrics), { stepId, status: 'completed', message: reviewMsg });
-      
+
       if (step.review?.required) {
-        await this._runAiReview(step, stepId, projectPath);
+        this.post({ type: 'stepUpdate', stepId, append: true, output: '\n[execution complete — approve or reject to continue]\n' });
       } else {
         this._advanceReadySteps();
       }
@@ -224,19 +236,40 @@ export class RunOrchestrator {
       message += `\n\nMandatory output files (relative to workspace root, you MUST create these):\n${resolvedProduces.map(p => `- ${p}`).join('\n')}`;
     }
 
-    await this._setRunState(s => machine.markRunning(s, flow, stepId), { stepId, status: 'running', message: 'Opened in Claude — press Enter to run' });
-    this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[opened in the Claude terminal — review the pre-filled message, press Enter to run, then click "Mark step done"]\n` });
-    await this.terminals.runInTerminal(message, projectPath, agent, false, stepId);
+    const isAiReview = !!step.review?.required && (step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai'));
+    const autoSubmit = isAiReview;
+    const runningMsg = autoSubmit
+      ? 'Opened in Claude — auto-submitting'
+      : 'Opened in Claude — press Enter to run';
+    const outputMsg = autoSubmit
+      ? `\n[opened in the Claude terminal — auto-submitting]\n`
+      : `\n[opened in the Claude terminal — review the pre-filled message, press Enter to run]\n`;
+    await this._setRunState(s => machine.markRunning(s, flow, stepId), { stepId, status: 'running', message: runningMsg });
+    this.post({ type: 'stepUpdate', stepId, append: true, output: outputMsg });
+    await this.terminals.runInTerminal(message, projectPath, agent, autoSubmit, stepId);
   }
 
   /** Approve/reject a step from the webview's human-review buttons. */
   async reviewStep(stepId: string, decision: 'approved' | 'rejected'): Promise<void> {
     if (!this._currentFlow || !this._runState) return;
     const flow = this._currentFlow;
+
+    if (decision === 'approved') {
+      const step = flow.steps.find(s => s.id === stepId);
+      if (step) {
+        const prod = this._validateProduces(step);
+        if (!prod.ok) {
+          const msg = `produces check failed: ${prod.message}`;
+          this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[cannot approve — ${msg}]\n` });
+          vscode.window.showErrorMessage(`Cannot approve '${step.title || step.id}': ${prod.message}`);
+          return;
+        }
+      }
+    }
+
     const review = { decision };
     await this._setRunState(s => machine.applyHumanReview(s, flow, stepId, review), { stepId, status: decision, message: `Human review ${decision}` });
-    
-    // If approved and not waiting for manual confirmation, advance the DAG.
+
     if (decision === 'approved' && this._runState.steps[stepId]?.completionStatus === 'done') {
       this._advanceReadySteps();
     }
