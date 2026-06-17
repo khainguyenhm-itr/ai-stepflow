@@ -1,6 +1,6 @@
 import React from 'react';
 import { Flow, FlowRunState, StepRunState } from '@ai-stepflow/core/types';
-import { Icon, ProgressBar, metaValue } from '../components/primitives';
+import { Icon, metaValue } from '../components/primitives';
 import { formatRunTime, getStepSkills } from '../flowUtils';
 import { sendToVSCode } from '../vscode';
 
@@ -36,7 +36,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   const activeStep = flow.steps.find(step => step.id === activeStepId);
   const activeStepState = activeStepId ? runState.steps[activeStepId] : null;
   const stepCosts = flow.steps.map(step => {
-    const isHeadless = !step.review?.required || (step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai'));
+    const isHeadless = !!step.review?.required && (step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai'));
     return {
       step,
       state: runState.steps[step.id],
@@ -47,36 +47,24 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   });
   const totalCostUsd = stepCosts.reduce((sum, item) => sum + item.costUsd, 0);
   const totalTokens = stepCosts.reduce((sum, item) => sum + item.tokensUsed, 0);
-  const stepHasStarted = activeStepState?.executionStatus === 'running' || activeStepState?.executionStatus === 'completed';
   const isLocked = activeStepState?.executionStatus === 'locked';
   const reviewStatus = activeStepState?.reviewStatus;
   const reviewRequired = !!activeStep?.review.required;
   const aiReviewing = reviewStatus === 'ai_review_running';
-  // AI-reviewed steps (and no-review steps) run headless (a tracked `claude` child), so their
-  // in-flight run can be cancelled; interactive steps run in the terminal and have no child to kill.
-  const isHeadless = !activeStep?.review?.required || (activeStep?.review.type === 'ai' || !!activeStep?.review.reviewers?.some(r => r.type === 'ai'));
-  const canCancel = isHeadless && activeStepState?.executionStatus === 'running';
-
+  // AI-reviewed steps run headless (tracked child); others open in the Claude terminal.
+  // Cancel works for both: headless kills the child process, terminal disposes the terminal window.
+  const isHeadless = !!activeStep?.review?.required && (activeStep?.review.type === 'ai' || !!activeStep?.review.reviewers?.some(r => r.type === 'ai'));
   // Primary action button logic — show "Run Step" ONLY for the initial run when ready.
-  // Subsequent runs (after failure, rejection, or completion) are handled by "Rerun".
+  // Subsequent runs (after failure, rejection, or completion) are handled by "Re-run".
   const canRunStep = !!activeStepState && activeStepState.executionStatus === 'ready' && (activeStepState.history?.length ?? 0) === 0;
-  
-  // "Done" action during execution: signals terminal work is finished.
-  // Hide if no output yet or only the initial system message is present.
-  const hasActualOutput = !!activeStepState?.output && 
-    activeStepState.output.replace(/\[opened in the Claude terminal.*?\]/gs, '').trim().length > 0;
-  const canSubmitWork = activeStepState?.executionStatus === 'running' && !isHeadless && hasActualOutput;
-  const submitLabel = reviewRequired ? 'Submit for Review' : 'Done & Continue';
 
   // Review actions
   const showReviewButtons = activeStepState?.executionStatus === 'completed' && reviewRequired && reviewStatus === 'waiting_human';
 
-  // Manual finalization (optional)
-  const needsManualDone = activeStepState?.completionStatus === 'ready_to_mark_done';
+  // Finish shows after human approval when the step needs an explicit "done" click to advance.
+  const showFinish = activeStepState?.completionStatus === 'ready_to_mark_done';
 
-  // Rerun only shows after the step has been run at least once (has history), is not locked,
-  // and is not currently running. Using history.length avoids accidentally enabling Rerun for
-  // locked steps (which satisfy executionStatus !== 'ready' but have never been touched).
+  // Re-run shows for any non-running terminal outcome: failed, cancelled, rejected, or done.
   const canRerun = !!activeStepState && !isLocked && activeStepState.executionStatus !== 'running' && (activeStepState.history?.length ?? 0) > 0;
 
   // A step's true state spans three axes (execution / review / completion); the badge collapses
@@ -131,6 +119,10 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   };
 
   const runStatus = getRunStatus();
+  // Reset is available once any step has moved past its initial ready/locked state.
+  const canResetRun = Object.values(runState.steps).some(
+    s => s.executionStatus !== 'ready' && s.executionStatus !== 'locked'
+  );
 
   return (
     <div className="runner">
@@ -148,12 +140,11 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
           </span>
         </div>
         <div className="runner-head-actions">
+          {canResetRun && (
+            <button className="btn" title="Reset all steps to initial state" onClick={() => sendToVSCode('resetRun', {})}>Reset</button>
+          )}
           <button className="btn" onClick={() => sendToVSCode('verifyRun', {})}>Verify</button>
           <button className="btn" onClick={() => sendToVSCode('exportRunReport', {})}>Report</button>
-          <div className="runner-head-progress">
-            <ProgressBar percent={activeProgress} />
-            <span className="small muted">{activeProgress}%</span>
-          </div>
         </div>
       </div>
       <div className="runner-strip">
@@ -203,14 +194,6 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
                 <span className="btn-glyph"><Icon.Play size={14} /></span>Run Step
               </button>
             )}
-            {canSubmitWork && (
-              <button className="btn primary" title={submitLabel} onClick={() => sendToVSCode('markStepDone', {
-                stepId: activeStepId!,
-                historyEvent: { timestamp: new Date().toISOString(), status: 'completed', message: 'Terminal work submitted by user' }
-              })}>
-                <span className="btn-glyph"><Icon.Check size={14} /></span>{submitLabel}
-              </button>
-            )}
             {showReviewButtons && (
               <>
                 {activeStep?.review.filePath && (
@@ -226,25 +209,20 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
                 })}>Reject</button>
               </>
             )}
-            {needsManualDone && (
+            {showFinish && (
               <button className="btn primary" title="Complete this step" onClick={() => sendToVSCode('markStepDone', {
                 stepId: activeStepId!,
                 historyEvent: { timestamp: new Date().toISOString(), status: 'completed', message: 'Marked done by user' }
               })}>
-                <span className="btn-glyph"><Icon.Check size={14} /></span>Finish Step
+                <span className="btn-glyph"><Icon.Check size={14} /></span>Finish
               </button>
             )}
             {canRerun && (
-              <button className="btn" title="Reset and rerun this step" onClick={() => onRunStep(activeStepId!, '')}>
-                <span className="btn-glyph"><Icon.RotateCw size={14} /></span>Rerun
+              <button className="btn" title="Re-run this step" onClick={() => onRunStep(activeStepId!, '')}>
+                <span className="btn-glyph"><Icon.RotateCw size={14} /></span>Re-run
               </button>
             )}
             {isLocked && <button className="btn" disabled title="Complete the steps this one depends on first">Locked</button>}
-            {canCancel && (
-              <button className="btn error" title="Cancel running step" onClick={() => sendToVSCode('cancelStep', { stepId: activeStepId! })}>
-                Cancel
-              </button>
-            )}
           </div>
         </div>
         {isHeadless && (

@@ -4,6 +4,11 @@ import { Modal, Field, CheckRow, Icon } from '../components/primitives';
 import { SaveScope, SaveScopeSelect } from '../components/ScopeControls';
 import { getStepSkills } from '../flowUtils';
 
+/** NFD-decompose, strip combining diacritics, map đ→d, drop remaining non-printable-ASCII. */
+const COMBINING = new RegExp('[\\u0300-\\u036f]', 'g');
+const toAsciiName = (s: string) =>
+  s.normalize('NFD').replace(COMBINING, '').replace(/[đĐ]/g, m => m === 'đ' ? 'd' : 'D').replace(/[^\x20-\x7E]/g, '');
+
 interface FlowBuilderModalProps {
   open: boolean;
   flow: Flow | null;
@@ -120,8 +125,8 @@ export const FlowBuilderModal: React.FC<FlowBuilderModalProps> = ({
           <Field label="Save location">
             <SaveScopeSelect value={scope} onChange={onChangeScope} />
           </Field>
-          <Field label="Flow name" hint="English only, max 60 chars — used as output folder name">
-            <input className="input" placeholder="e.g. Release workflow" value={flow.name} onChange={e => onChange({ name: e.target.value })} />
+          <Field label="Flow name" hint="Max 60 chars — used as output folder name (non-ASCII auto-converted)">
+            <input className="input" placeholder="e.g. Release workflow" value={flow.name} onChange={e => onChange({ name: toAsciiName(e.target.value) })} />
           </Field>
         </div>
         <Field label="Description">

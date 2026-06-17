@@ -212,6 +212,9 @@ export class CockpitPanel {
       case 'markStepDone':
         await this._runner.markStepDone(message.stepId);
         return;
+      case 'resetRun':
+        await this._runner.resetRun();
+        return;
       case 'verifyRun':
         await this._runner.verify();
         return;
@@ -289,6 +292,7 @@ export class CockpitPanel {
       : '';
     const metaPrompt = [
       `Generate a Claude Code ${kind} from the user's description.`,
+      'Do NOT ask clarifying questions. Make a reasonable interpretation and return the JSON immediately.',
       '',
       historyBlock,
       `Latest user request: ${prompt}`,
@@ -343,6 +347,7 @@ export class CockpitPanel {
     const skillNames = new Set(skills.map(skill => skill.name));
     const metaPrompt = [
       'Generate an AI StepFlow workflow from the user request.',
+      'Do NOT ask clarifying questions. Make a reasonable interpretation and return the JSON immediately.',
       '',
       'Available agents:',
       ...agents.map(agent => `- ${agent.name}: ${agent.description || '(no description)'}`),

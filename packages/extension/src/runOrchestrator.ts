@@ -53,6 +53,13 @@ export class RunOrchestrator {
         this.post({ type: 'stepUpdate', stepId, append: true, output: '\n[terminal closed — run cancelled]\n' });
       }
     });
+    // When claude exits normally in the terminal, auto-advance the step without requiring a button click.
+    this.terminals.onDidEndStepExecution(async stepId => {
+      if (!this._currentFlow || !this._runState) return;
+      if (this._cancelledStepIds.has(stepId)) return;
+      if (this._runState.steps[stepId]?.executionStatus !== 'running') return;
+      await this.markStepDone(stepId);
+    });
   }
 
   get currentFlow(): Flow | undefined { return this._currentFlow; }
@@ -224,9 +231,9 @@ export class RunOrchestrator {
       message += `\n\nMandatory output files (relative to workspace root, you MUST create these):\n${resolvedProduces.map(p => `- ${p}`).join('\n')}`;
     }
 
-    await this._setRunState(s => machine.markRunning(s, flow, stepId), { stepId, status: 'running', message: 'Opened in Claude — press Enter to run' });
-    this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[opened in the Claude terminal — review the pre-filled message, press Enter to run, then click "Mark step done"]\n` });
-    await this.terminals.runInTerminal(message, projectPath, agent, false, stepId);
+    await this._setRunState(s => machine.markRunning(s, flow, stepId), { stepId, status: 'running', message: 'Opened in Claude terminal — running' });
+    this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[opened in the Claude terminal — running]\n` });
+    await this.terminals.runInTerminal(message, projectPath, agent, true, stepId);
   }
 
   /** Approve/reject a step from the webview's human-review buttons. */
@@ -287,6 +294,36 @@ export class RunOrchestrator {
     await this._reviewStep(step, stepId);
   }
 
+  /** Reset the current run to a fresh state, killing any in-flight processes. */
+  async resetRun(): Promise<void> {
+    if (!this._currentFlow || !this._runState) return;
+    const flow = this._currentFlow;
+    const oldSteps = this._runState.steps;
+
+    // Mark headless runs cancelled so their completion handlers skip state transitions.
+    for (const stepId of this._runChildrenByStep.keys()) {
+      this._cancelledStepIds.add(stepId);
+    }
+    for (const child of this._activeRuns) child.kill();
+
+    // Broadcast fresh state BEFORE disposing the terminal so that when onDidCloseRunningStep
+    // fires, _runState is already freshState (step is 'ready') and the handler is a no-op.
+    const freshState = machine.initRunState(flow, {
+      runId: new Date().toISOString(),
+      projectPath: this._runState.projectPath,
+      inputs: this._runState.inputs,
+    });
+    await this._setRunState(freshState);
+    this._resetBookkeepingIfNewRun();
+    // Clear stale cancelled IDs so re-runs are not silently skipped.
+    this._cancelledStepIds.clear();
+
+    // Dispose any running terminal only after freshState is in place.
+    for (const [stepId, state] of Object.entries(oldSteps)) {
+      if (state.executionStatus === 'running') this.terminals.cancelStep(stepId);
+    }
+  }
+
   async verify(): Promise<void> {
     if (!this._currentFlow || !this._runState) return;
     const projectPath = this.configManager.getProjectPath();
@@ -316,15 +353,25 @@ export class RunOrchestrator {
     vscode.window.showInformationMessage(`AI StepFlow: run report exported to ${base}.`);
   }
 
-  /** Kill the in-flight headless run for a step and record it as cancelled. No-op for terminal runs. */
+  /** Kill the in-flight run for a step (headless or terminal) and record it as cancelled. */
   async cancelStep(stepId: string): Promise<void> {
     const child = this._runChildrenByStep.get(stepId);
-    if (!child) return;
+    if (child) {
+      // Headless run — kill the tracked child process directly
+      this._cancelledStepIds.add(stepId);
+      child.kill();
+      this.post({ type: 'stepUpdate', stepId, append: true, output: '\n[run cancelled by user]\n' });
+      if (this._currentFlow && this._runState) {
+        await this._setRunState(machine.markCancelled(this._runState, this._currentFlow, stepId), { stepId, status: 'cancelled', message: 'Cancelled by user' });
+      }
+      return;
+    }
+    // Terminal (interactive) run — mark cancelled first so onDidEndStepExecution is ignored if it
+    // fires during disposal, then dispose the terminal (onDidCloseRunningStep will set state).
     this._cancelledStepIds.add(stepId);
-    child.kill();
-    this.post({ type: 'stepUpdate', stepId, append: true, output: '\n[run cancelled by user]\n' });
-    if (this._currentFlow && this._runState) {
-      await this._setRunState(machine.markCancelled(this._runState, this._currentFlow, stepId), { stepId, status: 'cancelled', message: 'Cancelled by user' });
+    const closed = this.terminals.cancelStep(stepId);
+    if (closed) {
+      this.post({ type: 'stepUpdate', stepId, append: true, output: '\n[run cancelled by user]\n' });
     }
   }
 

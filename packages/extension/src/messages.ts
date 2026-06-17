@@ -67,6 +67,7 @@ export type WebviewMessage =
   | { type: 'runSkill'; skill: Skill; description?: string }
   | { type: 'reviewStep'; stepId: string; decision: 'approved' | 'rejected' }
   | { type: 'markStepDone'; stepId: string; historyEvent?: { timestamp: string; status: string; message?: string } }
+  | { type: 'resetRun' }
   | { type: 'verifyRun' }
   | { type: 'exportRunReport' }
   | { type: 'importAgentFile' }
@@ -97,6 +98,7 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   ready: () => true,
   importAgentFile: () => true,
   importSkillFile: () => true,
+  resetRun: () => true,
   verifyRun: () => true,
   exportRunReport: () => true,
   loadFlow: m => isFlowLike(m.flow) && (m.runState === undefined || isFlowRunStateShape(m.runState)),
