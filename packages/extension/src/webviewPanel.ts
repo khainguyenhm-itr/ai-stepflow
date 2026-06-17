@@ -225,7 +225,7 @@ export class CockpitPanel {
         await this._handleImportFile('skill');
         return;
       case 'generateDraft':
-        await this._handleGenerateDraft(message.kind, message.name, message.description);
+        await this._handleGenerateDraft(message.kind, message.prompt, message.history);
         return;
       case 'generateFlow':
         await this._handleGenerateFlow(message.description, message.flow, message.history);
@@ -275,12 +275,31 @@ export class CockpitPanel {
     }
   }
 
-  private async _handleGenerateDraft(kind: 'agent' | 'skill', name: string, description?: string): Promise<void> {
-    const target = kind === 'agent' ? 'a system prompt for a Claude Code subagent' : 'the instruction body for a reusable Claude Code skill';
-    const metaPrompt = [`Write ${target}.`, `Name: ${name}`, description?.trim() ? `Purpose: ${description.trim()}` : '', '', 'Rules:', '- Return ONLY markdown.', '- Be concise.'].join('\n');
+  private async _handleGenerateDraft(kind: 'agent' | 'skill', prompt: string, history?: { role: 'user' | 'assistant'; content: string }[]): Promise<void> {
     const projectPath = this.configManager.getProjectPath() || '';
+    const contentField = kind === 'agent' ? 'systemPrompt' : 'instructions';
+    const jsonShape = kind === 'agent'
+      ? '{"reply":"short summary","name":"kebab-case-name","description":"one-line description","systemPrompt":"full system prompt markdown"}'
+      : '{"reply":"short summary","name":"kebab-case-name","description":"one-line description","instructions":"full skill instructions markdown"}';
+    const historyBlock = history?.length
+      ? `Conversation so far:\n${history.map(m => `${m.role}: ${m.content}`).join('\n')}\n\n`
+      : '';
+    const metaPrompt = [
+      `Generate a Claude Code ${kind} from the user's description.`,
+      '',
+      historyBlock,
+      `Latest user request: ${prompt}`,
+      '',
+      `Return ONLY compact JSON:\n${jsonShape}`,
+      '',
+      'Rules:',
+      '- name: lowercase, kebab-case, no spaces (e.g. code-reviewer, create-plan)',
+      '- description: one sentence describing what it does',
+      `- ${contentField}: detailed ${kind === 'agent' ? 'system prompt and operating rules' : 'reusable skill instructions'} in markdown`,
+      '- reply: short confirmation for the user (1-2 sentences)'
+    ].filter(Boolean).join('\n');
 
-    await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Drafting ${kind}...` }, async () => {
+    await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Generating ${kind}...` }, async () => {
       let text = '';
       const result = await this._runner.spawnClaudeStreaming({ systemPrompt: '', userMessage: metaPrompt, projectPath, onText: chunk => { text += chunk; } });
       if (!result.success) {
@@ -289,7 +308,25 @@ export class CockpitPanel {
         this.postMessage({ type: 'draftGenerated', kind, error: why });
         return;
       }
-      this.postMessage({ type: 'draftGenerated', kind, content: (result.resultText || text).trim() });
+      try {
+        const parsed = JSON.parse(this._extractJsonObject((result.resultText || text).trim())) as {
+          reply?: string; name?: string; description?: string; systemPrompt?: string; instructions?: string;
+        };
+        this.postMessage({
+          type: 'draftGenerated',
+          kind,
+          name: typeof parsed.name === 'string' ? parsed.name.trim() : undefined,
+          description: typeof parsed.description === 'string' ? parsed.description.trim() : undefined,
+          content: kind === 'agent'
+            ? (typeof parsed.systemPrompt === 'string' ? parsed.systemPrompt.trim() : undefined)
+            : (typeof parsed.instructions === 'string' ? parsed.instructions.trim() : undefined),
+          reply: typeof parsed.reply === 'string' ? parsed.reply.trim() : 'Generated.'
+        });
+      } catch (error) {
+        const why = error instanceof Error ? error.message : String(error);
+        console.error('AI StepFlow: draft generation parse failed —', why);
+        this.postMessage({ type: 'draftGenerated', kind, error: `invalid AI response: ${why}` });
+      }
     });
   }
 

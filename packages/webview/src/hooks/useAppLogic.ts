@@ -89,6 +89,10 @@ export const useAppLogic = () => {
   const [agentFormError, setAgentFormError] = useState<string | null>(null);
   const [skillFormError, setSkillFormError] = useState<string | null>(null);
   const [draftLoading, setDraftLoading] = useState<'agent' | 'skill' | null>(null);
+  const [agentAiPrompt, setAgentAiPrompt] = useState('');
+  const [agentAiMessages, setAgentAiMessages] = useState<FlowAiMessage[]>([]);
+  const [skillAiPrompt, setSkillAiPrompt] = useState('');
+  const [skillAiMessages, setSkillAiMessages] = useState<FlowAiMessage[]>([]);
 
   const outputEndRef = useRef<HTMLDivElement>(null);
   const activeFlowRef = useRef<Flow | null>(null);
@@ -255,10 +259,22 @@ export const useAppLogic = () => {
           break;
         }
         if (message.kind === 'agent') {
-          setAgentForm(prev => ({ ...prev, systemPrompt: message.content }));
+          setAgentForm(prev => ({
+            ...prev,
+            ...(message.name ? { name: message.name } : {}),
+            ...(message.description ? { description: message.description } : {}),
+            ...(message.content ? { systemPrompt: message.content } : {})
+          }));
+          setAgentAiMessages(prev => [...prev, { role: 'assistant', content: message.reply || 'Agent generated — see below.' }]);
           setAgentFormError(null);
         } else {
-          setSkillForm(prev => ({ ...prev, instructions: message.content }));
+          setSkillForm(prev => ({
+            ...prev,
+            ...(message.name ? { name: message.name } : {}),
+            ...(message.description ? { description: message.description } : {}),
+            ...(message.content ? { instructions: message.content } : {})
+          }));
+          setSkillAiMessages(prev => [...prev, { role: 'assistant', content: message.reply || 'Skill generated — see below.' }]);
           setSkillFormError(null);
         }
         break;
@@ -335,6 +351,8 @@ export const useAppLogic = () => {
       setEditingAgentSource(null);
     }
     setAgentFormError(null);
+    setAgentAiPrompt('');
+    setAgentAiMessages([]);
     setAgentModalOpen(true);
   };
 
@@ -388,6 +406,8 @@ export const useAppLogic = () => {
       setEditingSkillSource(null);
     }
     setSkillFormError(null);
+    setSkillAiPrompt('');
+    setSkillAiMessages([]);
     setSkillModalOpen(true);
   };
 
@@ -565,6 +585,10 @@ export const useAppLogic = () => {
     agentFormError, setAgentFormError,
     skillFormError, setSkillFormError,
     draftLoading, setDraftLoading,
+    agentAiPrompt, setAgentAiPrompt,
+    agentAiMessages, setAgentAiMessages,
+    skillAiPrompt, setSkillAiPrompt,
+    skillAiMessages, setSkillAiMessages,
     outputEndRef,
     completedSteps, activeProgress,
     handleHostMessage, seedPreview,

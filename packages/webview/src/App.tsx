@@ -57,6 +57,10 @@ const App: React.FC = () => {
     agentFormError, setAgentFormError,
     skillFormError, setSkillFormError,
     draftLoading, setDraftLoading,
+    agentAiPrompt, setAgentAiPrompt,
+    agentAiMessages, setAgentAiMessages,
+    skillAiPrompt, setSkillAiPrompt,
+    skillAiMessages, setSkillAiMessages,
     outputEndRef,
     completedSteps, activeProgress,
     handleHostMessage, seedPreview,
@@ -261,14 +265,30 @@ const App: React.FC = () => {
         error={agentFormError}
         draftLoading={draftLoading === 'agent'}
         connectedMcpServers={connectedMcpServers}
+        aiPrompt={agentAiPrompt}
+        aiMessages={agentAiMessages}
         onClose={() => { setAgentModalOpen(false); setEditingAgentSource(null); }}
         onConnectMcp={() => setConnectMcpModalOpen(true)}
         onChange={patch => setAgentForm(prev => ({ ...prev, ...patch }))}
         onSubmit={submitAgentModal}
-        onGenerateDraft={() => {
+        onAiPromptChange={setAgentAiPrompt}
+        onGenerateAgent={() => {
+          if (!agentAiPrompt.trim() || draftLoading) return;
+          const prompt = agentAiPrompt.trim();
+          const prevMessages = agentAiMessages;
+          setAgentAiMessages([...prevMessages, { role: 'user', content: prompt }]);
+          setAgentAiPrompt('');
           setDraftLoading('agent');
           setAgentFormError(null);
-          sendToVSCode('generateDraft', { kind: 'agent', name: agentForm.name.trim(), description: agentForm.description });
+          if (!isVSCodeWebview()) {
+            window.setTimeout(() => {
+              setAgentForm(prev => ({ ...prev, name: prev.name || 'ai-agent', description: 'AI-generated agent', systemPrompt: `You are an AI agent. ${prompt}` }));
+              setAgentAiMessages(prev => [...prev, { role: 'assistant', content: 'Agent generated — see below.' }]);
+              setDraftLoading(null);
+            }, 800);
+            return;
+          }
+          sendToVSCode('generateDraft', { kind: 'agent', prompt, history: prevMessages });
         }}
       />
 
@@ -278,13 +298,29 @@ const App: React.FC = () => {
         form={skillForm}
         error={skillFormError}
         draftLoading={draftLoading === 'skill'}
+        aiPrompt={skillAiPrompt}
+        aiMessages={skillAiMessages}
         onClose={() => { setSkillModalOpen(false); setEditingSkillSource(null); }}
         onChange={patch => setSkillForm(prev => ({ ...prev, ...patch }))}
         onSubmit={submitSkillModal}
-        onGenerateDraft={() => {
+        onAiPromptChange={setSkillAiPrompt}
+        onGenerateSkill={() => {
+          if (!skillAiPrompt.trim() || draftLoading) return;
+          const prompt = skillAiPrompt.trim();
+          const prevMessages = skillAiMessages;
+          setSkillAiMessages([...prevMessages, { role: 'user', content: prompt }]);
+          setSkillAiPrompt('');
           setDraftLoading('skill');
           setSkillFormError(null);
-          sendToVSCode('generateDraft', { kind: 'skill', name: skillForm.name.trim(), description: skillForm.description });
+          if (!isVSCodeWebview()) {
+            window.setTimeout(() => {
+              setSkillForm(prev => ({ ...prev, name: prev.name || 'ai-skill', description: 'AI-generated skill', instructions: `# Skill\n\n${prompt}` }));
+              setSkillAiMessages(prev => [...prev, { role: 'assistant', content: 'Skill generated — see below.' }]);
+              setDraftLoading(null);
+            }, 800);
+            return;
+          }
+          sendToVSCode('generateDraft', { kind: 'skill', prompt, history: prevMessages });
         }}
       />
 

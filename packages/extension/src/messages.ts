@@ -42,7 +42,7 @@ export type HostMessage =
   | { type: 'runStateChanged'; runState: FlowRunState; historyEvent?: HistoryEvent }
   | { type: 'fileImported'; kind: 'agent'; item: { name: string; description: string; model: string; tools: string; systemPrompt: string } }
   | { type: 'fileImported'; kind: 'skill'; item: { name: string; description: string; instructions: string } }
-  | { type: 'draftGenerated'; kind: 'agent' | 'skill'; content?: string; error?: string }
+  | { type: 'draftGenerated'; kind: 'agent' | 'skill'; name?: string; description?: string; content?: string; reply?: string; error?: string }
   | { type: 'flowGenerated'; flow?: Flow; reply?: string; error?: string }
   | { type: 'navigateToTab'; tab: 'flows' | 'agents' | 'skills' };
 
@@ -70,7 +70,7 @@ export type WebviewMessage =
   | { type: 'exportRunReport' }
   | { type: 'importAgentFile' }
   | { type: 'importSkillFile' }
-  | { type: 'generateDraft'; kind: 'agent' | 'skill'; name: string; description?: string }
+  | { type: 'generateDraft'; kind: 'agent' | 'skill'; prompt: string; history?: { role: 'user' | 'assistant'; content: string }[] }
   | { type: 'generateFlow'; description: string; flow?: Flow; history?: { role: 'user' | 'assistant'; content: string }[] }
   | { type: 'connectMcpServer'; config: { name: string; scope: 'global' | 'local'; command: string; args: string[]; env?: Record<string, string> } }
   | { type: 'alert'; text: string };
@@ -118,7 +118,7 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
     isString(m.stepId) &&
     (m.decision === 'approved' || m.decision === 'rejected'),
   markStepDone: m => isString(m.stepId),
-  generateDraft: m => (m.kind === 'agent' || m.kind === 'skill') && isString(m.name),
+  generateDraft: m => (m.kind === 'agent' || m.kind === 'skill') && isString(m.prompt),
   generateFlow: m => isString(m.description) && (m.flow === undefined || isFlowLike(m.flow)),
   connectMcpServer: m => isObject(m.config) && isString(m.config.name) && isString(m.config.command),
   alert: m => isString(m.text)
