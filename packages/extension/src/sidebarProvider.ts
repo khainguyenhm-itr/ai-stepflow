@@ -419,15 +419,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .body { scrollbar-width: none; }
 
     /* ── run cards ── */
-    #runs { padding: 6px; display: flex; flex-direction: column; gap: 4px; }
-    .run-card { padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel); cursor: default; transition: border-color .1s; }
-    .run-card:hover { border-color: var(--focus); }
-    .run-card.run-active { border-color: var(--btn); background: rgba(14,99,156,.07); }
+    #runs { padding: 4px 6px; display: flex; flex-direction: column; gap: 6px; }
+    .run-card { padding: 8px 10px 8px 13px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel); cursor: default; transition: border-color .15s, background .15s; position: relative; }
+    .run-card::before { content: ''; position: absolute; left: 0; top: 4px; bottom: 4px; width: 3px; border-radius: 0 2px 2px 0; background: var(--border); }
+    .run-card:hover { border-color: var(--focus); background: var(--hover); }
+    .run-card.run-active::before { background: var(--btn); }
+    .run-card.run-done::before { background: var(--success); }
     .run-card.run-done:hover { border-color: var(--success); }
-    .run-card-head { display: flex; align-items: center; gap: 5px; min-width: 0; }
-    .run-card-title { flex: 1; font-size: 11.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .run-card-tag { font-size: 10px; color: var(--muted); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .run-card-bar { height: 3px; border-radius: 2px; background: rgba(127,127,127,.15); overflow: hidden; margin: 6px 0 4px; }
+    .run-card-head { display: flex; align-items: flex-start; gap: 5px; min-width: 0; }
+    .run-card-titles { flex: 1; min-width: 0; overflow: hidden; }
+    .run-card-title { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); line-height: 1.3; }
+    .run-card-sub { font-size: 10px; color: var(--muted); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .run-card-bar { height: 3px; border-radius: 2px; background: rgba(127,127,127,.15); overflow: hidden; margin: 6px 0 5px; }
     .run-card-bar-fill { height: 100%; border-radius: 2px; background: var(--vscode-progressBar-background, #0e70c0); transition: width .3s ease; }
     .run-card.run-active .run-card-bar-fill { background: var(--btn); }
     .run-card.run-done .run-card-bar-fill { background: var(--success); }
@@ -435,7 +438,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .run-card-meta { font-size: 10px; color: var(--muted); }
     .run-card-acts { flex-shrink: 0; opacity: 0; transition: opacity .1s; }
     .run-card:hover .run-card-acts, .run-card.run-active .run-card-acts { opacity: 1; }
-    .run-sbadge { display: inline-flex; align-items: center; height: 14px; padding: 0 5px; border-radius: 9px; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; white-space: nowrap; flex-shrink: 0; }
+    .run-sbadge { display: inline-flex; align-items: center; height: 14px; padding: 0 5px; border-radius: 9px; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; white-space: nowrap; flex-shrink: 0; margin-top: 1px; }
     .run-sbadge.running { background: var(--vscode-charts-blue, var(--focus)); color: #fff; }
     .run-sbadge.done { background: var(--success); color: #fff; }
     .run-sbadge.partial { background: rgba(215,160,0,.18); color: var(--vscode-charts-yellow, #d7ba7d); }
@@ -1055,15 +1058,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       const detailAttr = activeRun.filePath ? 'data-act="openFile" data-path="' + esc(activeRun.filePath) + '"' : 'data-act="openRun"';
       const stepHtml = step
         ? '<div class="run-step-row">' +
-            '<span class="run-sbadge running">' + esc(step.status) + '</span>' +
             '<span class="run-step-name">' + esc(step.title) + '</span>' +
           '</div>'
         : '';
       html +=
         '<div class="run-card run-active">' +
           '<div class="run-card-head">' +
-            '<span class="run-card-title" title="' + esc(activeRun.flowName) + '">' + esc(activeRun.flowName) + '</span>' +
-            '<span class="run-sbadge running">Running</span>' +
+            '<div class="run-card-titles">' +
+              '<div class="run-card-title" title="' + esc(activeRun.runName || activeRun.flowName) + '">' + esc(activeRun.runName || activeRun.flowName) + '</div>' +
+              (activeRun.runName ? '<div class="run-card-sub" title="' + esc(activeRun.flowName) + '">' + esc(activeRun.flowName) + '</div>' : '') +
+            '</div>' +
             '<span class="run-card-acts">' +
               actionMenu([
                 menuItem('Open cockpit', 'data-act="openRun"'),
@@ -1072,7 +1076,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
               ]) +
             '</span>' +
           '</div>' +
-          (activeRun.runName ? '<div class="run-card-tag">' + esc(activeRun.runName) + '</div>' : '') +
           '<div class="run-card-bar"><div class="run-card-bar-fill" style="width:' + activeRun.percent + '%"></div></div>' +
           '<div class="run-card-foot">' +
             '<span class="run-card-meta">' + activeRun.completed + '/' + activeRun.total + ' steps · ' + activeRun.percent + '%</span>' +
@@ -1090,7 +1093,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         const badgeLabel = isDone ? '✓ Done' : f.completed + '/' + f.total;
         return '<div class="run-card' + (isDone ? ' run-done' : '') + '">' +
           '<div class="run-card-head">' +
-            '<span class="run-card-title" title="' + esc(f.flowName) + '">' + esc(f.flowName) + '</span>' +
+            '<div class="run-card-titles">' +
+              '<div class="run-card-title" title="' + esc(f.runName || f.flowName) + '">' + esc(f.runName || f.flowName) + '</div>' +
+              (f.runName ? '<div class="run-card-sub" title="' + esc(f.flowName) + '">' + esc(f.flowName) + '</div>' : '') +
+            '</div>' +
             (badgeCls ? '<span class="run-sbadge ' + badgeCls + '">' + badgeLabel + '</span>' : '') +
             '<span class="run-card-acts">' +
               actionMenu([
@@ -1100,7 +1106,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
               ]) +
             '</span>' +
           '</div>' +
-          (f.runName ? '<div class="run-card-tag">' + esc(f.runName) + '</div>' : '') +
           '<div class="run-card-bar"><div class="run-card-bar-fill" style="width:' + percent + '%"></div></div>' +
           '<div class="run-card-foot">' +
             '<span class="run-card-meta">' + fmtDate(f.runId) + '</span>' +
