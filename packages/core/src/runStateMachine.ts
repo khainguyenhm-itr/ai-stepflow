@@ -34,7 +34,7 @@ export function applyDependencyLocks(flow: Flow, steps: Record<string, StepRunSt
 }
 
 /** Build the initial run state for a flow: every step ready, review pending where required. */
-export function initRunState(flow: Flow, opts: { runId: string; projectPath?: string; inputs?: Record<string, string> }): FlowRunState {
+export function initRunState(flow: Flow, opts: { runId: string; runName?: string; projectPath?: string; inputs?: Record<string, string> }): FlowRunState {
   const steps: Record<string, StepRunState> = {};
   for (const step of flow.steps) {
     steps[step.id] = {
@@ -47,6 +47,7 @@ export function initRunState(flow: Flow, opts: { runId: string; projectPath?: st
   return {
     flowId: flow.id,
     runId: opts.runId,
+    runName: opts.runName,
     source: flow.sourcePath,
     projectPath: opts.projectPath ?? '',
     inputs: opts.inputs ?? {},

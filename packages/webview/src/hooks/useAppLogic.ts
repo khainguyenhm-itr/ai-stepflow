@@ -45,6 +45,7 @@ export const useAppLogic = () => {
   const [globalPath, setGlobalPath] = useState<string>('');
   const [projectPath, setProjectPath] = useState<string>('');
   const [connectedMcpServers, setConnectedMcpServers] = useState<string[]>([]);
+  const [runSummaries, setRunSummaries] = useState<{ flowId: string; runId: string; runName?: string; completedSteps: number; totalSteps: number; mtimeMs: number }[]>([]);
 
   const [activeFlow, setActiveFlow] = useState<Flow | null>(null);
   const [runState, setRunState] = useState<FlowRunState | null>(null);
@@ -69,6 +70,7 @@ export const useAppLogic = () => {
   const [flowAiLoading, setFlowAiLoading] = useState(false);
 
   const [runInputsTarget, setRunInputsTarget] = useState<Flow | null>(null);
+  const [runName, setRunName] = useState('');
   const [runInputValues, setRunInputValues] = useState<Record<string, string>>({});
   const [runInputsError, setRunInputsError] = useState<string | null>(null);
 
@@ -144,7 +146,7 @@ export const useAppLogic = () => {
     });
   };
 
-  const initRunState = (flow: Flow, inputs: Record<string, string> = {}) => {
+  const initRunState = (flow: Flow, runName?: string, inputs: Record<string, string> = {}) => {
     const initialSteps: Record<string, StepRunState> = {};
     flow.steps.forEach(step => {
       initialSteps[step.id] = {
@@ -156,27 +158,35 @@ export const useAppLogic = () => {
     });
 
     shouldPersistRun.current = true;
-    setRunState({
+    const newRunState: FlowRunState = {
       flowId: flow.id,
       runId: new Date().toISOString(),
+      runName,
       source: flow.sourcePath,
       projectPath: '',
       inputs,
       steps: applyDependencyLocks(flow, initialSteps)
-    });
+    };
+    setRunState(newRunState);
     setActiveStepId(flow.steps[0]?.id || null);
+    setRunSummaries(prev => [{
+      flowId: newRunState.flowId,
+      runId: newRunState.runId,
+      runName: newRunState.runName,
+      completedSteps: 0,
+      totalSteps: flow.steps.length,
+      mtimeMs: Date.now()
+    }, ...prev]);
+    sendToVSCode('updateRunState', { runState: newRunState });
   };
 
   const startFreshRun = (flow: Flow) => {
     setActiveFlow(flow);
     const inputNames = Object.keys(flow.inputs || {});
-    if (inputNames.length) {
-      setRunInputValues(Object.fromEntries(inputNames.map(name => [name, ''])));
-      setRunInputsError(null);
-      setRunInputsTarget(flow);
-      return;
-    }
-    initRunState(flow);
+    setRunInputValues(Object.fromEntries(inputNames.map(name => [name, ''])));
+    setRunName('');
+    setRunInputsError(null);
+    setRunInputsTarget(flow);
   };
 
   const startOrResumeRun = (flow: Flow) => {
@@ -197,6 +207,7 @@ export const useAppLogic = () => {
         setAgents(message.agents);
         setSkills(message.skills);
         setAuditLogs(message.auditLogs || {});
+        setRunSummaries(message.runSummaries || []);
         setGlobalPath(message.globalPath);
         setProjectPath(message.projectPath);
         setConnectedMcpServers(message.connectedMcpServers || []);
@@ -221,6 +232,33 @@ export const useAppLogic = () => {
         setRunState(message.runState);
         setRunnerVisible(true);
         setActiveStepId(getDefaultActiveStepId(message.flow, message.runState));
+        break;
+      case 'runDeleted': {
+        const { flowId, runId } = message;
+        setRunSummaries(prev => prev.filter(s => !(s.flowId === flowId && s.runId === runId)));
+        setAuditLogs(prev => {
+          if (!prev[flowId]) return prev;
+          const filtered = prev[flowId].filter((e: any) => e.runId !== runId);
+          return { ...prev, [flowId]: filtered };
+        });
+        setRunState(null);
+        setActiveFlow(null);
+        setActiveStepId(null);
+        setRunnerVisible(false);
+        break;
+      }
+      case 'resetAuditLog':
+        setRunState(currentRun => {
+          if (currentRun) {
+            const oldRunId = currentRun.runId;
+            setAuditLogs(prev => {
+              const flowId = message.flowId;
+              if (!prev[flowId]) return prev;
+              return { ...prev, [flowId]: prev[flowId].filter(e => e.runId !== oldRunId) };
+            });
+          }
+          return currentRun;
+        });
         break;
       case 'stepUpdate':
         setRunState(prev => {
@@ -431,7 +469,7 @@ export const useAppLogic = () => {
 
   const submitRunInputs = () => {
     if (!runInputsTarget) return;
-    initRunState(runInputsTarget, runInputValues);
+    initRunState(runInputsTarget, runName.trim() || undefined, runInputValues);
     setRunInputsTarget(null);
     setRunnerVisible(true);
   };
@@ -565,6 +603,7 @@ export const useAppLogic = () => {
     skills, setSkills,
     bookmarks,
     auditLogs, setAuditLogs,
+    runSummaries, setRunSummaries,
     globalPath, projectPath, connectedMcpServers,
     activeFlow, setActiveFlow,
     runState, setRunState,
@@ -585,6 +624,7 @@ export const useAppLogic = () => {
     flowAiMessages, setFlowAiMessages,
     flowAiLoading, setFlowAiLoading,
     runInputsTarget, setRunInputsTarget,
+    runName, setRunName,
     runInputValues, setRunInputValues,
     runInputsError, setRunInputsError,
     detailItem, setDetailItem,

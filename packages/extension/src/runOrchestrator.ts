@@ -260,7 +260,7 @@ export class RunOrchestrator {
 
       if (isRunning) {
         // Terminal still running: mark done first (so close-terminal handler is a no-op), then close.
-        await this._setRunState(s => machine.markDone(machine.markCompleted(s, flow, stepId), flow, stepId), { stepId, status: 'completed', message: 'Approved by user' });
+        await this._setRunState(s => machine.markDone(machine.applyHumanReview(machine.markCompleted(s, flow, stepId), flow, stepId, { decision: 'approved' }), flow, stepId), { stepId, status: 'completed', message: 'Approved by user' });
         this.terminals.cancelStep(stepId);
         this._advanceReadySteps();
         return;
@@ -343,12 +343,20 @@ export class RunOrchestrator {
 
     // Broadcast fresh state BEFORE disposing the terminal so that when onDidCloseRunningStep
     // fires, _runState is already freshState (step is 'ready') and the handler is a no-op.
+    const oldRunId = this._runState.runId;
     const freshState = machine.initRunState(flow, {
       runId: new Date().toISOString(),
       projectPath: this._runState.projectPath,
       inputs: this._runState.inputs,
     });
+    await Promise.all([
+      this.stateManager.clearAuditLog(flow.id, oldRunId),
+      this.stateManager.deleteRunFile(flow.id, oldRunId),
+      this.stateManager.deleteReportFile(flow.id, oldRunId),
+    ]);
+    this.post({ type: 'resetAuditLog', flowId: flow.id });
     await this._setRunState(freshState);
+    this.post({ type: 'restoreRun', flow, runState: freshState });
     this._resetBookkeepingIfNewRun();
     // Clear stale cancelled IDs so re-runs are not silently skipped.
     this._cancelledStepIds.clear();
@@ -357,6 +365,32 @@ export class RunOrchestrator {
     for (const [stepId, state] of Object.entries(oldSteps)) {
       if (state.executionStatus === 'running') this.terminals.cancelStep(stepId);
     }
+  }
+
+  /** Delete the current run: kill in-flight processes, wipe persisted files, notify webview. */
+  async deleteRun(): Promise<void> {
+    if (!this._currentFlow || !this._runState) return;
+    const flow = this._currentFlow;
+    const runId = this._runState.runId;
+
+    for (const stepId of this._runChildrenByStep.keys()) {
+      this._cancelledStepIds.add(stepId);
+    }
+    for (const child of this._activeRuns) child.kill();
+
+    await Promise.all([
+      this.stateManager.clearAuditLog(flow.id, runId),
+      this.stateManager.deleteRunFile(flow.id, runId),
+      this.stateManager.deleteReportFile(flow.id, runId),
+    ]);
+
+    this._currentFlow = undefined;
+    this._runState = undefined;
+    this._cancelledStepIds.clear();
+    this._startedStepIds.clear();
+    this._parkedStepIds.clear();
+
+    this.post({ type: 'runDeleted', flowId: flow.id, runId });
   }
 
   async verify(): Promise<void> {

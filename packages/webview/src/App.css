@@ -803,6 +803,11 @@ textarea.input {
   color: var(--fg);
 }
 
+.runner-run-name {
+  font-weight: 400;
+  color: var(--muted);
+}
+
 .runner-head-progress {
   display: flex;
   flex-direction: column;
@@ -961,6 +966,16 @@ textarea.input {
   align-items: center;
   gap: 4px;
   flex: 0 0 auto;
+}
+
+/* --------------------------- flow run controls (below canvas) --- */
+
+.flow-run-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
 }
 
 /* --------------------------- flow canvas -------------------------- */

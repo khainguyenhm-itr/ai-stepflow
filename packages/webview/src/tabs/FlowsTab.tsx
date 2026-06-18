@@ -11,6 +11,7 @@ interface FlowsTabProps {
   agents: Agent[];
   skills: Skill[];
   auditLogs: Record<string, any[]>;
+  runSummaries: { flowId: string; runId: string; runName?: string; completedSteps: number; totalSteps: number; mtimeMs: number }[];
   activeFlow: Flow | null;
   runState: FlowRunState | null;
   runnerVisible: boolean;
@@ -41,6 +42,7 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
   agents,
   skills,
   auditLogs,
+  runSummaries,
   activeFlow,
   runState,
   runnerVisible,
@@ -107,6 +109,7 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
               activeFlow={activeFlow}
               runState={runState}
               auditLogs={auditLogs}
+              runSummaries={runSummaries.filter(s => s.flowId === flow.id)}
               runnerVisible={runnerVisible}
               activeStepId={activeStepId}
               completedSteps={completedSteps}

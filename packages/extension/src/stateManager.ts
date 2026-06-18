@@ -42,6 +42,22 @@ export class StateManager {
     return filePath;
   }
 
+  /** Delete the persisted run JSON for a specific run. */
+  public async deleteRunFile(flowId: string, runId: string): Promise<void> {
+    if (!this.projectPath) return;
+    const safe = (value: string) => value.replace(/[^a-zA-Z0-9_-]+/g, '-');
+    const filePath = path.join(this.projectPath, '.ai-stepflow', 'runs', `${safe(flowId)}-${safe(runId)}.json`);
+    try { await fs.unlink(filePath); } catch { /* ignore if not found */ }
+  }
+
+  /** Delete the generated markdown report for a specific run. */
+  public async deleteReportFile(flowId: string, runId: string): Promise<void> {
+    if (!this.projectPath) return;
+    const safe = (value: string) => value.replace(/[^a-zA-Z0-9_-]+/g, '-');
+    const filePath = path.join(this.projectPath, '.ai-stepflow', 'reports', `${safe(flowId)}-${safe(runId)}.md`);
+    try { await fs.unlink(filePath); } catch { /* ignore if not found */ }
+  }
+
   /** Saves an event to a local audit log that is never committed to the repo. */
   public async appendAuditLog(flowId: string, runId: string, stepId: string, event: { timestamp: string; status: string; message?: string }): Promise<void> {
     const dir = await this.getLocalStorageDir();
@@ -66,6 +82,42 @@ export class StateManager {
       return content.trim().split('\n').map(line => JSON.parse(line));
     } catch {
       return [];
+    }
+  }
+
+  /** Deletes audit log entries for a flow. If runId is provided, only entries for that run are removed. */
+  public async clearAuditLog(flowId: string, runId?: string): Promise<void> {
+    const dir = await this.getLocalStorageDir();
+    if (!dir) return;
+    const logFile = path.join(dir, 'audit-logs', `${flowId}.jsonl`);
+    
+    if (!runId) {
+      try {
+        await fs.unlink(logFile);
+      } catch {
+        // Ignore if file doesn't exist
+      }
+      return;
+    }
+
+    try {
+      const content = await fs.readFile(logFile, 'utf8');
+      const lines = content.trim().split('\n');
+      const filtered = lines.filter(line => {
+        try {
+          const entry = JSON.parse(line);
+          return entry.runId !== runId;
+        } catch {
+          return true;
+        }
+      });
+      if (filtered.length === 0) {
+        await fs.unlink(logFile);
+      } else {
+        await fs.writeFile(logFile, filtered.join('\n') + '\n', 'utf8');
+      }
+    } catch {
+      // Ignore
     }
   }
 
@@ -114,7 +166,7 @@ export class StateManager {
    * sidebar to list the files this extension created in the repo without forcing
    * callers to re-derive paths or re-stat each file.
    */
-  public async listRunFiles(): Promise<{ flowId: string; runId: string; filePath: string; completedSteps: number; totalSteps: number; mtimeMs: number }[]> {
+  public async listRunFiles(): Promise<{ flowId: string; runId: string; runName?: string; filePath: string; completedSteps: number; totalSteps: number; mtimeMs: number }[]> {
     if (!this.projectPath) return [];
 
     const runsDir = path.join(this.projectPath, '.ai-stepflow', 'runs');
@@ -125,7 +177,7 @@ export class StateManager {
       return [];
     }
 
-    const result: { flowId: string; runId: string; filePath: string; completedSteps: number; totalSteps: number; mtimeMs: number }[] = [];
+    const result: { flowId: string; runId: string; runName?: string; filePath: string; completedSteps: number; totalSteps: number; mtimeMs: number }[] = [];
     for (const file of files) {
       const filePath = path.join(runsDir, file);
       try {
@@ -135,6 +187,7 @@ export class StateManager {
         result.push({
           flowId: run.flowId,
           runId: run.runId,
+          runName: run.runName,
           filePath,
           completedSteps: steps.filter(step => step.completionStatus === 'done').length,
           totalSteps: steps.length,

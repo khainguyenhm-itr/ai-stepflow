@@ -32,6 +32,7 @@ export type HostMessage =
       skills: Skill[];
       connectedMcpServers: string[];
       auditLogs: Record<string, AuditEntry[]>;
+      runSummaries: { flowId: string; runId: string; runName?: string; completedSteps: number; totalSteps: number; mtimeMs: number }[];
       globalPath: string;
       projectPath: string;
       uiPrefs: Record<string, string>;
@@ -41,6 +42,8 @@ export type HostMessage =
   | { type: 'stepUpdate'; stepId: string; output: string; append?: boolean }
   | { type: 'aiReviewUpdate'; stepId: string; output: string; append?: boolean }
   | { type: 'runStateChanged'; runState: FlowRunState; historyEvent?: HistoryEvent }
+  | { type: 'resetAuditLog'; flowId: string }
+  | { type: 'runDeleted'; flowId: string; runId: string }
   | { type: 'fileImported'; kind: 'agent'; item: { name: string; description: string; model: string; tools: string; systemPrompt: string } }
   | { type: 'fileImported'; kind: 'skill'; item: { name: string; description: string; instructions: string } }
   | { type: 'draftGenerated'; kind: 'agent' | 'skill'; name?: string; description?: string; content?: string; reply?: string; error?: string }
@@ -61,6 +64,7 @@ export type WebviewMessage =
   | { type: 'deleteAgent'; agent: Agent }
   | { type: 'deleteSkill'; skill: Skill }
   | { type: 'updateRunState'; runState: FlowRunState; historyEvent?: { timestamp: string; status: string; message?: string; stepId: string } }
+  | { type: 'switchRun'; flowId: string; runId: string }
   | { type: 'runStep'; stepId: string; flow?: Flow; runState?: FlowRunState; description?: string; historyEvent?: { timestamp: string; status: string; message?: string } }
   | { type: 'cancelStep'; stepId: string }
   | { type: 'runAgent'; agent: Agent; description?: string }
@@ -68,6 +72,7 @@ export type WebviewMessage =
   | { type: 'reviewStep'; stepId: string; decision: 'approved' | 'rejected' }
   | { type: 'markStepDone'; stepId: string; historyEvent?: { timestamp: string; status: string; message?: string } }
   | { type: 'resetRun' }
+  | { type: 'deleteRun' }
   | { type: 'verifyRun' }
   | { type: 'exportRunReport' }
   | { type: 'importAgentFile' }
@@ -99,6 +104,7 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   importAgentFile: () => true,
   importSkillFile: () => true,
   resetRun: () => true,
+  deleteRun: () => true,
   verifyRun: () => true,
   exportRunReport: () => true,
   loadFlow: m => isFlowLike(m.flow) && (m.runState === undefined || isFlowRunStateShape(m.runState)),
@@ -112,6 +118,7 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   deleteAgent: m => isObject(m.agent) && isString(m.agent.sourcePath),
   deleteSkill: m => isObject(m.skill) && isString(m.skill.sourcePath),
   updateRunState: m => isFlowRunStateShape(m.runState),
+  switchRun: m => isString(m.flowId) && isString(m.runId),
   runStep: m => isString(m.stepId)
     && (m.flow === undefined || isFlowLike(m.flow))
     && (m.runState === undefined || isFlowRunStateShape(m.runState)),

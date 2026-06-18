@@ -113,6 +113,7 @@ const stepRunStateShapeSchema = z.object({
 const flowRunStateShapeSchema = z.object({
   flowId: z.string(),
   runId: z.string(),
+  runName: z.string().optional(),
   steps: z.record(z.string(), stepRunStateShapeSchema)
 }).passthrough();
 

@@ -39,8 +39,10 @@ test('FlowOrchestrator identifies ready steps and respects interactive limits', 
   const actions = orch.getAutoAdvanceActions();
   assert.equal(actions.length, 3);
   assert.deepEqual(actions.find(a => a.stepId === 'b'), { type: 'launch_headless', stepId: 'b' });
-  assert.deepEqual(actions.find(a => a.stepId === 'c'), { type: 'launch_headless', stepId: 'c' });
-  assert.deepEqual(actions.find(a => a.stepId === 'd'), { type: 'launch_headless', stepId: 'd' });
+  // 'c' and 'd' are interactive (no review). One launches, one parks.
+  const interactive = actions.filter(a => a.stepId === 'c' || a.stepId === 'd');
+  assert.ok(interactive.some(a => a.type === 'launch_interactive'));
+  assert.ok(interactive.some(a => a.type === 'park_interactive'));
 });
 
 test('FlowOrchestrator does not re-launch already started steps', () => {

@@ -136,6 +136,7 @@ export interface StepRunState {
 export interface FlowRunState {
   flowId: string;
   runId: string;
+  runName?: string;
   source: string;
   projectPath: string;
   inputs: Record<string, string>;

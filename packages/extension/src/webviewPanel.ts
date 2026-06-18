@@ -193,6 +193,19 @@ export class CockpitPanel {
       case 'updateRunState':
         await this._runner.adoptRunState(message.runState, message.historyEvent);
         return;
+      case 'switchRun': {
+        const [runs, flows] = await Promise.all([
+          this.stateManager.loadRuns(),
+          this.configManager.loadFlows()
+        ]);
+        const run = runs.find(r => r.flowId === message.flowId && r.runId === message.runId);
+        const flow = flows.find(f => f.id === message.flowId);
+        if (run && flow) {
+          this._runner.setFlowAndRunState(flow, run);
+          this.postMessage({ type: 'restoreRun', flow, runState: run });
+        }
+        return;
+      }
       case 'runStep':
         await this._runner.runStep(message.stepId, { flow: message.flow, runState: message.runState, description: message.description });
         return;
@@ -215,6 +228,19 @@ export class CockpitPanel {
       case 'resetRun':
         await this._runner.resetRun();
         return;
+      case 'deleteRun': {
+        const runState = this._runner.runState;
+        if (!runState) return;
+        const label = runState.runName || runState.runId.split('T')[0];
+        const choice = await vscode.window.showWarningMessage(
+          `Delete run '${label}'? This removes the run file, report, and audit log.`,
+          { modal: true },
+          'Delete'
+        );
+        if (choice !== 'Delete') return;
+        await this._runner.deleteRun();
+        return;
+      }
       case 'verifyRun':
         await this._runner.verify();
         return;
@@ -484,12 +510,13 @@ export class CockpitPanel {
   private async _sendAllData() {
     try {
       console.log('AI StepFlow: fetching data from ConfigManager...');
-      const [flows, agents, skills] = await Promise.all([
+      const [flows, agents, skills, runSummaries] = await Promise.all([
         this.configManager.loadFlows().catch(e => { console.error('AI StepFlow: loadFlows failed', e); return []; }),
         this.configManager.loadAgents().catch(e => { console.error('AI StepFlow: loadAgents failed', e); return []; }),
-        this.configManager.loadSkills().catch(e => { console.error('AI StepFlow: loadSkills failed', e); return []; })
+        this.configManager.loadSkills().catch(e => { console.error('AI StepFlow: loadSkills failed', e); return []; }),
+        this.stateManager.listRunFiles().catch(e => { console.error('AI StepFlow: listRunFiles failed', e); return []; })
       ]);
-      console.log(`AI StepFlow: loaded ${flows.length} flows, ${agents.length} agents, ${skills.length} skills.`);
+      console.log(`AI StepFlow: loaded ${flows.length} flows, ${agents.length} agents, ${skills.length} skills, ${runSummaries.length} runs.`);
 
       const auditLogs: Record<string, any[]> = {};
       await Promise.all(flows.map(async flow => {
@@ -510,6 +537,7 @@ export class CockpitPanel {
         flows, agents, skills,
         connectedMcpServers: [],
         auditLogs,
+        runSummaries,
         globalPath,
         projectPath,
         uiPrefs
@@ -529,6 +557,7 @@ export class CockpitPanel {
         flows: [], agents: [], skills: [],
         connectedMcpServers: [],
         auditLogs: {},
+        runSummaries: [],
         globalPath: '',
         projectPath: '',
         uiPrefs: {}

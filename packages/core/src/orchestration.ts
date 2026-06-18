@@ -63,7 +63,7 @@ export class FlowOrchestrator {
    * can run concurrently.
    */
   isHeadlessStep(step: FlowStep): boolean {
-    if (!step.review?.required) return true;
+    if (!step.review?.required) return false;
     return step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai');
   }
 

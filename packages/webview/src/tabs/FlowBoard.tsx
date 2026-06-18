@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Flow, FlowRunState } from '@ai-stepflow/core/types';
 import { Icon } from '../components/primitives';
 import { getFlowColumns } from '../flowUtils';
@@ -10,6 +10,7 @@ interface FlowBoardProps {
   activeFlow: Flow | null;
   runState: FlowRunState | null;
   auditLogs: Record<string, any[]>;
+  runSummaries: { flowId: string; runId: string; runName?: string; completedSteps: number; totalSteps: number; mtimeMs: number }[];
   runnerVisible: boolean;
   activeStepId: string | null;
   completedSteps: number;
@@ -35,6 +36,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
   activeFlow,
   runState,
   auditLogs,
+  runSummaries,
   runnerVisible,
   activeStepId,
   completedSteps,
@@ -56,6 +58,16 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
 }) => {
   const columns = getFlowColumns(flow);
   const runnerOpen = activeFlow?.id === flow.id && !!runState && runnerVisible;
+  const [isExpanded, setIsExpanded] = useState(false);
+  const prevRunnerOpenRef = useRef(runnerOpen);
+
+  // Auto-expand only when runnerOpen transitions false→true (new run started),
+  // not on remount when a run was already active.
+  useEffect(() => {
+    const wasOpen = prevRunnerOpenRef.current;
+    prevRunnerOpenRef.current = runnerOpen;
+    if (runnerOpen && !wasOpen) setIsExpanded(true);
+  }, [runnerOpen]);
 
   const getScope = (sourcePath: string) => {
     if (globalPath && sourcePath.startsWith(globalPath)) return 'Global';
@@ -72,18 +84,14 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
         </div>
         <div className="panel-head-actions">
           <button
-            className={`btn ${runnerOpen ? '' : 'primary'}`}
-            title={runnerOpen ? 'Hide the run panel (the run is kept)' : 'Run this workflow'}
-            onClick={() => onRun(flow)}
+            className="icon-btn"
+            title={isExpanded ? 'Collapse' : 'Expand'}
+            onClick={() => setIsExpanded(v => !v)}
           >
-            <span className="btn-glyph">{runnerOpen ? <Icon.ChevronUp size={14} /> : <Icon.Play size={14} />}</span>{runnerOpen ? 'Hide' : 'Run'}
+            {isExpanded ? <Icon.ChevronUp size={18} /> : <Icon.ChevronDown size={18} />}
           </button>
           <button className="icon-btn pencil" title="Edit flow" onClick={() => onEdit(flow)}><Icon.Pencil size={14} /></button>
-          <button
-            className="icon-btn"
-            title="Details"
-            onClick={() => onDetail(flow)}
-          >
+          <button className="icon-btn" title="Details" onClick={() => onDetail(flow)}>
             <Icon.Info size={14} />
           </button>
           {flow.sourcePath && (
@@ -91,6 +99,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
           )}
         </div>
       </div>
+
       <div className="flow-canvas">
         <div className="flow-track">
           {columns.map((column, columnIndex) => (
@@ -150,21 +159,59 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
           <button type="button" className="flow-add-node" onClick={() => onBoardStepAdder(flow)} aria-label="Add workflow step"><Icon.Plus size={14} /></button>
         </div>
       </div>
-      {runnerOpen && runState && (
-        <InlineRunner
-          flow={flow}
-          runState={runState}
-          auditLogs={auditLogs}
-          activeStepId={activeStepId}
-          completedSteps={completedSteps}
-          activeProgress={activeProgress}
-          commandCopied={commandCopied}
-          onSetActiveStep={onSetActiveStep}
-          onRunStep={onRunStep}
-          onOpenFile={onOpenFile}
-          onCopyCommand={onCopyCommand}
-          outputEndRef={outputEndRef}
-        />
+
+      {isExpanded && (
+        <>
+          <div className="flow-run-controls">
+            {runSummaries.length > 0 && (
+              <div className="flex-row items-center gap-4">
+                <span className="small muted" style={{ flexShrink: 0 }}>Resume:</span>
+                <select
+                  className="input sm"
+                  style={{ minWidth: '180px', maxWidth: 'auto' }}
+                  value={runState?.runId || ''}
+                  onChange={e => {
+                    if (e.target.value) {
+                      sendToVSCode('switchRun', { flowId: flow.id, runId: e.target.value });
+                    }
+                  }}
+                >
+                  <option value="" disabled>Select run...</option>
+                  {runSummaries.map(s => (
+                    <option key={s.runId} value={s.runId}>
+                      {s.runName || s.runId.split('T')[0]} ({s.completedSteps}/{s.totalSteps})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <button
+              className="btn primary"
+              style={{ marginLeft: 'auto' }}
+              title="Start a new independent run"
+              onClick={() => onRun(flow)}
+            >
+              <span className="btn-glyph"><Icon.Plus size={14} /></span>New Run
+            </button>
+          </div>
+
+          {runnerOpen && runState && (
+            <InlineRunner
+              flow={flow}
+              runState={runState}
+              auditLogs={auditLogs}
+              activeStepId={activeStepId}
+              completedSteps={completedSteps}
+              activeProgress={activeProgress}
+              commandCopied={commandCopied}
+              onSetActiveStep={onSetActiveStep}
+              onRunStep={onRunStep}
+              onOpenFile={onOpenFile}
+              onCopyCommand={onCopyCommand}
+              outputEndRef={outputEndRef}
+            />
+          )}
+        </>
       )}
     </div>
   );

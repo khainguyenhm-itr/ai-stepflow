@@ -22,7 +22,7 @@ const App: React.FC = () => {
   const logic = useAppLogic();
   const {
     activeTab, setActiveTab,
-    flows, agents, skills, auditLogs,
+    flows, agents, skills, auditLogs, runSummaries,
     globalPath, projectPath, connectedMcpServers,
     activeFlow, setActiveFlow,
     runState,
@@ -44,6 +44,7 @@ const App: React.FC = () => {
     flowAiMessages, setFlowAiMessages,
     flowAiLoading, setFlowAiLoading,
     runInputsTarget, setRunInputsTarget,
+    runName, setRunName,
     runInputValues, setRunInputValues,
     runInputsError, setRunInputsError,
     detailItem, setDetailItem,
@@ -66,7 +67,7 @@ const App: React.FC = () => {
     completedSteps, activeProgress,
     handleHostMessage, seedPreview,
     getItemScope, getFlowScope, getAgentByName, getSkillByName,
-    startOrResumeRun,
+    startOrResumeRun, startFreshRun,
     emptyAgentForm, emptySkillForm,
     submitAgentModal, openAgentEditor, submitSkillModal, openSkillEditor,
     submitConnectMcp,
@@ -113,6 +114,7 @@ const App: React.FC = () => {
           agents={agents}
           skills={skills}
           auditLogs={auditLogs}
+          runSummaries={runSummaries}
           activeFlow={activeFlow}
           runState={runState}
           runnerVisible={runnerVisible}
@@ -122,14 +124,7 @@ const App: React.FC = () => {
           commandCopied={commandCopied}
           globalPath={globalPath}
           projectPath={projectPath}
-          onRun={flow => {
-            if (activeFlow?.id === flow.id && runState && runnerVisible) {
-              setRunnerVisible(false);
-              return;
-            }
-            startOrResumeRun(flow);
-            setRunnerVisible(true);
-          }}
+          onRun={startFreshRun}
           onEdit={flow => {
             setEditingFlow(JSON.parse(JSON.stringify(flow)));
             setEditingFlowScope(getFlowScope(flow));
@@ -351,7 +346,16 @@ const App: React.FC = () => {
         }}
       />
 
-      <RunInputsModal target={runInputsTarget} values={runInputValues} error={runInputsError} onClose={() => setRunInputsTarget(null)} onValueChange={(k, v) => setRunInputValues(prev => ({ ...prev, [k]: v }))} onSubmit={submitRunInputs} />
+      <RunInputsModal
+        target={runInputsTarget}
+        runName={runName}
+        values={runInputValues}
+        error={runInputsError}
+        onClose={() => setRunInputsTarget(null)}
+        onRunNameChange={setRunName}
+        onValueChange={(k, v) => setRunInputValues(prev => ({ ...prev, [k]: v }))}
+        onSubmit={submitRunInputs}
+      />
 
       <FlowBuilderModal
         open={!!editingFlow && !editingStep}
