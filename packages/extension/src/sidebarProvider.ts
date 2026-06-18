@@ -211,7 +211,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         mcp: this._cachedMcp,
         plugins: this._cachedPlugins,
         pluginsAvailable: this._cachedAvailable,
-        runFiles: runFiles.map(file => ({
+        runFiles: runFiles.filter(f => f.runId !== activeRun?.runId).map(file => ({
           flowName: flowName(file.flowId),
           runId: file.runId,
           runName: file.runName,
