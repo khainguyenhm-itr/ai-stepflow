@@ -768,6 +768,15 @@ textarea.input {
   font-size: 12px;
 }
 
+.info-note {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .warning-banner {
   display: flex;
   align-items: center;

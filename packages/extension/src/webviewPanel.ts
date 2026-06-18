@@ -311,7 +311,7 @@ export class CockpitPanel {
     const projectPath = this.configManager.getProjectPath() || '';
     const contentField = kind === 'agent' ? 'systemPrompt' : 'instructions';
     const jsonShape = kind === 'agent'
-      ? '{"reply":"short summary","name":"kebab-case-name","description":"one-line description","systemPrompt":"full system prompt markdown"}'
+      ? '{"reply":"short summary","name":"kebab-case-name","description":"one-line description","systemPrompt":"full system prompt markdown","maxTurns":null}'
       : '{"reply":"short summary","name":"kebab-case-name","description":"one-line description","instructions":"full skill instructions markdown"}';
     const historyBlock = history?.length
       ? `Conversation so far:\n${history.map(m => `${m.role}: ${m.content}`).join('\n')}\n\n`
@@ -329,7 +329,10 @@ export class CockpitPanel {
       '- name: lowercase, kebab-case, no spaces (e.g. code-reviewer, create-plan)',
       '- description: one sentence describing what it does',
       `- ${contentField}: detailed ${kind === 'agent' ? 'system prompt and operating rules' : 'reusable skill instructions'} in markdown`,
-      '- reply: short confirmation for the user (1-2 sentences)'
+      '- reply: short confirmation for the user (1-2 sentences)',
+      ...(kind === 'agent' ? [
+        '- maxTurns: integer or null. Set null to use the global default (10). Set a higher number (15-30) only for agents clearly doing heavy multi-file work (large refactors, full test suites, complex implementations). Set a lower number (3-5) for agents with narrow, single-step tasks (review-only, one-file edits).'
+      ] : [])
     ].filter(Boolean).join('\n');
 
     await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Generating ${kind}...` }, async () => {
@@ -343,7 +346,7 @@ export class CockpitPanel {
       }
       try {
         const parsed = JSON.parse(this._extractJsonObject((result.resultText || text).trim())) as {
-          reply?: string; name?: string; description?: string; systemPrompt?: string; instructions?: string;
+          reply?: string; name?: string; description?: string; systemPrompt?: string; instructions?: string; maxTurns?: number | null;
         };
         this.postMessage({
           type: 'draftGenerated',
@@ -353,7 +356,8 @@ export class CockpitPanel {
           content: kind === 'agent'
             ? (typeof parsed.systemPrompt === 'string' ? parsed.systemPrompt.trim() : undefined)
             : (typeof parsed.instructions === 'string' ? parsed.instructions.trim() : undefined),
-          reply: typeof parsed.reply === 'string' ? parsed.reply.trim() : 'Generated.'
+          reply: typeof parsed.reply === 'string' ? parsed.reply.trim() : 'Generated.',
+          ...(kind === 'agent' && typeof parsed.maxTurns === 'number' ? { maxTurns: parsed.maxTurns } : {})
         });
       } catch (error) {
         const why = error instanceof Error ? error.message : String(error);

@@ -9,6 +9,8 @@ export interface ClaudeStreamingRunOptions {
   onText: (chunk: string) => void;
   /** Kill the run and resolve as a failure after this many ms. 0/undefined = no limit. */
   timeoutMs?: number;
+  /** Cap the number of agentic turns. 0/undefined = no limit. */
+  maxTurns?: number;
 }
 
 export interface ClaudeStreamingRunResult {
@@ -49,6 +51,7 @@ export const HEADLESS_PERMISSION_MODE = 'acceptEdits';
 export function runClaudeStreaming(opts: ClaudeStreamingRunOptions, spawnFn: SpawnFn = spawn): ClaudeStreamingRunHandle {
   const args = ['--print', '--output-format', 'stream-json', '--verbose', '--permission-mode', HEADLESS_PERMISSION_MODE];
   if (opts.model) args.push('--model', opts.model);
+  if (opts.maxTurns && opts.maxTurns > 0) args.push('--max-turns', String(opts.maxTurns));
   if (opts.systemPrompt) args.push('--append-system-prompt', opts.systemPrompt);
   args.push(opts.userMessage);
 

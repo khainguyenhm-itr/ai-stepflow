@@ -122,6 +122,12 @@
           "default": 600,
           "minimum": 0,
           "description": "Kill a headless step/AI-review run that exceeds this many seconds (it is marked failed). Set to 0 to disable the timeout."
+        },
+        "ai-stepflow.run.maxTurns": {
+          "type": "number",
+          "default": 10,
+          "minimum": 0,
+          "description": "Maximum number of agentic turns per headless step run. Prevents runaway multi-turn execution from consuming excessive tokens. Set to 0 to disable the limit. Individual agents can override this via their maxTurns field."
         }
       }
     }

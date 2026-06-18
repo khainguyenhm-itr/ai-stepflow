@@ -195,6 +195,7 @@ export class RunOrchestrator {
       let output = '';
       const result = await this._spawnClaudeStreaming({
         systemPrompt, userMessage, model: agent.model, projectPath,
+        maxTurns: this._runMaxTurns(agent),
         onText: chunk => { output += chunk; this.post({ type: 'stepUpdate', stepId, append: true, output: chunk }); }
       }, stepId);
       // The user cancelled this run: cancelStep already moved the step to 'cancelled',
@@ -547,7 +548,7 @@ export class RunOrchestrator {
       reviewKit,
       artifacts,
       reviewModel: reviewerAgent?.model,
-      runner: opts => this._spawnClaudeStreaming(opts),
+      runner: opts => this._spawnClaudeStreaming({ ...opts, maxTurns: 1 }),
       onText: chunk => { reviewOut += chunk; this.post({ type: 'aiReviewUpdate', stepId, append: true, output: chunk }); }
     });
 
@@ -564,6 +565,12 @@ export class RunOrchestrator {
   private _runTimeoutMs(): number {
     const seconds = vscode.workspace.getConfiguration('ai-stepflow').get<number>('run.timeoutSeconds', 600);
     return seconds > 0 ? seconds * 1000 : 0;
+  }
+
+  /** Max agentic turns for a headless run: agent-level override > global setting > default 10. */
+  private _runMaxTurns(agent?: { maxTurns?: number }): number {
+    if (agent?.maxTurns != null && agent.maxTurns >= 0) return agent.maxTurns;
+    return vscode.workspace.getConfiguration('ai-stepflow').get<number>('run.maxTurns', 10);
   }
 
   private _spawnClaudeStreaming(opts: ClaudeStreamingRunOptions, stepId?: string): Promise<ClaudeStreamingRunResult> {

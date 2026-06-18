@@ -13,6 +13,8 @@ export interface Agent {
   sourcePath: string;
   /** Optional custom runner module (relative to the project or absolute) overriding how this agent invokes Claude. */
   runnerPath?: string;
+  /** Cap the number of agentic turns for headless runs; overrides the global setting when set. */
+  maxTurns?: number;
   /** True when the agent file declares itself as built-in metadata. */
   builtIn?: boolean;
 }
@@ -24,6 +26,7 @@ export interface AgentInput {
   model?: string;
   tools?: string[];
   systemPrompt?: string;
+  maxTurns?: number;
 }
 
 export interface Skill {

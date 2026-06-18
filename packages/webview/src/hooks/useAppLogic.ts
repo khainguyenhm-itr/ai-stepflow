@@ -90,7 +90,7 @@ export const useAppLogic = () => {
   const [editingSkillSource, setEditingSkillSource] = useState<string | null>(null);
   const [editingAgentSource, setEditingAgentSource] = useState<string | null>(null);
 
-  const emptyAgentForm = { name: '', description: '', model: 'claude-sonnet-4-6', tools: [] as string[], systemPrompt: '', scope: 'project' as SaveScope };
+  const emptyAgentForm = { name: '', description: '', model: 'claude-sonnet-4-6', tools: [] as string[], systemPrompt: '', scope: 'project' as SaveScope, maxTurns: undefined as number | undefined };
   const emptySkillForm = { name: '', description: '', instructions: '', scope: 'project' as SaveScope };
   const [agentForm, setAgentForm] = useState(emptyAgentForm);
   const [skillForm, setSkillForm] = useState(emptySkillForm);
@@ -320,7 +320,8 @@ export const useAppLogic = () => {
             ...prev,
             ...(message.name ? { name: message.name } : {}),
             ...(message.description ? { description: message.description } : {}),
-            ...(message.content ? { systemPrompt: message.content } : {})
+            ...(message.content ? { systemPrompt: message.content } : {}),
+            ...(typeof message.maxTurns === 'number' ? { maxTurns: message.maxTurns } : {})
           }));
           setAgentAiMessages(prev => [...prev, { role: 'assistant', content: message.reply || 'Agent generated — see below.' }]);
           setAgentFormError(null);
@@ -365,7 +366,8 @@ export const useAppLogic = () => {
         model: agentForm.model || 'claude-sonnet-4-6',
         tools: agentForm.tools,
         systemPrompt: agentForm.systemPrompt || 'You are a helpful AI agent.',
-        sourcePath: `/preview/.claude/agents/${agentForm.name.trim()}.md`
+        sourcePath: `/preview/.claude/agents/${agentForm.name.trim()}.md`,
+        ...(agentForm.maxTurns != null ? { maxTurns: agentForm.maxTurns } : {})
       };
       setAgents(prev => [
         ...prev.filter(item => item.name !== agent.name && item.sourcePath !== editingAgentSource),
@@ -382,7 +384,8 @@ export const useAppLogic = () => {
         description: agentForm.description || '',
         model: agentForm.model || 'claude-sonnet-4-6',
         tools: agentForm.tools,
-        systemPrompt: agentForm.systemPrompt || ''
+        systemPrompt: agentForm.systemPrompt || '',
+        ...(agentForm.maxTurns != null ? { maxTurns: agentForm.maxTurns } : {})
       },
       originalSourcePath: editingAgentSource,
       isGlobal: agentForm.scope === 'global'
@@ -400,7 +403,8 @@ export const useAppLogic = () => {
         model: agent.model,
         tools: agent.tools || [],
         systemPrompt: agent.systemPrompt,
-        scope: getItemScope(agent.sourcePath)
+        scope: getItemScope(agent.sourcePath),
+        maxTurns: agent.maxTurns
       });
       setEditingAgentSource(agent.sourcePath);
     } else {

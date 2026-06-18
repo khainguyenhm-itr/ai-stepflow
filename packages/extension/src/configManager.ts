@@ -487,7 +487,8 @@ export class ConfigManager {
       name: agent.name,
       description: agent.description || '',
       model: agent.model || 'sonnet',
-      ...(agent.tools?.length ? { tools: agent.tools } : {})
+      ...(agent.tools?.length ? { tools: agent.tools } : {}),
+      ...(agent.maxTurns != null && agent.maxTurns >= 0 ? { maxTurns: agent.maxTurns } : {})
     });
 
     await fs.writeFile(filePath, frontmatter, 'utf8');
@@ -646,7 +647,8 @@ export class ConfigManager {
         tools: data.tools,
         systemPrompt: body.trim(),
         sourcePath: filePath,
-        builtIn: this.hasBuiltInMarker(content)
+        builtIn: this.hasBuiltInMarker(content),
+        ...(typeof data.maxTurns === 'number' ? { maxTurns: data.maxTurns } : {})
       };
     } catch (e) {
       console.error(`Error parsing agent file ${filePath}:`, e);
