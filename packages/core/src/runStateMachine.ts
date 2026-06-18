@@ -174,7 +174,10 @@ export function applyAiReview(
 ): FlowRunState {
   const step = flow.steps.find(s => s.id === stepId);
   const patch: Partial<StepRunState> = { reviewStatus: status };
-  if (aiReviewOutput !== undefined) patch.aiReviewOutput = aiReviewOutput;
+  if (aiReviewOutput !== undefined) {
+    const prev = state.steps[stepId];
+    patch.aiReviewOutput = (prev?.aiReviewOutput || '') + aiReviewOutput;
+  }
 
   if (reviewMetrics && state.steps[stepId]) {
     const prev = state.steps[stepId];

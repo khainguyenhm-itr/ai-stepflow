@@ -80,7 +80,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
       // While the terminal is open (interactive loop)
       if (isInteractiveRunning) {
         if (reviewRequired) actions.showReview = true;
-        else actions.showFinish = true;
+        // In interactive mode, finishing happens by closing the terminal session
       }
     } else if (reviewStatus === 'waiting_human') {
       // Terminal closed, explicitly waiting for approval/rejection
@@ -138,10 +138,11 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
     events.push(event);
   }
 
+  const completionStatuses = Object.values(runState.steps).map(s => s.completionStatus);
+
   // Overall run status (summarized from steps).
   const getRunStatus = () => {
     const statuses = Object.values(runState.steps).map(s => s.executionStatus);
-    const completionStatuses = Object.values(runState.steps).map(s => s.completionStatus);
     if (completionStatuses.every(s => s === 'done')) return { label: 'Done', className: 'success', Icon: Icon.Check };
     if (statuses.includes('failed')) return { label: 'Failed', className: 'error', Icon: Icon.X };
     if (statuses.includes('running')) return { label: 'Running', className: 'progress', Icon: Icon.Play };
@@ -150,6 +151,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   };
 
   const runStatus = getRunStatus();
+  const isFlowDone = completionStatuses.every(s => s === 'done');
   // Reset is available once any step has moved past its initial ready/locked state.
   const canResetRun = Object.values(runState.steps).some(
     s => s.executionStatus !== 'ready' && s.executionStatus !== 'locked'
@@ -173,12 +175,22 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
           </span>
         </div>
         <div className="runner-head-actions">
-          {canResetRun && (
+          {isFlowDone && (
+            <button className="btn success" title="Finalize flow and clear active status" onClick={() => sendToVSCode('closeRun', {})}>Done Flow</button>
+          )}
+          {!isFlowDone && canResetRun && (
             <button className="btn" title="Reset all steps to initial state" onClick={() => sendToVSCode('resetRun', {})}>Reset</button>
           )}
           <button className="btn" onClick={() => sendToVSCode('verifyRun', {})}>Verify</button>
           <button className="btn" onClick={() => sendToVSCode('exportRunReport', {})}>Report</button>
           <div style={{ width: 1, height: 16, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
+          <button
+            className="icon-btn"
+            title="Close runner view (keep run data)"
+            onClick={() => sendToVSCode('closeRun', {})}
+          >
+            <Icon.X size={14} />
+          </button>
           <button
             className="icon-btn danger"
             title="Delete this run and all its data"
@@ -334,7 +346,6 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
               <div key={group.runId} className="history-run-group">
                 <div className="history-run-head small">
                   <span className="muted mono">{group.runId === 'unknown' ? 'unknown run' : formatRunTime(group.runId)}</span>
-                  {group.runId === runState.runId && <span className="badge running">current run</span>}
                 </div>
                 <div className="timeline">
                   {group.events.map((event, i) => {

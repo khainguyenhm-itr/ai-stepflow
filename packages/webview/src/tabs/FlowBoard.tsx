@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Flow, FlowRunState } from '@ai-stepflow/core/types';
-import { Icon } from '../components/primitives';
+import { Icon, Modal } from '../components/primitives';
 import { EmptyState } from '../components/ResourceCard';
 import { getFlowColumns } from '../flowUtils';
 import { sendToVSCode } from '../vscode';
@@ -60,6 +60,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
   const columns = getFlowColumns(flow);
   const runnerOpen = activeFlow?.id === flow.id && !!runState && runnerVisible;
   const [isExpanded, setIsExpanded] = useState(false);
+  const [confirmRemoveIndex, setConfirmRemoveIndex] = useState<number | null>(null);
   const prevRunnerOpenRef = useRef(runnerOpen);
 
   // Auto-expand only when runnerOpen transitions false→true (new run started),
@@ -146,7 +147,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
                               type="button"
                               className="icon-btn sm danger"
                               title="Remove step"
-                              onClick={e => { e.stopPropagation(); onRemoveStep(flow, stepIndex); }}
+                              onClick={e => { e.stopPropagation(); setConfirmRemoveIndex(stepIndex); }}
                             >
                               <Icon.X size={14} />
                             </button>
@@ -230,6 +231,24 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
           ) : null}
         </>
       )}
+      <Modal
+        title="Remove step?"
+        open={confirmRemoveIndex !== null}
+        onClose={() => setConfirmRemoveIndex(null)}
+        width={400}
+        footer={
+          <>
+            <button className="btn danger" onClick={() => { const i = confirmRemoveIndex!; setConfirmRemoveIndex(null); onRemoveStep(flow, i); }}>
+              <Icon.Trash2 size={14} />Remove
+            </button>
+            <button className="btn" onClick={() => setConfirmRemoveIndex(null)}>Cancel</button>
+          </>
+        }
+      >
+        {confirmRemoveIndex !== null && (
+          <p>Remove step <strong>{flow.steps[confirmRemoveIndex]?.title || flow.steps[confirmRemoveIndex]?.id}</strong>? This cannot be undone.</p>
+        )}
+      </Modal>
     </div>
   );
 };

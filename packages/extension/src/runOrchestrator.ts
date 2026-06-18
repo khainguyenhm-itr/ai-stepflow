@@ -13,7 +13,8 @@ import {
   seedStartedSteps,
   runValidator,
   renderVerifyReportMarkdown, verifyRun,
-  resolveTemplate, resolveTemplates, resolveFlowPath, resolveFlowRelativePath, flowOutputDir
+  resolveTemplate, resolveTemplates, resolveFlowPath, resolveFlowRelativePath, flowOutputDir,
+  StepRunState
 } from '@ai-stepflow/core';
 import * as machine from '@ai-stepflow/core';
 
@@ -58,8 +59,8 @@ export class RunOrchestrator {
       if (this._runState.steps[stepId]?.executionStatus !== 'running') return;
       const step = this._currentFlow.steps.find(s => s.id === stepId);
       if (step?.review?.required) {
-        await this._setRunState(s => machine.markCompleted(s, this._currentFlow!, stepId), { stepId, status: 'completed', message: 'Terminal session ended — awaiting review' });
-        this.post({ type: 'stepUpdate', stepId, append: true, output: '\n[terminal session ended — approve or reject to continue]\n' });
+        await this._setRunState(s => machine.markCompleted(s, this._currentFlow!, stepId), { stepId, status: 'completed', message: 'Terminal session ended — reviewing' });
+        await this._reviewStep(step, stepId);
       } else {
         await this._setRunState(s => machine.markDone(machine.markCompleted(s, this._currentFlow!, stepId), this._currentFlow!, stepId), { stepId, status: 'completed', message: 'Terminal work done' });
         this._advanceReadySteps();
@@ -118,8 +119,8 @@ export class RunOrchestrator {
 
   /**
    * Entry point from the webview's "Run step". Seeds the backend's authoritative state — the
-   * webview owns flow selection and the initial run state, but the backend takes ownership of
-   * every transition from here on so a stale webview mirror can never roll a transition back.
+   * webview owns flow selection and the initial run state, but the backend lấy quyền sở hữu của
+   * mọi quá trình chuyển đổi từ nay về sau để một bản sao webview cũ không bao giờ có thể quay lại một quá trình chuyển đổi.
    */
   async runStep(stepId: string, opts: { flow?: Flow; runState?: FlowRunState; description?: string } = {}): Promise<void> {
     if (opts.flow) this._currentFlow = opts.flow;
@@ -179,9 +180,9 @@ export class RunOrchestrator {
 
     const isHeadless = this._isHeadlessStep(step);
 
-    // AI-reviewed steps run HEADLESS so the run completion is observable: when claude exits we
-    // capture the output, then automatically run the two-layer review and auto-advance on a pass
-    // — no Enter, no "Mark step done" click.
+    // AI-reviewed steps run HEADLESS so the run completion is observable: khi claude thoát, chúng tôi
+    // thu thập output, sau đó tự động chạy review hai lớp và tự động chuyển bước khi đạt yêu cầu
+    // — không Enter, không nhấn "Mark step done".
     if (isHeadless) {
       const skills = await this.configManager.loadSkills();
       const runInputs = this._runState?.inputs || {};
@@ -196,7 +197,11 @@ export class RunOrchestrator {
       const result = await this._spawnClaudeStreaming({
         systemPrompt, userMessage, model: agent.model, projectPath,
         maxTurns: this._runMaxTurns(agent),
-        onText: chunk => { output += chunk; this.post({ type: 'stepUpdate', stepId, append: true, output: chunk }); }
+        onText: chunk => {
+          output += chunk;
+          this.post({ type: 'stepUpdate', stepId, append: true, output: chunk });
+          void this._patchStepState(stepId, { output });
+        }
       }, stepId);
       // The user cancelled this run: cancelStep already moved the step to 'cancelled',
       // so don't also record a failure for the kill that cancel triggered.
@@ -214,7 +219,7 @@ export class RunOrchestrator {
       }
 
       const reviewMsg = step.review?.required ? 'Run completed — reviewing' : 'Run completed';
-      await this._setRunState(s => machine.markCompleted(s, flow, stepId, metrics), { stepId, status: 'completed', message: reviewMsg });
+      await this._setRunState(s => machine.markCompleted(s, flow, stepId, { ...metrics, output }), { stepId, status: 'completed', message: reviewMsg });
 
       if (step.review?.required) {
         await this._runAiReview(step, stepId, projectPath);
@@ -224,8 +229,8 @@ export class RunOrchestrator {
       return;
     }
 
-    // Human / no-review steps run INTERACTIVELY: open Claude with `--agent --model`, pre-fill the
-    // chat box with the step's skill + description without submitting — user presses Enter to run.
+    // Human / no-review steps run INTERACTIVELY: mở Claude với `--agent --model`, điền trước
+    // chat box với kỹ năng + mô tả của bước mà không gửi — người dùng nhấn Enter để chạy.
     const runInputs = this._runState?.inputs || {};
     const resolvedProduces = resolveTemplates(step.produces, runInputs)
       .map(p => resolveFlowRelativePath(p, flow.name));
@@ -241,7 +246,7 @@ export class RunOrchestrator {
     await this.terminals.runInTerminal(message, projectPath, agent, false, stepId);
   }
 
-  /** Approve/reject a step from the webview's human-review buttons. */
+  /** Duyệt/từ chối một bước từ các nút human-review của webview. */
   async reviewStep(stepId: string, decision: 'approved' | 'rejected'): Promise<void> {
     if (!this._currentFlow || !this._runState) return;
     const flow = this._currentFlow;
@@ -286,8 +291,8 @@ export class RunOrchestrator {
   }
 
   /**
-   * Finish a step clicked "Mark step done". Gates on requires/produces, then either completes
-   * (no review or already approved) and advances the DAG, or opens the review gate.
+   * Kết thúc một bước đã nhấn "Mark step done". Cổng yêu cầu/tạo ra, sau đó hoàn thành
+   * (không cần xem xét hoặc đã được phê duyệt) và thăng tiến DAG, hoặc mở cổng xem xét.
    */
   async markStepDone(stepId: string): Promise<void> {
     if (!this._currentFlow || !this._runState) return;
@@ -330,7 +335,7 @@ export class RunOrchestrator {
     await this._reviewStep(step, stepId);
   }
 
-  /** Reset the current run to a fresh state, killing any in-flight processes. */
+  /** Đặt lại lần chạy hiện tại về trạng thái mới, kết thúc mọi tiến trình đang bay. */
   async resetRun(): Promise<void> {
     if (!this._currentFlow || !this._runState) return;
     const flow = this._currentFlow;
@@ -368,7 +373,17 @@ export class RunOrchestrator {
     }
   }
 
-  /** Delete the current run: kill in-flight processes, wipe persisted files, notify webview. */
+  /** Clear the current active run from the cockpit view without deleting its data. */
+  async closeRun(): Promise<void> {
+    this._currentFlow = undefined;
+    this._runState = undefined;
+    this._cancelledStepIds.clear();
+    this._startedStepIds.clear();
+    this._parkedStepIds.clear();
+    this.post({ type: 'runClosed' });
+  }
+
+  /** Xóa lần chạy hiện tại: kết thúc các tiến trình đang bay, xóa tệp đã lưu, thông báo webview. */
   async deleteRun(): Promise<void> {
     if (!this._currentFlow || !this._runState) return;
     const flow = this._currentFlow;
@@ -423,7 +438,7 @@ export class RunOrchestrator {
     vscode.window.showInformationMessage(`AI StepFlow: run report exported to ${base}.`);
   }
 
-  /** Kill the in-flight run for a step (headless or terminal) and record it as cancelled. */
+  /** Kết thúc tiến trình đang chạy của một bước (không đầu hoặc terminal) và ghi lại là đã bị hủy. */
   async cancelStep(stepId: string): Promise<void> {
     const child = this._runChildrenByStep.get(stepId);
     if (child) {
@@ -446,16 +461,16 @@ export class RunOrchestrator {
   }
 
   /**
-   * Run `claude` headless with stream-json output. The child is tracked in `_activeRuns`
-   * (killed on dispose) and, when a `stepId` is given, in `_runChildrenByStep` so a user
-   * "Cancel" can kill exactly that run. A configured per-run timeout caps a hung run. Public so
-   * the panel can reuse it for ad-hoc drafts and get the same timeout + dispose cleanup.
+   * Chạy `claude` không đầu với đầu ra stream-json. Tiến trình con được theo dõi trong `_activeRuns`
+   * (bị kết thúc khi dispose) và, khi cung cấp `stepId`, trong `_runChildrenByStep` để người dùng
+   * "Hủy" có thể kết thúc chính xác lần chạy đó. Một cấu hình hết thời gian chờ cho mỗi lần chạy sẽ giới hạn một lần chạy bị treo. Công khai để
+   * bảng điều khiển có thể sử dụng lại nó cho các bản nháp ad-hoc và nhận cùng một thời gian chờ + dọn dẹp dispose.
    */
   spawnClaudeStreaming(opts: ClaudeStreamingRunOptions, stepId?: string): Promise<ClaudeStreamingRunResult> {
     return this._spawnClaudeStreaming(opts, stepId);
   }
 
-  /** Kill every in-flight headless run. The panel owns terminal/panel disposal. */
+  /** Kết thúc mọi lần chạy không đầu đang bay. Bảng điều khiển sở hữu việc dọn dẹp terminal/bảng điều khiển. */
   dispose(): void {
     for (const child of this._activeRuns) child.kill();
   }
@@ -463,9 +478,9 @@ export class RunOrchestrator {
   // --- internals -----------------------------------------------------------
 
   /**
-   * Adopt a new authoritative run state: persist it and broadcast it to the webview, which
-   * renders it without computing transitions of its own. Optionally records an audit event.
-   * All updates are enqueued to ensure atomicity and prevent race conditions during concurrent runs.
+   * Thông qua một trạng thái chạy có thẩm quyền mới: lưu nó và phát nó đến webview, cái mà
+   * hiển thị nó mà không cần tính toán các quá trình chuyển đổi của chính nó. Tùy chọn ghi lại một sự kiện kiểm toán.
+   * Tất cả các cập nhật được xếp hàng để đảm bảo tính nguyên tử và ngăn chặn các điều kiện tranh đua trong các lần chạy đồng thời.
    */
   private _setRunState(next: FlowRunState | ((prev: FlowRunState) => FlowRunState), audit?: { stepId: string; status: string; message?: string }): Promise<void> {
     const promise = this._stateUpdateQueue.then(async () => {
@@ -488,9 +503,21 @@ export class RunOrchestrator {
   }
 
   /**
-   * Gate a step finished via the interactive path (clicked "Mark step done"). AI-type reviews
-   * run the two-layer automated review; a step with an explicit `validatorPath` runs that
-   * validator; everything else waits for a human decision.
+   * Cập nhật trạng thái chạy có thẩm quyền với bản vá một phần cho một bước, ví dụ: để thu thập
+   * đầu ra gia tăng trong một lần chạy mà không kích hoạt quá trình chuyển đổi trạng thái đầy đủ.
+   */
+  private async _patchStepState(stepId: string, patch: Partial<StepRunState>): Promise<void> {
+    await this._setRunState(s => {
+      const prev = s.steps[stepId];
+      if (!prev) return s;
+      return { ...s, steps: { ...s.steps, [stepId]: { ...prev, ...patch } } };
+    });
+  }
+
+  /**
+   * Cổng một bước đã hoàn thành thông qua đường dẫn tương tác (đã nhấn "Mark step done"). Các đánh giá kiểu AI
+   * chạy đánh giá tự động hai lớp; một bước có `validatorPath` rõ ràng sẽ chạy
+   * trình xác thực đó; mọi thứ khác đều chờ quyết định của con người.
    */
   private async _reviewStep(step: FlowStep, stepId: string): Promise<void> {
     const flow = this._currentFlow;
@@ -517,11 +544,11 @@ export class RunOrchestrator {
   }
 
   /**
-   * Two-layer automated review of a step's produced artifacts:
-   *   1) a deterministic validator (.mjs) — cheap, certain (exists / non-empty / no TODO);
-   *   2) an LLM reviewer that reads the artifacts against the adaptive default review kit.
-   * A pass auto-marks the step done and advances; a reject sends it back to ready. The validator
-   * runs first so an obviously-incomplete artifact is rejected without spending review tokens.
+   * Đánh giá tự động hai lớp các tạo tác được tạo ra của một bước:
+   *   1) một trình xác thực xác định (.mjs) — rẻ, chắc chắn (tồn tại / không trống / không có TODO);
+   *   2) một trình đánh giá LLM đọc các tạo tác so với bộ đánh giá mặc định thích ứng.
+   * Một lần vượt qua sẽ tự động đánh dấu bước là hoàn thành và tiến tới; một lần từ chối sẽ đưa nó trở lại trạng thái sẵn sàng. Trình xác thực
+   * chạy trước để một tạo tác rõ ràng là không hoàn thiện bị từ chối mà không tốn các token đánh giá.
    */
   private async _runAiReview(step: FlowStep, stepId: string, projectPath: string): Promise<void> {
     const flow = this._currentFlow;
@@ -531,8 +558,8 @@ export class RunOrchestrator {
     const reviewer = step.review.reviewers?.find(r => r.type === 'ai');
     const reviewerAgent = reviewer?.agent ? (await this.configManager.loadAgents()).find(a => a.name === reviewer.agent) : undefined;
 
-    // Read the kit + artifacts up front so we only flip to the transient "review running" state
-    // when an actual LLM call will happen.
+    // Đọc bộ công cụ + các tạo tác trước để chúng tôi chỉ chuyển sang trạng thái "đang chạy review" tạm thời
+    // khi một cuộc gọi LLM thực tế sẽ xảy ra.
     const reviewKit = deep ? machine.loadReviewKit(projectPath) : '';
     const artifacts = deep ? machine.readProducedArtifacts(step, projectPath, this._runState.inputs || {}, flow.name) : { text: '', count: 0 };
     if (deep && reviewKit && artifacts.count > 0) {
@@ -561,13 +588,13 @@ export class RunOrchestrator {
     if (result.status === 'approved') this._advanceReadySteps();
   }
 
-  /** Configured per-run timeout in ms (0 = no limit). */
+  /** Hết thời gian chờ đã định cấu hình cho mỗi lần chạy tính bằng ms (0 = không giới hạn). */
   private _runTimeoutMs(): number {
     const seconds = vscode.workspace.getConfiguration('ai-stepflow').get<number>('run.timeoutSeconds', 600);
     return seconds > 0 ? seconds * 1000 : 0;
   }
 
-  /** Max agentic turns for a headless run: agent-level override > global setting > default 10. */
+  /** Số lượt đại lý tối đa cho một lần chạy không đầu: ghi đè cấp đại lý > cài đặt chung > mặc định 10. */
   private _runMaxTurns(agent?: { maxTurns?: number }): number {
     if (agent?.maxTurns != null && agent.maxTurns >= 0) return agent.maxTurns;
     return vscode.workspace.getConfiguration('ai-stepflow').get<number>('run.maxTurns', 10);
@@ -587,21 +614,21 @@ export class RunOrchestrator {
     return validateRequires(step, this.configManager.getProjectPath() || '', this._runState?.inputs || {}, this._currentFlow?.name || '');
   }
 
-  /** Verify a step's declared `produces` files exist and contain any required markers. */
+  /** Xác minh các tệp `produces` đã khai báo của một bước có tồn tại và chứa bất kỳ marker cần thiết nào không. */
   private _validateProduces(step: FlowStep): { ok: boolean; message?: string } {
     return validateProduces(step, this.configManager.getProjectPath() || '', this._runState?.inputs || {}, this._currentFlow?.name || '');
   }
 
-  /** True when a step runs headless (AI review), so it has no shared UI surface and can run concurrently. */
+  /** Đúng khi một bước chạy không đầu (review AI), vì vậy nó không có giao diện người dùng chia sẻ và có thể chạy đồng thời. */
   private _isHeadlessStep(step: FlowStep): boolean {
     return !!step.review?.required && (step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai'));
   }
 
   /**
-   * Auto-run dependent steps once their dependencies are done (the DAG orchestrator). On a
-   * fan-out, every headless/AI branch launches concurrently — they have no shared UI surface.
-   * Interactive (human/terminal) steps share one chat box, so only the first launches; the rest
-   * are parked with a one-time notice until a terminal slot frees up.
+   * Tự động chạy các bước phụ thuộc khi các bước phụ thuộc của chúng đã hoàn tất (DAG orchestrator). Trên một
+   * fan-out, mỗi nhánh không đầu/AI khởi chạy đồng thời — chúng không có giao diện người dùng chia sẻ.
+   * Các bước tương tác (con người/terminal) chia sẻ một hộp chat, vì vậy chỉ có bước đầu tiên khởi chạy; các bước còn lại
+   * được tạm dừng với một thông báo một lần cho đến khi một khe terminal trống.
    */
   private _advanceReadySteps(): void {
     if (!this._currentFlow || !this._runState) return;

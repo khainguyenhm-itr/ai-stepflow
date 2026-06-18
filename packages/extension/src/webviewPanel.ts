@@ -228,6 +228,9 @@ export class CockpitPanel {
       case 'resetRun':
         await this._runner.resetRun();
         return;
+      case 'closeRun':
+        await this._runner.closeRun();
+        return;
       case 'deleteRun': {
         const runState = this._runner.runState;
         if (!runState) return;
@@ -319,6 +322,7 @@ export class CockpitPanel {
     const metaPrompt = [
       `Generate a Claude Code ${kind} from the user's description.`,
       'Do NOT ask clarifying questions. Make a reasonable interpretation and return the JSON immediately.',
+      ...(kind === 'skill' ? ['Do NOT generate a SKILL.md file or use YAML frontmatter. Output ONLY the JSON object below.'] : []),
       '',
       historyBlock,
       `Latest user request: ${prompt}`,
@@ -337,7 +341,7 @@ export class CockpitPanel {
 
     await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Generating ${kind}...` }, async () => {
       let text = '';
-      const result = await this._runner.spawnClaudeStreaming({ systemPrompt: '', userMessage: metaPrompt, projectPath, onText: chunk => { text += chunk; } });
+      const result = await this._runner.spawnClaudeStreaming({ systemPrompt: '', userMessage: metaPrompt, projectPath, maxTurns: 1, onText: chunk => { text += chunk; } });
       if (!result.success) {
         const why = result.timedOut ? 'run timed out' : `claude exited ${result.exitCode}`;
         console.error('AI StepFlow: draft generation failed —', why);
@@ -361,7 +365,8 @@ export class CockpitPanel {
         });
       } catch (error) {
         const why = error instanceof Error ? error.message : String(error);
-        console.error('AI StepFlow: draft generation parse failed —', why);
+        const raw = (result.resultText || text).trim();
+        console.error('AI StepFlow: draft generation parse failed —', why, '\nraw output (first 500 chars):', raw.slice(0, 500));
         this.postMessage({ type: 'draftGenerated', kind, error: `invalid AI response: ${why}` });
       }
     });
@@ -404,7 +409,7 @@ export class CockpitPanel {
 
     await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Generating workflow...' }, async () => {
       let text = '';
-      const result = await this._runner.spawnClaudeStreaming({ systemPrompt: '', userMessage: metaPrompt, projectPath, onText: chunk => { text += chunk; } });
+      const result = await this._runner.spawnClaudeStreaming({ systemPrompt: '', userMessage: metaPrompt, projectPath, maxTurns: 1, onText: chunk => { text += chunk; } });
       if (!result.success) {
         const why = result.timedOut ? 'run timed out' : `claude exited ${result.exitCode}`;
         console.error('AI StepFlow: flow generation failed —', why);

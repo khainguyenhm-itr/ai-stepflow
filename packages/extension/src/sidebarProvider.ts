@@ -1043,7 +1043,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     lastRunFiles = files || [];
     lastRunTotal = total || 0;
     const el = document.getElementById('runs');
-    const totalCount = (activeRun ? 1 : 0) + (total || 0);
+    const totalCount = total || 0;
     document.getElementById('runs-count').textContent = totalCount ? String(totalCount) : '';
 
     if (!activeRun && (!files || !files.length)) {

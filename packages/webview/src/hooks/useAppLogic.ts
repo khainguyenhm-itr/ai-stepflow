@@ -253,6 +253,12 @@ export const useAppLogic = () => {
         setRunnerVisible(false);
         break;
       }
+      case 'runClosed':
+        setRunState(null);
+        setActiveFlow(null);
+        setActiveStepId(null);
+        setRunnerVisible(false);
+        break;
       case 'resetAuditLog':
         setRunState(currentRun => {
           if (currentRun) {
