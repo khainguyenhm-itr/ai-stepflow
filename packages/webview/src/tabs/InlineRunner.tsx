@@ -17,7 +17,6 @@ interface InlineRunnerProps {
   onOpenFile: (path: string) => void;
   onCopyCommand: () => void;
   outputEndRef: React.RefObject<HTMLDivElement | null>;
-  onCollapse?: () => void;
 }
 
 export const InlineRunner: React.FC<InlineRunnerProps> = ({
@@ -33,7 +32,6 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   onOpenFile,
   onCopyCommand,
   outputEndRef,
-  onCollapse
 }) => {
   const activeStep = flow.steps.find(step => step.id === activeStepId);
   const activeStepState = activeStepId ? runState.steps[activeStepId] : null;
@@ -163,8 +161,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
         <div className="runner-head-info">
           <div className="flex-row items-center gap-8 mb-4">
             <span className="runner-flow-name">
-              {flow.name}
-              {runState.runName && <span className="runner-run-name"> — {runState.runName}</span>}
+              {runState.runName || runState.runId.split('T')[0]}
             </span>
             <span className={`badge ${runStatus.className}`}>
               <runStatus.Icon size={10} style={{ marginRight: 4 }} />
@@ -176,10 +173,6 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
           </span>
         </div>
         <div className="runner-head-actions">
-          {onCollapse && (
-            <button className="icon-btn" title="Back to flow" onClick={onCollapse}><Icon.ChevronDown size={14} /></button>
-          )}
-          {onCollapse && <div style={{ width: 1, height: 16, background: 'var(--border)', flexShrink: 0 }} />}
           {canResetRun && (
             <button className="btn" title="Reset all steps to initial state" onClick={() => sendToVSCode('resetRun', {})}>Reset</button>
           )}

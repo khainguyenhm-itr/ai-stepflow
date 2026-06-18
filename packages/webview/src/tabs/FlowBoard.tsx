@@ -220,7 +220,6 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
               onOpenFile={onOpenFile}
               onCopyCommand={onCopyCommand}
               outputEndRef={outputEndRef}
-              onCollapse={() => setIsExpanded(false)}
             />
           ) : runSummaries.length === 0 ? (
             <EmptyState
