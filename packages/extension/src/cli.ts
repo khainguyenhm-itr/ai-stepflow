@@ -81,7 +81,7 @@ async function runAiReview(runState: FlowRunState, step: FlowStep, projectPath: 
     step,
     runState,
     deep: step.review.deep !== false,
-    runner: opts => runClaudeStreaming(opts).completed,
+    runner: opts => runClaudeStreaming({ ...opts, maxTurns: 1 }).completed,
     onText: chunk => process.stdout.write(chunk)
   });
   return { status: result.status, output: `Review (${result.source}): ${result.status} — ${result.note}` };
@@ -141,6 +141,7 @@ async function runFlow(projectPath: string, flowRef: string, inputs: Record<stri
       systemPrompt: composeSystemPrompt(agent, stepSkillNames, skills),
       userMessage: next.input?.prompt?.trim() || `Run step: ${next.title || next.id}`,
       model: agent.model,
+      maxTurns: agent.maxTurns ?? 10,
       projectPath,
       onText: chunk => { output += chunk; process.stdout.write(chunk); }
     });
