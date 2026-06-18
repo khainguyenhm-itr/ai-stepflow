@@ -17,6 +17,7 @@ interface InlineRunnerProps {
   onOpenFile: (path: string) => void;
   onCopyCommand: () => void;
   outputEndRef: React.RefObject<HTMLDivElement | null>;
+  onCollapse?: () => void;
 }
 
 export const InlineRunner: React.FC<InlineRunnerProps> = ({
@@ -31,7 +32,8 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   onRunStep,
   onOpenFile,
   onCopyCommand,
-  outputEndRef
+  outputEndRef,
+  onCollapse
 }) => {
   const activeStep = flow.steps.find(step => step.id === activeStepId);
   const activeStepState = activeStepId ? runState.steps[activeStepId] : null;
@@ -174,6 +176,10 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
           </span>
         </div>
         <div className="runner-head-actions">
+          {onCollapse && (
+            <button className="icon-btn" title="Back to flow" onClick={onCollapse}><Icon.ChevronDown size={14} /></button>
+          )}
+          {onCollapse && <div style={{ width: 1, height: 16, background: 'var(--border)', flexShrink: 0 }} />}
           {canResetRun && (
             <button className="btn" title="Reset all steps to initial state" onClick={() => sendToVSCode('resetRun', {})}>Reset</button>
           )}

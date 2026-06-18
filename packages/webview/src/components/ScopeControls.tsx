@@ -2,6 +2,7 @@ import React from 'react';
 
 export type SaveScope = 'project' | 'global';
 export type ScopeFilter = SaveScope | 'all';
+export type ViewFilter = 'all' | 'bookmarked';
 
 interface ScopeFilterSelectProps {
   value: ScopeFilter;
@@ -10,9 +11,16 @@ interface ScopeFilterSelectProps {
 
 export const ScopeFilterSelect: React.FC<ScopeFilterSelectProps> = ({ value, onChange }) => (
   <select className="select" value={value} onChange={e => onChange(e.target.value as ScopeFilter)}>
-    <option value="all">All</option>
-    <option value="project">Current repo</option>
+    <option value="all">All Scopes</option>
+    <option value="project">Current Repo</option>
     <option value="global">Global</option>
+  </select>
+);
+
+export const ViewFilterSelect: React.FC<{ value: ViewFilter, onChange: (v: ViewFilter) => void }> = ({ value, onChange }) => (
+  <select className="select" value={value} onChange={e => onChange(e.target.value as ViewFilter)}>
+    <option value="all">All Items</option>
+    <option value="bookmarked">Bookmarked</option>
   </select>
 );
 

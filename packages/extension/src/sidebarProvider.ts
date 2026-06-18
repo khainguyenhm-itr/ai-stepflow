@@ -395,10 +395,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       --badge-fg: var(--vscode-badge-foreground, #fff);
       --muted: var(--vscode-descriptionForeground, #9d9d9d);
       --success: var(--vscode-charts-green, #73c991);
+      --fg: var(--vscode-foreground, #cccccc);
     }
     *, *::before, *::after { box-sizing: border-box; }
     html, body { height: 100%; overflow: hidden; margin: 0; padding: 0; }
-    body { color: var(--vscode-foreground); background: var(--panel); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); line-height: 1.4; }
+    body { color: var(--fg); background: var(--panel); font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif); font-size: var(--vscode-font-size, 13px); line-height: 1.4; }
     button { font-family: inherit; cursor: pointer; }
 
     /* ── shell layout ── */
@@ -410,30 +411,36 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .brand-name { flex: 1; font-size: 12.5px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .ver { color: var(--muted); font-size: 10px; flex: 0 0 auto; }
     .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 13px; line-height: 1; }
-    .icon-btn:hover { color: var(--vscode-foreground); background: var(--hover); }
+    .icon-btn:hover { color: var(--fg); background: var(--hover); }
 
     /* scrollable content area */
     .body { flex: 1 1 0; overflow-y: auto; overflow-x: hidden; padding: 0 12px 16px; overscroll-behavior: contain; }
     .body::-webkit-scrollbar { display: none; }
     .body { scrollbar-width: none; }
 
-    /* ── run list items ── */
-    .run-active { border-left: 2px solid var(--btn); background: rgba(14,99,156,.06); }
-    .run-active .item-acts { opacity: 1 !important; }
-    .run-prog { height: 3px; border-radius: 2px; background: var(--border); overflow: hidden; margin-top: 5px; }
-    .run-prog-fill { height: 100%; background: var(--vscode-progressBar-background, #0e70c0); transition: width .3s ease; }
-    .run-count { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-    /* run name tag */
-    .run-tag { display: inline-block; margin-top: 2px; font-size: 9.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; line-height: 1.4; }
-    .run-tag-key { font-size: 8.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; opacity: .55; margin-right: 2px; }
-    /* current step row inside active run */
-    .run-step-row { display: flex; align-items: center; gap: 4px; margin-top: 4px; overflow: hidden; }
+    /* ── run cards ── */
+    #runs { padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+    .run-card { padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel); cursor: default; transition: border-color .1s; }
+    .run-card:hover { border-color: var(--focus); }
+    .run-card.run-active { border-color: var(--btn); background: rgba(14,99,156,.07); }
+    .run-card.run-done:hover { border-color: var(--success); }
+    .run-card-head { display: flex; align-items: center; gap: 5px; min-width: 0; }
+    .run-card-title { flex: 1; font-size: 11.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .run-card-tag { font-size: 10px; color: var(--muted); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .run-card-bar { height: 3px; border-radius: 2px; background: rgba(127,127,127,.15); overflow: hidden; margin: 6px 0 4px; }
+    .run-card-bar-fill { height: 100%; border-radius: 2px; background: var(--vscode-progressBar-background, #0e70c0); transition: width .3s ease; }
+    .run-card.run-active .run-card-bar-fill { background: var(--btn); }
+    .run-card.run-done .run-card-bar-fill { background: var(--success); }
+    .run-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+    .run-card-meta { font-size: 10px; color: var(--muted); }
+    .run-card-acts { flex-shrink: 0; opacity: 0; transition: opacity .1s; }
+    .run-card:hover .run-card-acts, .run-card.run-active .run-card-acts { opacity: 1; }
+    .run-sbadge { display: inline-flex; align-items: center; height: 14px; padding: 0 5px; border-radius: 9px; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; white-space: nowrap; flex-shrink: 0; }
+    .run-sbadge.running { background: var(--vscode-charts-blue, var(--focus)); color: #fff; }
+    .run-sbadge.done { background: var(--success); color: #fff; }
+    .run-sbadge.partial { background: rgba(215,160,0,.18); color: var(--vscode-charts-yellow, #d7ba7d); }
+    .run-step-row { display: flex; align-items: center; gap: 4px; overflow: hidden; }
     .run-step-name { font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    /* status dot colour variants */
-    .dot-active { background: var(--vscode-charts-blue, var(--focus)); box-shadow: 0 0 0 3px rgba(14,99,156,.2); }
-    .dot-done   { background: var(--success); }
-    .dot-partial { background: var(--vscode-charts-yellow, #d7ba7d); }
-    .dot-idle   { background: var(--muted); }
 
     /* badge */
     .badge { display: inline-flex; align-items: center; height: 16px; padding: 0 6px; border-radius: 9px; font-size: 9px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--badge-fg); background: var(--badge); white-space: nowrap; flex: 0 0 auto; }
@@ -444,7 +451,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .sec { margin-top: 8px; }
     .sec-hdr { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
     #lib-hdr { padding: 9px 8px; }
-    .sec-label { flex: 1; font-size: 12px; font-weight: 700; color: var(--vscode-foreground); }
+    .sec-label { flex: 1; font-size: 12px; font-weight: 700; color: var(--fg); }
     .sec-count { display: inline-flex; align-items: center; height: 15px; padding: 0 5px; border-radius: 9px; font-size: 9px; font-weight: 700; color: var(--badge-fg); background: var(--badge); }
     .sec-count:empty { display: none; }
     .sec-toggle { display: flex; align-items: center; gap: 7px; width: 100%; padding: 9px 8px; border: 0; background: transparent; color: inherit; text-align: left; font-family: inherit; transition: background .1s; }
@@ -458,18 +465,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .stat-lbl { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-top: 2px; }
 
     /* default library expandable */
-    .lib-toggle { display: flex; align-items: center; gap: 7px; margin-top: 6px; padding: 9px 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); cursor: pointer; width: 100%; text-align: left; font-family: inherit; color: var(--vscode-foreground); transition: background .1s; }
+    .lib-toggle { display: flex; align-items: center; gap: 7px; margin-top: 6px; padding: 9px 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); cursor: pointer; width: 100%; text-align: left; font-family: inherit; color: var(--fg); transition: background .1s; }
     .lib-toggle:hover { background: var(--hover); }
     .lib-caret { font-size: 9px; color: var(--muted); transition: transform .15s; flex: 0 0 auto; }
     .lib-caret.open { transform: rotate(90deg); }
-    .lib-toggle-label { flex: 1; font-size: 11.5px; font-weight: 500; }
+    .lib-toggle-label { flex: 1; font-size: 12px; font-weight: 700; color: var(--fg); }
     .lib-toggle-badge { display: inline-flex; align-items: center; height: 15px; padding: 0 5px; border-radius: 9px; font-size: 9px; font-weight: 700; color: var(--badge-fg); background: var(--success); flex: 0 0 auto; }
     .lib-toggle-badge:empty { display: none; }
     .lib-panel { margin-top: 2px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
     .lib-tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 8px; background: var(--panel); gap: 0; }
-    .lib-tab { padding: 5px 8px 4px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 11px; font-weight: 600; cursor: pointer; line-height: 1.4; white-space: nowrap; font-family: inherit; }
-    .lib-tab:hover { color: var(--vscode-foreground); }
-    .lib-tab.active { color: var(--vscode-foreground); border-bottom-color: var(--focus); }
+    .lib-tab { display: inline-flex; align-items: center; gap: 5px; padding: 6px 8px 5px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 11.5px; font-weight: 600; cursor: pointer; line-height: 1.4; white-space: nowrap; font-family: inherit; }
+    .lib-tab:hover { color: var(--fg); }
+    .lib-tab.active { color: var(--fg); border-bottom-color: var(--focus); }
 
     /* ── box (bordered list container) ── */
     .box { border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
@@ -477,8 +484,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     /* tabs inside box */
     .box-tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 8px; background: var(--panel); }
     .tab { padding: 6px 8px 5px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 11.5px; font-weight: 600; cursor: pointer; line-height: 1.4; }
-    .tab:hover { color: var(--vscode-foreground); }
-    .tab.active { color: var(--vscode-foreground); border-bottom-color: var(--focus); }
+    .tab:hover { color: var(--fg); }
+    .tab.active { color: var(--fg); border-bottom-color: var(--focus); }
 
     /* search row inside box */
     .box-search { padding: 5px 8px; border-bottom: 1px solid var(--border); background: var(--panel); }
@@ -499,7 +506,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .item:hover .item-acts, .item.menu-open .item-acts { opacity: 1; }
 
     /* ── pill action buttons ── */
-    .pill { display: inline-flex; align-items: center; justify-content: center; height: 22px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--r-sm); background: transparent; color: var(--vscode-foreground); font-size: 10.5px; font-weight: 600; cursor: pointer; white-space: nowrap; font-family: inherit; transition: background .1s, border-color .1s; }
+    .pill { display: inline-flex; align-items: center; justify-content: center; height: 22px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--r-sm); background: transparent; color: var(--fg); font-size: 10.5px; font-weight: 600; cursor: pointer; white-space: nowrap; font-family: inherit; transition: background .1s, border-color .1s; }
     .pill:hover { background: var(--hover); }
     .pill[disabled] { opacity: .4; cursor: default; }
     .pill.accent { border-color: var(--btn); background: var(--btn); color: var(--btn-fg); }
@@ -511,9 +518,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .menu > summary { list-style: none; }
     .menu > summary::-webkit-details-marker { display: none; }
     .menu-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1px solid transparent; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 14px; font-weight: 700; cursor: pointer; line-height: 1; font-family: inherit; }
-    .menu-btn:hover, .menu[open] .menu-btn { color: var(--vscode-foreground); background: var(--hover); border-color: var(--border); }
+    .menu-btn:hover, .menu[open] .menu-btn { color: var(--fg); background: var(--hover); border-color: var(--border); }
     .menu-pop { position: fixed; z-index: 9999; min-width: 130px; max-width: calc(100vw - 12px); padding: 3px; border: 1px solid var(--border); border-radius: var(--r); background: var(--vscode-dropdown-background, var(--panel-2)); box-shadow: 0 6px 20px rgba(0,0,0,.36); }
-    .menu-item { display: flex; align-items: center; width: 100%; min-height: 26px; border: 0; border-radius: var(--r-sm); padding: 4px 8px; background: transparent; color: var(--vscode-foreground); font-size: 11.5px; font-family: inherit; text-align: left; cursor: pointer; }
+    .menu-item { display: flex; align-items: center; width: 100%; min-height: 26px; border: 0; border-radius: var(--r-sm); padding: 4px 8px; background: transparent; color: var(--fg); font-size: 11.5px; font-family: inherit; text-align: left; cursor: pointer; }
     .menu-item:hover { background: var(--hover); }
     .menu-item.danger { color: var(--error); }
     .menu-item[disabled] { opacity: .4; cursor: default; pointer-events: none; }
@@ -805,7 +812,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const tabsHtml = LIB_TABS.map(t => {
       const count = defaultItemsData.filter(i => i.kind === t.key).length;
       if (!count) return '';
-      return '<button class="lib-tab' + (defaultLibTab === t.key ? ' active' : '') + '" type="button" data-libtab="' + t.key + '">' + t.label + ' <span style="opacity:.6;font-weight:400">(' + count + ')</span></button>';
+      return '<button class="lib-tab' + (defaultLibTab === t.key ? ' active' : '') + '" type="button" data-libtab="' + t.key + '">' + t.label + '<span class="sec-count">' + count + '</span></button>';
     }).join('');
 
     const items = defaultItemsData.filter(i => i.kind === defaultLibTab);
@@ -1041,38 +1048,36 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    const runTagHtml = name => name
-      ? '<span class="run-tag"><span class="run-tag-key">run</span> ' + esc(name) + '</span>'
-      : '';
-
     let html = '';
 
     if (activeRun) {
       const step = activeRun.currentStep;
+      const detailAttr = activeRun.filePath ? 'data-act="openFile" data-path="' + esc(activeRun.filePath) + '"' : 'data-act="openRun"';
       const stepHtml = step
         ? '<div class="run-step-row">' +
-            '<span class="badge ' + esc(step.status) + '">' + esc(step.status) + '</span>' +
+            '<span class="run-sbadge running">' + esc(step.status) + '</span>' +
             '<span class="run-step-name">' + esc(step.title) + '</span>' +
           '</div>'
         : '';
-      const detailAttr = activeRun.filePath ? 'data-act="openFile" data-path="' + esc(activeRun.filePath) + '"' : 'data-act="openRun"';
       html +=
-        '<div class="item run-active">' +
-        '<span class="item-dot dot-active" title="Running"></span>' +
-        '<span class="item-body">' +
-          '<span class="item-name" title="' + esc(activeRun.flowName) + '">' + esc(activeRun.flowName) + '</span>' +
-          runTagHtml(activeRun.runName) +
-          '<div class="run-prog"><div class="run-prog-fill" style="width:' + activeRun.percent + '%"></div></div>' +
-          stepHtml +
-        '</span>' +
-        '<span class="item-acts" style="gap:6px">' +
-          '<span class="run-count">' + activeRun.completed + '/' + activeRun.total + ' · ' + activeRun.percent + '%</span>' +
-          actionMenu([
-            menuItem('Open cockpit', 'data-act="openRun"'),
-            menuItem('View run file', detailAttr),
-            menuItem('Delete run', 'data-act="deleteRun" data-path="' + esc(activeRun.filePath || '') + '"', true, activeRun.isRunning)
-          ]) +
-        '</span>' +
+        '<div class="run-card run-active">' +
+          '<div class="run-card-head">' +
+            '<span class="run-card-title" title="' + esc(activeRun.flowName) + '">' + esc(activeRun.flowName) + '</span>' +
+            '<span class="run-sbadge running">Running</span>' +
+            '<span class="run-card-acts">' +
+              actionMenu([
+                menuItem('Open cockpit', 'data-act="openRun"'),
+                menuItem('View run file', detailAttr),
+                menuItem('Delete run', 'data-act="deleteRun" data-path="' + esc(activeRun.filePath || '') + '"', true, activeRun.isRunning)
+              ]) +
+            '</span>' +
+          '</div>' +
+          (activeRun.runName ? '<div class="run-card-tag">' + esc(activeRun.runName) + '</div>' : '') +
+          '<div class="run-card-bar"><div class="run-card-bar-fill" style="width:' + activeRun.percent + '%"></div></div>' +
+          '<div class="run-card-foot">' +
+            '<span class="run-card-meta">' + activeRun.completed + '/' + activeRun.total + ' steps · ' + activeRun.percent + '%</span>' +
+            stepHtml +
+          '</div>' +
         '</div>';
     }
 
@@ -1080,25 +1085,28 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       html += files.map(f => {
         const isDone = f.completed === f.total && f.total > 0;
         const isPartial = f.completed > 0 && !isDone;
-        const dotCls = isDone ? 'dot-done' : isPartial ? 'dot-partial' : 'dot-idle';
-        const statusLabel = isDone
-          ? '<span style="color:var(--success);font-size:9.5px;font-weight:600">✓ Done</span>'
-          : '<span style="font-size:9.5px">' + f.completed + '/' + f.total + ' steps</span>';
-        return '<div class="item">' +
-          '<span class="item-dot ' + dotCls + '" title="' + (isDone ? 'Completed' : isPartial ? 'Partial' : 'Not started') + '"></span>' +
-          '<span class="item-body">' +
-            '<span class="item-name" title="' + esc(f.flowName) + '">' + esc(f.flowName) + '</span>' +
-            runTagHtml(f.runName) +
-            '<span class="item-sub">' + statusLabel + ' · ' + fmtDate(f.runId) + '</span>' +
-          '</span>' +
-          '<span class="item-acts">' +
-            actionMenu([
-              menuItem('Open cockpit', 'data-act="openRun"'),
-              menuItem('View run file', 'data-act="openFile" data-path="' + esc(f.filePath) + '"'),
-              menuItem('Delete run', 'data-act="deleteRun" data-path="' + esc(f.filePath) + '"', true)
-            ]) +
-          '</span>' +
-          '</div>';
+        const percent = f.total > 0 ? Math.round((f.completed / f.total) * 100) : 0;
+        const badgeCls = isDone ? 'done' : isPartial ? 'partial' : '';
+        const badgeLabel = isDone ? '✓ Done' : f.completed + '/' + f.total;
+        return '<div class="run-card' + (isDone ? ' run-done' : '') + '">' +
+          '<div class="run-card-head">' +
+            '<span class="run-card-title" title="' + esc(f.flowName) + '">' + esc(f.flowName) + '</span>' +
+            (badgeCls ? '<span class="run-sbadge ' + badgeCls + '">' + badgeLabel + '</span>' : '') +
+            '<span class="run-card-acts">' +
+              actionMenu([
+                menuItem('Open cockpit', 'data-act="openRun"'),
+                menuItem('View run file', 'data-act="openFile" data-path="' + esc(f.filePath) + '"'),
+                menuItem('Delete run', 'data-act="deleteRun" data-path="' + esc(f.filePath) + '"', true)
+              ]) +
+            '</span>' +
+          '</div>' +
+          (f.runName ? '<div class="run-card-tag">' + esc(f.runName) + '</div>' : '') +
+          '<div class="run-card-bar"><div class="run-card-bar-fill" style="width:' + percent + '%"></div></div>' +
+          '<div class="run-card-foot">' +
+            '<span class="run-card-meta">' + fmtDate(f.runId) + '</span>' +
+            '<span class="run-card-meta">' + f.completed + '/' + f.total + ' steps</span>' +
+          '</div>' +
+        '</div>';
       }).join('');
     }
 

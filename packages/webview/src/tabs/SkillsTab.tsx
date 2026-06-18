@@ -2,9 +2,10 @@ import React from 'react';
 import { Skill } from '@ai-stepflow/core/types';
 import { Icon } from '../components/primitives';
 import { ResourceCard, EmptyState } from '../components/ResourceCard';
-import { ScopeFilterSelect, ScopeFilter, SaveScope } from '../components/ScopeControls';
+import { ScopeFilterSelect, ScopeFilter, SaveScope, ViewFilter, ViewFilterSelect } from '../components/ScopeControls';
 import { sendToVSCode } from '../vscode';
 import { useScopeFilter } from '../hooks/useScopeFilter';
+import { useViewFilter } from '../hooks/useViewFilter';
 
 interface SkillsTabProps {
   skills: Skill[];
@@ -18,6 +19,8 @@ interface SkillsTabProps {
   onToggleBookmark: (skill: Skill) => void;
   initialFilter: ScopeFilter;
   onScopeFilterChange: (v: ScopeFilter) => void;
+  initialViewFilter: ViewFilter;
+  onViewFilterChange: (v: ViewFilter) => void;
 }
 
 export const SkillsTab: React.FC<SkillsTabProps> = ({
@@ -31,9 +34,12 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
   isBookmarked,
   onToggleBookmark,
   initialFilter,
-  onScopeFilterChange
+  onScopeFilterChange,
+  initialViewFilter,
+  onViewFilterChange
 }) => {
   const [filter, setFilter] = useScopeFilter(initialFilter, onScopeFilterChange);
+  const [viewFilter, setViewFilter] = useViewFilter(initialViewFilter, onViewFilterChange);
 
   const getItemScope = (sourcePath: string): SaveScope => {
     if (globalPath && sourcePath.startsWith(globalPath)) return 'global';
@@ -45,10 +51,10 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
 
   const visibleSkills = skills
     .filter(skill => matchesScopeFilter(skill.sourcePath))
-    // Bookmarked skills are easiest to reach, then built-ins, then alphabetical.
+    .filter(skill => viewFilter === 'all' || isBookmarked(skill))
+    // Built-ins first, then alphabetical.
     .sort((a, b) =>
-      (Number(isBookmarked(b)) - Number(isBookmarked(a)))
-      || (Number(!!b.builtIn) - Number(!!a.builtIn))
+      (Number(!!b.builtIn) - Number(!!a.builtIn))
       || a.name.localeCompare(b.name)
     );
 
@@ -63,6 +69,7 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
         <h2>Skills</h2>
         <div className="page-head-actions">
           <ScopeFilterSelect value={filter} onChange={setFilter} />
+          <ViewFilterSelect value={viewFilter} onChange={setViewFilter} />
           <button className="btn" title="Create a skill from an existing markdown file" onClick={() => sendToVSCode('importSkillFile', {})}>
             <span className="btn-glyph"><Icon.Upload size={14} /></span>Import file
           </button>

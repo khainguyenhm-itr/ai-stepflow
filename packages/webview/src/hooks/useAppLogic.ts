@@ -13,6 +13,7 @@ type Tab = 'flows' | 'agents' | 'skills';
 type SaveScope = 'project' | 'global';
 type FlowAiMessage = { role: 'user' | 'assistant'; content: string };
 type ScopeFilter = 'all' | 'project' | 'global';
+type ViewFilter = 'all' | 'bookmarked';
 
 const VALID_FILTERS: ScopeFilter[] = ['all', 'project', 'global'];
 const parseFilter = (v: string | undefined): ScopeFilter =>
@@ -97,6 +98,7 @@ export const useAppLogic = () => {
   const [skillFormError, setSkillFormError] = useState<string | null>(null);
   const [draftLoading, setDraftLoading] = useState<'agent' | 'skill' | null>(null);
   const [scopeFilters, setScopeFilters] = useState<{ flows: ScopeFilter; agents: ScopeFilter; skills: ScopeFilter }>({ flows: 'all', agents: 'all', skills: 'all' });
+  const [viewFilters, setViewFilters] = useState<{ agents: ViewFilter; skills: ViewFilter }>({ agents: 'all', skills: 'all' });
   const [agentAiPrompt, setAgentAiPrompt] = useState('');
   const [agentAiMessages, setAgentAiMessages] = useState<FlowAiMessage[]>([]);
   const [skillAiPrompt, setSkillAiPrompt] = useState('');
@@ -216,6 +218,10 @@ export const useAppLogic = () => {
             flows: parseFilter(message.uiPrefs['scopeFilter:flows']),
             agents: parseFilter(message.uiPrefs['scopeFilter:agents']),
             skills: parseFilter(message.uiPrefs['scopeFilter:skills']),
+          });
+          setViewFilters({
+            agents: (message.uiPrefs['viewFilter:agents'] as ViewFilter) || 'all',
+            skills: (message.uiPrefs['viewFilter:skills'] as ViewFilter) || 'all',
           });
         }
         break;
@@ -636,6 +642,7 @@ export const useAppLogic = () => {
     agentForm, setAgentForm,
     skillForm, setSkillForm,
     scopeFilters,
+    viewFilters,
     agentFormError, setAgentFormError,
     skillFormError, setSkillFormError,
     draftLoading, setDraftLoading,

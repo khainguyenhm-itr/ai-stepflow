@@ -22,7 +22,8 @@ import {
   Zap,
   AlertTriangle,
   Terminal,
-  Lock
+  Lock,
+  Star
 } from 'lucide-react';
 
 /* Small native UI primitives styled after VS Code. */
@@ -103,5 +104,6 @@ export const Icon = {
   Zap,
   Alert: AlertTriangle,
   Terminal,
-  Lock
+  Lock,
+  Star
 };
