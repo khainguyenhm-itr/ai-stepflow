@@ -4,6 +4,7 @@ import { ConfigManager } from './configManager.js';
 import { StateManager } from './stateManager.js';
 import { TerminalManager } from './terminalManager.js';
 import { HostMessage, HumanReview, HistoryEvent } from './messages.js';
+import { readInteractiveSessionStats } from './sessionStats.js';
 import {
   Flow, FlowRunState, FlowStep,
   runClaudeStreaming, ClaudeStreamingRunOptions, ClaudeStreamingRunResult, composeSystemPrompt,
@@ -39,6 +40,10 @@ export class RunOrchestrator {
   private _startedStepIds = new Set<string>();
   /** Interactive steps we've already told the user are parked (waiting for the terminal), so the notice isn't repeated each advance. Reset with the run. */
   private _parkedStepIds = new Set<string>();
+  /** Steps that have already consumed their one automatic AI-review retry this run. Reset when the runId changes. */
+  private _autoRetryStepIds = new Set<string>();
+  /** Timestamp when each interactive step started, used to locate its Claude session file. */
+  private _stepStartTimes = new Map<string, Date>();
   private _bookkeepingRunId: string | undefined;
   private _stateUpdateQueue = Promise.resolve();
 
@@ -58,11 +63,12 @@ export class RunOrchestrator {
       if (!this._currentFlow || !this._runState) return;
       if (this._runState.steps[stepId]?.executionStatus !== 'running') return;
       const step = this._currentFlow.steps.find(s => s.id === stepId);
+      const metrics = await this._readInteractiveMetrics(stepId);
       if (step?.review?.required) {
-        await this._setRunState(s => machine.markCompleted(s, this._currentFlow!, stepId), { stepId, status: 'completed', message: 'Terminal session ended — reviewing' });
+        await this._setRunState(s => machine.markCompleted(s, this._currentFlow!, stepId, metrics), { stepId, status: 'completed', message: 'Terminal session ended — reviewing' });
         await this._reviewStep(step, stepId);
       } else {
-        await this._setRunState(s => machine.markDone(machine.markCompleted(s, this._currentFlow!, stepId), this._currentFlow!, stepId), { stepId, status: 'completed', message: 'Terminal work done' });
+        await this._setRunState(s => machine.markDone(machine.markCompleted(s, this._currentFlow!, stepId, metrics), this._currentFlow!, stepId), { stepId, status: 'completed', message: 'Terminal work done' });
         this._advanceReadySteps();
       }
     });
@@ -241,6 +247,7 @@ export class RunOrchestrator {
       message += `\n\nMandatory output files (relative to workspace root, you MUST create these):\n${resolvedProduces.map(p => `- ${p}`).join('\n')}`;
     }
 
+    this._stepStartTimes.set(stepId, new Date());
     await this._setRunState(s => machine.markRunning(s, flow, stepId), { stepId, status: 'running', message: 'Opened in Claude — press Enter to run' });
     this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[opened in the Claude terminal — review the pre-filled message, press Enter to run]\n` });
     await this.terminals.runInTerminal(message, projectPath, agent, false, stepId);
@@ -266,7 +273,8 @@ export class RunOrchestrator {
 
       if (isRunning) {
         // Terminal still running: mark done first (so close-terminal handler is a no-op), then close.
-        await this._setRunState(s => machine.markDone(machine.applyHumanReview(machine.markCompleted(s, flow, stepId), flow, stepId, { decision: 'approved' }), flow, stepId), { stepId, status: 'completed', message: 'Approved by user' });
+        const metrics = await this._readInteractiveMetrics(stepId);
+        await this._setRunState(s => machine.markDone(machine.applyHumanReview(machine.markCompleted(s, flow, stepId, metrics), flow, stepId, { decision: 'approved' }), flow, stepId), { stepId, status: 'completed', message: 'Approved by user' });
         this.terminals.cancelStep(stepId);
         this._advanceReadySteps();
         return;
@@ -276,7 +284,8 @@ export class RunOrchestrator {
     if (decision === 'rejected' && isRunning) {
       // Terminal still running: mark completed then apply rejection so state is 'ready' before
       // closing terminal (prevents onDidCloseRunningStep from overwriting with 'cancelled').
-      await this._setRunState(s => machine.applyHumanReview(machine.markCompleted(s, flow, stepId), flow, stepId, { decision: 'rejected' }), { stepId, status: 'rejected', message: 'Rejected by user' });
+      const metrics = await this._readInteractiveMetrics(stepId);
+      await this._setRunState(s => machine.applyHumanReview(machine.markCompleted(s, flow, stepId, metrics), flow, stepId, { decision: 'rejected' }), { stepId, status: 'rejected', message: 'Rejected by user' });
       this.terminals.cancelStep(stepId);
       return;
     }
@@ -317,7 +326,8 @@ export class RunOrchestrator {
     // Non-review terminal step still running: the user clicked the "Done in terminal" button to signal
     // the terminal work is finished. Transition directly to 'done' and advance.
     if (!step.review?.required && rs?.executionStatus === 'running') {
-      await this._setRunState(s => machine.markDone(machine.markCompleted(s, flow, stepId), flow, stepId), { stepId, status: 'completed', message: 'Terminal work done' });
+      const metrics = await this._readInteractiveMetrics(stepId);
+      await this._setRunState(s => machine.markDone(machine.markCompleted(s, flow, stepId, metrics), flow, stepId), { stepId, status: 'completed', message: 'Terminal work done' });
       this._advanceReadySteps();
       return;
     }
@@ -594,7 +604,16 @@ export class RunOrchestrator {
       : undefined;
     await this._setRunState(s => machine.applyAiReview(s, flow, stepId, result.status, detail, reviewMetrics), { stepId, status: result.status, message: `Review ${result.status}` });
     this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[review (${result.source}): ${result.status} — ${result.note}]\n` });
-    if (result.status === 'approved') this._advanceReadySteps();
+
+    if (result.status === 'approved') {
+      this._advanceReadySteps();
+    } else if (result.status === 'rejected' && !this._autoRetryStepIds.has(stepId)) {
+      // First rejection: auto-retry the step once before surfacing to the user.
+      this._autoRetryStepIds.add(stepId);
+      this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[review rejected — retrying automatically (1/1)]\n` });
+      await this._run(stepId);
+    }
+    // Second rejection (stepId already in _autoRetryStepIds): leave in rejected state for user.
   }
 
   /** Hết thời gian chờ đã định cấu hình cho mỗi lần chạy tính bằng ms (0 = không giới hạn). */
@@ -658,11 +677,21 @@ export class RunOrchestrator {
     }
   }
 
+  /** Read session stats from Claude CLI's .jsonl files for an interactive step. Never throws. */
+  private async _readInteractiveMetrics(stepId: string): Promise<machine.StepMetrics> {
+    const startTime = this._stepStartTimes.get(stepId);
+    const projectPath = this.configManager.getProjectPath();
+    if (!startTime || !projectPath) return {};
+    return readInteractiveSessionStats(projectPath, startTime);
+  }
+
   private _resetBookkeepingIfNewRun(): void {
     const runId = this._runState?.runId;
     if (runId === this._bookkeepingRunId) return;
     this._bookkeepingRunId = runId;
     this._startedStepIds = this._runState ? machine.seedStartedSteps(this._runState.steps) : new Set<string>();
     this._parkedStepIds = new Set<string>();
+    this._autoRetryStepIds = new Set<string>();
+    this._stepStartTimes = new Map<string, Date>();
   }
 }

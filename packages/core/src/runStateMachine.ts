@@ -128,7 +128,7 @@ export function markRunning(state: FlowRunState, flow: Flow, stepId: string): Fl
   const baseState = rerunDoneStep ? invalidateForRerun(state, flow, stepId) : state;
   const step = flow.steps.find(s => s.id === stepId);
   const revision = (baseState.steps[stepId]?.revision ?? 0) + 1;
-  const patch: Partial<StepRunState> = { executionStatus: 'running', completionStatus: 'not_ready', output: '', error: undefined, startedAt: new Date().toISOString(), revision };
+  const patch: Partial<StepRunState> = { executionStatus: 'running', completionStatus: 'not_ready', output: '', error: undefined, startedAt: new Date().toISOString(), revision, tokensUsed: undefined, costUsd: undefined, modelUsed: undefined };
   if (step?.review.required) {
     patch.reviewStatus = 'pending';
     patch.aiReviewOutput = '';

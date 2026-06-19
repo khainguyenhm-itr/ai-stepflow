@@ -470,8 +470,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .badge.completed { background: var(--success); }
 
     /* ── settings ── */
-    .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); margin-top: 4px; }
-    .setting-label { font-size: 11px; color: var(--fg); }
+    .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; }
+    .setting-row + .setting-row { border-top: 1px solid rgba(127,127,127,.07); }
+    .setting-label { font-size: 11px; color: var(--fg); font-weight: 500; }
+    .setting-desc { font-size: 10px; color: var(--muted); margin-top: 1px; }
 
     /* ── section ── */
     .sec { margin-top: 8px; }
@@ -567,7 +569,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .spin { display: inline-block; width: 9px; height: 9px; border: 1.5px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin .65s linear infinite; vertical-align: middle; margin-right: 4px; flex-shrink: 0; }
 
     /* ── fixed-height list containers: each section scrolls internally, scrollbar hidden ── */
-    #mcp, #plugins, #runs { max-height: 200px; overflow-y: auto; scrollbar-width: none; }
+    #mcp, #plugins, #runs { max-height: 300px; overflow-y: auto; scrollbar-width: none; }
     #mcp::-webkit-scrollbar, #plugins::-webkit-scrollbar, #runs::-webkit-scrollbar { display: none; }
     .lib-panel { max-height: 180px; overflow-y: auto; scrollbar-width: none; }
     .lib-panel::-webkit-scrollbar { display: none; }
@@ -642,6 +644,28 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       </div>
     </section>
 
+    <!-- project settings -->
+    <section class="sec">
+      <div class="sec-hdr">
+        <button class="sec-toggle" id="settings-section-toggle" type="button" aria-expanded="false">
+          <span class="lib-caret" id="settings-caret">&#9658;</span>
+          <span class="sec-label">Project Settings</span>
+        </button>
+      </div>
+      <div class="box" id="settings-panel" style="display:none">
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">AI Response Style</div>
+            <div class="setting-desc">Controls verbosity of AI step output</div>
+          </div>
+          <select id="ai-style-select" class="input sm">
+            <option value="default">Default</option>
+            <option value="concise">Concise</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
     <!-- runs (active + recent) -->
     <section class="sec">
       <div class="sec-hdr">
@@ -652,20 +676,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         </button>
       </div>
       <div class="box" id="runs-panel"><div id="runs"><span class="empty">No runs yet</span></div></div>
-    </section>
-
-    <!-- project settings -->
-    <section class="sec">
-      <div class="sec-hdr" style="padding: 9px 8px;">
-        <span class="sec-label">Project Settings</span>
-      </div>
-      <div class="setting-row">
-        <span class="setting-label">AI Response Style</span>
-        <select id="ai-style-select" class="input sm">
-          <option value="default">Default</option>
-          <option value="concise">Concise</option>
-        </select>
-      </div>
     </section>
 
   </div><!-- /.body -->
@@ -743,7 +753,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   let availablePlugins = [];
   let lastRunFiles = [];
   let lastRunTotal = 0;
-  const sectionOpen = { mcp: false, plugins: false, runs: false };
+  const sectionOpen = { mcp: false, plugins: false, runs: false, settings: false };
 
   function setSectionOpen(key, open) {
     sectionOpen[key] = open;
@@ -755,7 +765,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
   }
 
-  ['mcp', 'plugins', 'runs'].forEach(key => {
+  ['mcp', 'plugins', 'runs', 'settings'].forEach(key => {
     const toggle = document.getElementById(key + '-section-toggle');
     if (!toggle) return;
     toggle.onclick = () => setSectionOpen(key, !sectionOpen[key]);

@@ -243,6 +243,8 @@ export class CockpitPanel {
         );
         if (choice !== 'Delete') return;
         await this._runner.deleteRun();
+        await this._sendAllData();
+        void vscode.commands.executeCommand('ai-stepflow.refreshAll');
         return;
       }
       case 'verifyRun':

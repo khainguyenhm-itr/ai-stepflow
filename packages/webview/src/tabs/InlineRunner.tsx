@@ -62,6 +62,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
       showRerun: false,
       showReview: false,
       showFinish: false,
+      showCancel: false,
       isLocked: false
     };
 
@@ -77,10 +78,16 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
       // Once fully done, only re-run is allowed
       actions.showRerun = true;
     } else if (executionStatus === 'running') {
-      // While the terminal is open (interactive loop)
-      if (isInteractiveRunning) {
-        if (reviewRequired) actions.showReview = true;
-        // In interactive mode, finishing happens by closing the terminal session
+      if (isHeadless) {
+        // Headless (AI-run) step in flight — only cancel is available
+        actions.showCancel = true;
+      } else if (reviewRequired) {
+        // Human review: show Approve/Reject while terminal is running.
+        // The orchestrator handles the isRunning case (kills terminal + marks done) correctly.
+        actions.showReview = true;
+      } else {
+        // No review: show Finish as the manual signal that terminal work is done.
+        actions.showFinish = true;
       }
     } else if (reviewStatus === 'waiting_human') {
       // Terminal closed, explicitly waiting for approval/rejection
@@ -270,6 +277,11 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
                   </span>
                 )}
 
+                {stepActions.showCancel && (
+                  <button className="btn error" title="Cancel this headless run" onClick={() => sendToVSCode('cancelStep', { stepId: activeStepId! })}>
+                    <span className="btn-glyph"><Icon.X size={14} /></span>Cancel
+                  </button>
+                )}
                 {stepActions.showRun && (
                   <button className="btn primary" title="Run this step" onClick={() => onRunStep(activeStepId!, '')}>
                     <span className="btn-glyph"><Icon.Play size={14} /></span>Run Step
