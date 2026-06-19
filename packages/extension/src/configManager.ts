@@ -208,6 +208,23 @@ export class ConfigManager {
     }
   }
 
+  /** Remove legacy karpathy block from project CLAUDE.md if still present. No longer injects — rules live in global CLAUDE.md. */
+  public async ensureProjectClaudeMd(): Promise<void> {
+    if (!this.projectPath) return;
+    const claudeMdPath = path.join(this.projectPath, 'CLAUDE.md');
+    try {
+      const content = await fs.readFile(claudeMdPath, 'utf8').catch(() => '');
+      const startIdx = content.indexOf(ConfigManager.CLAUDE_MD_START);
+      const endIdx = content.indexOf(ConfigManager.CLAUDE_MD_END);
+      if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) return;
+      const cleaned = (content.slice(0, startIdx) + content.slice(endIdx + ConfigManager.CLAUDE_MD_END.length))
+        .replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
+      await fs.writeFile(claudeMdPath, cleaned, 'utf8');
+    } catch (e) {
+      console.error('AI StepFlow: failed to clean project CLAUDE.md', e);
+    }
+  }
+
   /** Resolved lazily so workspace folder changes are always picked up. */
   public get projectPath(): string | undefined {
     return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -578,8 +595,19 @@ export class ConfigManager {
   }
 
   public async loadUiPrefs(): Promise<Record<string, string>> {
-    if (!this.projectPath) return {};
+    const global = await this.loadGlobalUiPrefs();
+    if (!this.projectPath) return global;
     const prefsPath = path.join(this.projectPath, '.ai-stepflow', 'ui-prefs.json');
+    try {
+      const project = JSON.parse(await fs.readFile(prefsPath, 'utf8'));
+      return { ...global, ...project };
+    } catch {
+      return global;
+    }
+  }
+
+  public async loadGlobalUiPrefs(): Promise<Record<string, string>> {
+    const prefsPath = path.join(this.globalPath, '.ai-stepflow', 'ui-prefs.json');
     try {
       return JSON.parse(await fs.readFile(prefsPath, 'utf8'));
     } catch {
@@ -601,13 +629,25 @@ export class ConfigManager {
     }
   }
 
+  public async saveGlobalUiPref(key: string, value: string): Promise<void> {
+    const prefsPath = path.join(this.globalPath, '.ai-stepflow', 'ui-prefs.json');
+    try {
+      await fs.mkdir(path.dirname(prefsPath), { recursive: true });
+      let prefs: Record<string, string> = {};
+      try { prefs = JSON.parse(await fs.readFile(prefsPath, 'utf8')); } catch { /* none yet */ }
+      prefs[key] = value;
+      await fs.writeFile(prefsPath, JSON.stringify(prefs, null, 2), 'utf8');
+    } catch (e) {
+      console.error('AI StepFlow: failed to save global ui pref', e);
+    }
+  }
+
   /**
    * Inject or remove a response-style instruction block in the project CLAUDE.md.
    * 'concise' → upserts the block; 'default' → removes it.
    */
   public async applyResponseStyle(style: string): Promise<void> {
-    if (!this.projectPath) return;
-    const claudeMdPath = path.join(this.projectPath, 'CLAUDE.md');
+    const claudeMdPath = path.join(this.globalPath, 'CLAUDE.md');
     const start = ConfigManager.STYLE_MD_START;
     const end = ConfigManager.STYLE_MD_END;
     const block = style === 'concise'

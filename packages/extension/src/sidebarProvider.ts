@@ -55,6 +55,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
               }
               return;
             case 'refresh':
+              await this.configManager.ensureProjectClaudeMd();
               await this.refresh(true);
               return;
             case 'openFile':
@@ -117,9 +118,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
               return;
             case 'savePref':
               if ((message as any).key && (message as any).value !== undefined) {
-                await this.configManager.saveUiPref((message as any).key, (message as any).value);
                 if ((message as any).key === 'ai:responseStyle') {
+                  await this.configManager.saveGlobalUiPref((message as any).key, (message as any).value);
                   await this.configManager.applyResponseStyle((message as any).value);
+                } else {
+                  await this.configManager.saveUiPref((message as any).key, (message as any).value);
                 }
               }
               return;
@@ -174,6 +177,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         this.configManager.loadUiPrefs().catch(() => ({} as Record<string, string>))
       ]);
       const flowName = (id: string) => flows.find(f => f.id === id)?.name || id;
+      const visibleRunFiles = runFiles.filter(file => !file.isClosed);
 
       // Collect every agent/skill name referenced by any flow step (used for in-use guard).
       const usedAgents = new Set<string>();
@@ -202,7 +206,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         // The running step, else the first step not yet done.
         const currentStep = flow?.steps.find(step => activeRun.steps[step.id]?.executionStatus === 'running')
           ?? flow?.steps.find(step => activeRun.steps[step.id]?.completionStatus !== 'done');
-        const activeRunFile = runFiles.find(f => f.runId === activeRun.runId);
+        const activeRunFile = visibleRunFiles.find(f => f.runId === activeRun.runId);
         const stepStatus = currentStep ? (activeRun.steps[currentStep.id]?.executionStatus || 'ready') : null;
         active = {
           flowName: flowName(activeRun.flowId),
@@ -227,7 +231,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         mcp: this._cachedMcp,
         plugins: this._cachedPlugins,
         pluginsAvailable: this._cachedAvailable,
-        runFiles: runFiles.map(file => ({
+        runFiles: visibleRunFiles.map(file => ({
           flowId: file.flowId,
           flowName: flowName(file.flowId),
           runId: file.runId,
@@ -238,7 +242,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           isClosed: file.isClosed,
           isActive: file.runId === activeRun?.runId
         })),
-        totalRunFiles: runFiles.length
+        totalRunFiles: visibleRunFiles.length
       });
 
       if (probeMcp) {

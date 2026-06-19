@@ -12,6 +12,7 @@ export function activate(context: vscode.ExtensionContext) {
     const configManager = new ConfigManager(context.extensionUri.fsPath);
     const stateManager = new StateManager(context);
     const output = vscode.window.createOutputChannel('AI StepFlow');
+    void configManager.ensureProjectClaudeMd();
 
     // Sidebar dashboard: active run, library counts, MCP servers, generated files.
     // Defensively handle version access

@@ -106,6 +106,7 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   importAgentFile: () => true,
   importSkillFile: () => true,
   resetRun: () => true,
+  closeRun: m => m.finalize === undefined || typeof m.finalize === 'boolean',
   deleteRun: () => true,
   verifyRun: () => true,
   exportRunReport: () => true,

@@ -291,6 +291,7 @@ export class RunOrchestrator {
     }
 
     // Terminal already ended: apply review decision to the completed step.
+    await this._persistInteractiveMetrics(stepId);
     const review = { decision };
     await this._setRunState(s => machine.applyHumanReview(s, flow, stepId, review), { stepId, status: decision, message: `Human review ${decision}` });
 
@@ -333,6 +334,7 @@ export class RunOrchestrator {
     }
     // No review gate, or a reviewer already approved → finish and advance.
     if (!step.review?.required || rs?.reviewStatus === 'approved' || rs?.completionStatus === 'ready_to_mark_done') {
+      await this._persistInteractiveMetrics(stepId);
       await this._setRunState(s => machine.markDone(s, flow, stepId), { stepId, status: 'completed', message: 'Marked done' });
       this._advanceReadySteps();
       return;
@@ -679,10 +681,44 @@ export class RunOrchestrator {
 
   /** Read session stats from Claude CLI's .jsonl files for an interactive step. Never throws. */
   private async _readInteractiveMetrics(stepId: string): Promise<machine.StepMetrics> {
-    const startTime = this._stepStartTimes.get(stepId);
+    const startTime = this._stepStartTimes.get(stepId)
+      ?? (this._runState?.steps[stepId]?.startedAt ? new Date(this._runState.steps[stepId].startedAt!) : undefined);
     const projectPath = this.configManager.getProjectPath();
-    if (!startTime || !projectPath) return {};
+    if (!startTime || Number.isNaN(startTime.getTime()) || !projectPath) return {};
     return readInteractiveSessionStats(projectPath, startTime);
+  }
+
+  /** Persist recovered interactive metrics onto the step so the run JSON is the single UI source of truth. */
+  private async _persistInteractiveMetrics(stepId: string): Promise<void> {
+    if (!this._runState) return;
+
+    const metrics = await this._readInteractiveMetrics(stepId);
+    const hasMetrics = metrics.modelUsed != null || metrics.tokensUsed != null || metrics.costUsd != null;
+    if (!hasMetrics) return;
+
+    const prev = this._runState.steps[stepId];
+    if (!prev) return;
+
+    const nextModelUsed = metrics.modelUsed ?? prev.modelUsed;
+    const nextTokensUsed = metrics.tokensUsed ?? prev.tokensUsed;
+    const nextCostUsd = metrics.costUsd ?? prev.costUsd;
+    const changed = nextModelUsed !== prev.modelUsed
+      || nextTokensUsed !== prev.tokensUsed
+      || nextCostUsd !== prev.costUsd;
+    if (!changed) return;
+
+    await this._setRunState(s => ({
+      ...s,
+      steps: {
+        ...s.steps,
+        [stepId]: {
+          ...s.steps[stepId],
+          modelUsed: nextModelUsed,
+          tokensUsed: nextTokensUsed,
+          costUsd: nextCostUsd,
+        }
+      }
+    }));
   }
 
   private _resetBookkeepingIfNewRun(): void {

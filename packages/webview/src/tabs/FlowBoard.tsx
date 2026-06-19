@@ -236,7 +236,13 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
               text="Click New Run to start the first run of this workflow."
               icon={<Icon.Play size={24} />}
             />
-          ) : null}
+          ) : (
+            <EmptyState
+              title="No run selected"
+              text="Select a run from the dropdown above, or start a new one."
+              icon={<Icon.Play size={24} />}
+            />
+          )}
         </>
       )}
       <Modal

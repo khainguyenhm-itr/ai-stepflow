@@ -29,9 +29,3 @@ This project follows **Karpathy's Rules** for high-standard engineering and agen
 - **Simplicity First**: Bias toward minimum code. No speculative features or over-engineering.
 - **Surgical Changes**: Only modify files and lines strictly necessary. No unrelated refactors.
 - **Goal-Driven**: Fulfill success criteria and ensure results are verifiable.
-
-
-<!-- ai-stepflow:style:start -->
-## AI Response Style
-Be concise and direct. Skip preamble, filler phrases, and trailing summaries. Answer in the fewest words that are still complete and accurate.
-<!-- ai-stepflow:style:end -->
