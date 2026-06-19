@@ -65,7 +65,7 @@ export class TerminalManager {
    * When `submit` is false the prompt is typed into the chat box but NOT sent, so the
    * user can review the agent/skill/model context and press Enter to start the run.
    */
-  public async runInTerminal(prompt: string, projectPath: string, agent?: Agent | string, submit = true, stepId?: string): Promise<void> {
+  public async runInTerminal(prompt: string, projectPath: string, agent?: Agent | string, submit = true, stepId?: string, sessionId?: string): Promise<void> {
     const terminal = this._getTerminal(projectPath);
     terminal.show();
 
@@ -74,7 +74,7 @@ export class TerminalManager {
       this._terminal?.dispose();
       this._terminal = undefined;
       this._running = false;
-      return this.runInTerminal(prompt, projectPath, agent, submit, stepId);
+      return this.runInTerminal(prompt, projectPath, agent, submit, stepId, sessionId);
     }
 
     if (this._running) {
@@ -88,7 +88,7 @@ export class TerminalManager {
     this._currentStepId = stepId;
 
     const agentObj = typeof agent === 'string' ? (await this.configManager.loadAgents()).find(a => a.name === agent) : agent;
-    const launchArgs = this._constructClaudeArgs(agentObj);
+    const launchArgs = this._constructClaudeArgs(agentObj, sessionId);
     // Auto-submitted runs bake the prompt into the launch command. For a pre-fill (submit=false)
     // we launch claude bare, then type the prompt unsent once the REPL has come up.
     if (prompt && submit) launchArgs.push(prompt);
@@ -104,8 +104,11 @@ export class TerminalManager {
     }
   }
 
-  private _constructClaudeArgs(agent?: Agent): string[] {
+  private _constructClaudeArgs(agent?: Agent, sessionId?: string): string[] {
     const args = ['claude'];
+    // Pin the session id so we can read exactly this run's .jsonl for metrics/output,
+    // instead of guessing by project dir + time window (wrong when sessions run concurrently).
+    if (sessionId) args.push('--session-id', sessionId);
     if (agent) {
       args.push('--agent', agent.name);
       if (agent.model) args.push('--model', agent.model);

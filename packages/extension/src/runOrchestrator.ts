@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { ChildProcess } from 'child_process';
+import { randomUUID } from 'crypto';
 import { ConfigManager } from './configManager.js';
 import { StateManager } from './stateManager.js';
 import { TerminalManager } from './terminalManager.js';
@@ -248,9 +249,12 @@ export class RunOrchestrator {
     }
 
     this._stepStartTimes.set(stepId, new Date());
+    // Pin a fresh session id so metrics/output read exactly this run's .jsonl, not a time-window guess.
+    const sessionId = randomUUID();
     await this._setRunState(s => machine.markRunning(s, flow, stepId), { stepId, status: 'running', message: 'Opened in Claude — press Enter to run' });
+    await this._patchStepState(stepId, { sessionId });
     this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[opened in the Claude terminal — review the pre-filled message, press Enter to run]\n` });
-    await this.terminals.runInTerminal(message, projectPath, agent, false, stepId);
+    await this.terminals.runInTerminal(message, projectPath, agent, false, stepId, sessionId);
   }
 
   /** Duyệt/từ chối một bước từ các nút human-review của webview. */
@@ -685,7 +689,8 @@ export class RunOrchestrator {
       ?? (this._runState?.steps[stepId]?.startedAt ? new Date(this._runState.steps[stepId].startedAt!) : undefined);
     const projectPath = this.configManager.getProjectPath();
     if (!startTime || Number.isNaN(startTime.getTime()) || !projectPath) return {};
-    return readInteractiveSessionStats(projectPath, startTime);
+    const sessionId = this._runState?.steps[stepId]?.sessionId;
+    return readInteractiveSessionStats(projectPath, startTime, sessionId);
   }
 
   /** Persist recovered interactive metrics onto the step so the run JSON is the single UI source of truth. */
@@ -693,7 +698,7 @@ export class RunOrchestrator {
     if (!this._runState) return;
 
     const metrics = await this._readInteractiveMetrics(stepId);
-    const hasMetrics = metrics.modelUsed != null || metrics.tokensUsed != null || metrics.costUsd != null;
+    const hasMetrics = metrics.modelUsed != null || metrics.tokensUsed != null || metrics.costUsd != null || !!metrics.output;
     if (!hasMetrics) return;
 
     const prev = this._runState.steps[stepId];
@@ -702,9 +707,11 @@ export class RunOrchestrator {
     const nextModelUsed = metrics.modelUsed ?? prev.modelUsed;
     const nextTokensUsed = metrics.tokensUsed ?? prev.tokensUsed;
     const nextCostUsd = metrics.costUsd ?? prev.costUsd;
+    const nextOutput = (metrics.output && metrics.output.length > 0) ? metrics.output : prev.output;
     const changed = nextModelUsed !== prev.modelUsed
       || nextTokensUsed !== prev.tokensUsed
-      || nextCostUsd !== prev.costUsd;
+      || nextCostUsd !== prev.costUsd
+      || nextOutput !== prev.output;
     if (!changed) return;
 
     await this._setRunState(s => ({
@@ -716,6 +723,7 @@ export class RunOrchestrator {
           modelUsed: nextModelUsed,
           tokensUsed: nextTokensUsed,
           costUsd: nextCostUsd,
+          output: nextOutput,
         }
       }
     }));

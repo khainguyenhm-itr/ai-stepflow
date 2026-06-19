@@ -134,6 +134,8 @@ export interface StepRunState {
   modelUsed?: string;
   /** Cost (USD) of the last execution, taken from the run's own `result` event. */
   costUsd?: number;
+  /** Claude CLI session id pinned for an interactive run, so metrics/output read exactly that session's .jsonl. */
+  sessionId?: string;
 }
 
 export interface FlowRunState {
