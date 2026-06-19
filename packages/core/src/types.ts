@@ -144,4 +144,6 @@ export interface FlowRunState {
   projectPath: string;
   inputs: Record<string, string>;
   steps: Record<string, StepRunState>;
+  /** True when the run has been finalized ("Done Flow" or explicitly closed) and should not auto-resume. */
+  isClosed?: boolean;
 }

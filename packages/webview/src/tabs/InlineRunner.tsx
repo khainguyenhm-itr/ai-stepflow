@@ -152,8 +152,14 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
 
   const runStatus = getRunStatus();
   const isFlowDone = completionStatuses.every(s => s === 'done');
+  const isFinalized = !!runState.isClosed;
+  
+  // A flow is terminal if all steps are done, or if any step has failed or been cancelled.
+  const statuses = Object.values(runState.steps).map(s => s.executionStatus);
+  const isFlowTerminal = isFlowDone || statuses.includes('failed') || statuses.includes('cancelled');
+
   // Reset is available once any step has moved past its initial ready/locked state.
-  const canResetRun = Object.values(runState.steps).some(
+  const canResetRun = !isFinalized && Object.values(runState.steps).some(
     s => s.executionStatus !== 'ready' && s.executionStatus !== 'locked'
   );
 
@@ -165,39 +171,59 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
             <span className="runner-flow-name">
               {runState.runName || runState.runId.split('T')[0]}
             </span>
-            <span className={`badge ${runStatus.className}`}>
-              <runStatus.Icon size={10} style={{ marginRight: 4 }} />
-              {runStatus.label}
-            </span>
+            {isFinalized ? (
+              <span className="badge success">
+                <Icon.Check size={10} style={{ marginRight: 4 }} />
+                Finalized
+              </span>
+            ) : (
+              <span className={`badge ${runStatus.className}`}>
+                <runStatus.Icon size={10} style={{ marginRight: 4 }} />
+                {runStatus.label}
+              </span>
+            )}
           </div>
           <span className="small muted">
             {completedSteps}/{flow.steps.length} steps done · {formatRunTime(runState.runId)}
           </span>
         </div>
         <div className="runner-head-actions">
-          {isFlowDone && (
-            <button className="btn success" title="Finalize flow and clear active status" onClick={() => sendToVSCode('closeRun', {})}>Done Flow</button>
+          {!isFinalized && isFlowDone && (
+            <button 
+              className="btn success" 
+              title="Finalize flow and clear active status" 
+              onClick={() => sendToVSCode('closeRun', { finalize: true })}
+            >
+              <Icon.Check size={14} style={{ marginRight: 4 }} />
+              Done Flow
+            </button>
           )}
-          {!isFlowDone && canResetRun && (
+          {!isFinalized && !isFlowDone && canResetRun && (
             <button className="btn" title="Reset all steps to initial state" onClick={() => sendToVSCode('resetRun', {})}>Reset</button>
           )}
-          <button className="btn" onClick={() => sendToVSCode('verifyRun', {})}>Verify</button>
-          <button className="btn" onClick={() => sendToVSCode('exportRunReport', {})}>Report</button>
+          {!isFinalized && (
+            <>
+              <button className="btn" onClick={() => sendToVSCode('verifyRun', {})}>Verify</button>
+              <button className="btn" onClick={() => sendToVSCode('exportRunReport', {})}>Report</button>
+            </>
+          )}
           <div style={{ width: 1, height: 16, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
           <button
             className="icon-btn"
             title="Close runner view (keep run data)"
-            onClick={() => sendToVSCode('closeRun', {})}
+            onClick={() => sendToVSCode('closeRun', { finalize: false })}
           >
             <Icon.X size={14} />
           </button>
-          <button
-            className="icon-btn danger"
-            title="Delete this run and all its data"
-            onClick={() => sendToVSCode('deleteRun', {})}
-          >
-            <Icon.Trash2 size={14} />
-          </button>
+          {!isFinalized && (
+            <button
+              className="icon-btn danger"
+              title="Delete this run and all its data"
+              onClick={() => sendToVSCode('deleteRun', {})}
+            >
+              <Icon.Trash2 size={14} />
+            </button>
+          )}
         </div>
       </div>
       <div className="runner-strip">
@@ -235,47 +261,51 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
             </div>
           </div>
           <div className="runner-detail-actions">
-            {aiReviewing && (
-              <span className="badge progress">
-                <Icon.RotateCw size={10} style={{ marginRight: 4 }} className="spin" />
-                AI reviewing…
-              </span>
-            )}
-
-            {stepActions.showRun && (
-              <button className="btn primary" title="Run this step" onClick={() => onRunStep(activeStepId!, '')}>
-                <span className="btn-glyph"><Icon.Play size={14} /></span>Run Step
-              </button>
-            )}
-            {stepActions.showReview && (
+            {!isFinalized && (
               <>
-                {activeStep?.review.filePath && (
-                  <button className="btn" title={activeStep.review.filePath} onClick={() => onOpenFile(activeStep.review.filePath!)}>Open review file</button>
+                {aiReviewing && (
+                  <span className="badge progress">
+                    <Icon.RotateCw size={10} style={{ marginRight: 4 }} className="spin" />
+                    AI reviewing…
+                  </span>
                 )}
-                <button className="btn success" title="Approve this step" onClick={() => sendToVSCode('reviewStep', {
-                  stepId: activeStepId!,
-                  decision: 'approved'
-                })}>Approve</button>
-                <button className="btn error" title="Reject this step" onClick={() => sendToVSCode('reviewStep', {
-                  stepId: activeStepId!,
-                  decision: 'rejected'
-                })}>Reject</button>
+
+                {stepActions.showRun && (
+                  <button className="btn primary" title="Run this step" onClick={() => onRunStep(activeStepId!, '')}>
+                    <span className="btn-glyph"><Icon.Play size={14} /></span>Run Step
+                  </button>
+                )}
+                {stepActions.showReview && (
+                  <>
+                    {activeStep?.review.filePath && (
+                      <button className="btn" title={activeStep.review.filePath} onClick={() => onOpenFile(activeStep.review.filePath!)}>Open review file</button>
+                    )}
+                    <button className="btn success" title="Approve this step" onClick={() => sendToVSCode('reviewStep', {
+                      stepId: activeStepId!,
+                      decision: 'approved'
+                    })}>Approve</button>
+                    <button className="btn error" title="Reject this step" onClick={() => sendToVSCode('reviewStep', {
+                      stepId: activeStepId!,
+                      decision: 'rejected'
+                    })}>Reject</button>
+                  </>
+                )}
+                {stepActions.showFinish && (
+                  <button className="btn primary" title="Complete this step" onClick={() => sendToVSCode('markStepDone', {
+                    stepId: activeStepId!,
+                    historyEvent: { timestamp: new Date().toISOString(), status: 'completed', message: 'Marked done by user' }
+                  })}>
+                    <span className="btn-glyph"><Icon.Check size={14} /></span>Finish
+                  </button>
+                )}
+                {stepActions.showRerun && (
+                  <button className="btn" title="Re-run this step" onClick={() => onRunStep(activeStepId!, '')}>
+                    <span className="btn-glyph"><Icon.RotateCw size={14} /></span>Re-run
+                  </button>
+                )}
+                {stepActions.isLocked && <button className="btn" disabled title="Complete the steps this one depends on first">Locked</button>}
               </>
             )}
-            {stepActions.showFinish && (
-              <button className="btn primary" title="Complete this step" onClick={() => sendToVSCode('markStepDone', {
-                stepId: activeStepId!,
-                historyEvent: { timestamp: new Date().toISOString(), status: 'completed', message: 'Marked done by user' }
-              })}>
-                <span className="btn-glyph"><Icon.Check size={14} /></span>Finish
-              </button>
-            )}
-            {stepActions.showRerun && (
-              <button className="btn" title="Re-run this step" onClick={() => onRunStep(activeStepId!, '')}>
-                <span className="btn-glyph"><Icon.RotateCw size={14} /></span>Re-run
-              </button>
-            )}
-            {stepActions.isLocked && <button className="btn" disabled title="Complete the steps this one depends on first">Locked</button>}
           </div>
         </div>
         {isHeadless && (

@@ -73,7 +73,7 @@ export type WebviewMessage =
   | { type: 'reviewStep'; stepId: string; decision: 'approved' | 'rejected' }
   | { type: 'markStepDone'; stepId: string; historyEvent?: { timestamp: string; status: string; message?: string } }
   | { type: 'resetRun' }
-  | { type: 'closeRun' }
+  | { type: 'closeRun', finalize?: boolean }
   | { type: 'deleteRun' }
   | { type: 'verifyRun' }
   | { type: 'exportRunReport' }

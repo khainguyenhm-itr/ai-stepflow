@@ -144,6 +144,7 @@ export class StateManager {
       try {
         const stat = await fs.stat(filePath);
         const run = JSON.parse(await fs.readFile(filePath, 'utf8')) as FlowRunState;
+        if (run.isClosed) continue; // Skip finalized runs
         const unfinished = Object.values(run.steps || {}).some(step => step.completionStatus !== 'done');
         if (unfinished && (!bestUnfinished || stat.mtimeMs > bestUnfinished.mtimeMs)) {
           bestUnfinished = { run, mtimeMs: stat.mtimeMs };
@@ -166,7 +167,7 @@ export class StateManager {
    * sidebar to list the files this extension created in the repo without forcing
    * callers to re-derive paths or re-stat each file.
    */
-  public async listRunFiles(): Promise<{ flowId: string; runId: string; runName?: string; filePath: string; completedSteps: number; totalSteps: number; mtimeMs: number }[]> {
+  public async listRunFiles(): Promise<{ flowId: string; runId: string; runName?: string; filePath: string; completedSteps: number; totalSteps: number; mtimeMs: number; isClosed: boolean }[]> {
     if (!this.projectPath) return [];
 
     const runsDir = path.join(this.projectPath, '.ai-stepflow', 'runs');
@@ -177,7 +178,7 @@ export class StateManager {
       return [];
     }
 
-    const result: { flowId: string; runId: string; runName?: string; filePath: string; completedSteps: number; totalSteps: number; mtimeMs: number }[] = [];
+    const result: { flowId: string; runId: string; runName?: string; filePath: string; completedSteps: number; totalSteps: number; mtimeMs: number; isClosed: boolean }[] = [];
     for (const file of files) {
       const filePath = path.join(runsDir, file);
       try {
@@ -191,7 +192,8 @@ export class StateManager {
           filePath,
           completedSteps: steps.filter(step => step.completionStatus === 'done').length,
           totalSteps: steps.length,
-          mtimeMs: stat.mtimeMs
+          mtimeMs: stat.mtimeMs,
+          isClosed: !!run.isClosed
         });
       } catch (e) {
         console.error(`Error reading run file ${filePath}:`, e);

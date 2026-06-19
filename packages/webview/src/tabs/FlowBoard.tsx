@@ -11,7 +11,7 @@ interface FlowBoardProps {
   activeFlow: Flow | null;
   runState: FlowRunState | null;
   auditLogs: Record<string, any[]>;
-  runSummaries: { flowId: string; runId: string; runName?: string; completedSteps: number; totalSteps: number; mtimeMs: number }[];
+  runSummaries: { flowId: string; runId: string; runName?: string; completedSteps: number; totalSteps: number; mtimeMs: number; isClosed: boolean }[];
   runnerVisible: boolean;
   activeStepId: string | null;
   completedSteps: number;
@@ -59,38 +59,45 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
 }) => {
   const columns = getFlowColumns(flow);
   const runnerOpen = activeFlow?.id === flow.id && !!runState && runnerVisible;
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(runnerOpen);
   const [confirmRemoveIndex, setConfirmRemoveIndex] = useState<number | null>(null);
-  const prevRunnerOpenRef = useRef(runnerOpen);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // Auto-expand only when runnerOpen transitions false→true (new run started),
-  // not on remount when a run was already active.
+  // Auto-expand and scroll into view when runner becomes open for this flow
   useEffect(() => {
-    const wasOpen = prevRunnerOpenRef.current;
-    prevRunnerOpenRef.current = runnerOpen;
-    if (runnerOpen && !wasOpen) setIsExpanded(true);
-  }, [runnerOpen]);
+    if (runnerOpen) {
+      setIsExpanded(true);
+      // Use setTimeout to allow the expansion to render before scrolling
+      setTimeout(() => {
+        containerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 50);
+    }
+  }, [runnerOpen, runState?.runId]);
 
   // Auto-load most recent run when expanding (if no active run and runs exist).
   const handleExpand = () => {
     setIsExpanded(prev => {
       const next = !prev;
       if (next && !runnerOpen && runSummaries.length > 0) {
-        const mostRecent = [...runSummaries].sort((a, b) => b.mtimeMs - a.mtimeMs)[0];
-        sendToVSCode('switchRun', { flowId: flow.id, runId: mostRecent.runId });
+        const activeRuns = runSummaries.filter(s => !s.isClosed);
+        if (activeRuns.length > 0) {
+          const mostRecent = [...activeRuns].sort((a, b) => b.mtimeMs - a.mtimeMs)[0];
+          sendToVSCode('switchRun', { flowId: flow.id, runId: mostRecent.runId });
+        }
       }
       return next;
     });
   };
 
   return (
-    <div className="panel">
+    <div className="panel" ref={containerRef}>
       {/* Panel header — always visible */}
       <div className="panel-head">
         <div className="panel-head-info">
           <span className="panel-title">{flow.name}</span>
           <span className="muted small">{flow.steps.length} steps</span>
-          {runnerOpen && <span className="badge progress">run active</span>}
+          {runnerOpen && !runState?.isClosed && <span className="badge progress">run active</span>}
+          {runnerOpen && runState?.isClosed && <span className="badge success">run finalized</span>}
         </div>
         <div className="panel-head-actions">
           <button
@@ -121,6 +128,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
                     const needsReview = step.review.required;
                     const reviewLabel = step.review.type === 'ai' ? 'auto review' : 'human review';
                     const stepIndex = flow.steps.findIndex(s => s.id === step.id);
+
                     return (
                       <div
                         key={step.id}
@@ -191,7 +199,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
                   <option value="" disabled>Select run...</option>
                   {runSummaries.map(s => (
                     <option key={s.runId} value={s.runId}>
-                      {s.runName || s.runId.split('T')[0]} ({s.completedSteps}/{s.totalSteps})
+                      {s.isClosed ? '✓ ' : ''}{s.runName || s.runId.split('T')[0]} ({s.completedSteps}/{s.totalSteps})
                     </option>
                   ))}
                 </select>

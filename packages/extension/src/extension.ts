@@ -82,6 +82,10 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.commands.registerCommand('ai-stepflow.openOverview', () => {
         CockpitPanel.createOrShow(context.extensionUri, configManager, stateManager);
       }),
+      vscode.commands.registerCommand('ai-stepflow.openRun', async (flowId: string, runId: string) => {
+        CockpitPanel.createOrShow(context.extensionUri, configManager, stateManager);
+        await CockpitPanel.currentPanel?.openRun(flowId, runId);
+      }),
       vscode.commands.registerCommand('ai-stepflow.openTab', (tab: string) => {
         CockpitPanel.createOrShow(context.extensionUri, configManager, stateManager);
         CockpitPanel.currentPanel?.postMessage({ type: 'navigateToTab', tab: tab as 'flows' | 'agents' | 'skills' });

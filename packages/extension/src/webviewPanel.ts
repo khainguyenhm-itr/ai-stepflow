@@ -229,7 +229,8 @@ export class CockpitPanel {
         await this._runner.resetRun();
         return;
       case 'closeRun':
-        await this._runner.closeRun();
+        await this._runner.closeRun(message.finalize);
+        await this._sendAllData();
         return;
       case 'deleteRun': {
         const runState = this._runner.runState;
@@ -592,6 +593,27 @@ export class CockpitPanel {
 
   private _buildCommandPrompt(commandName: string, description?: string): string {
     return description?.trim() ? `/${commandName} ${description.trim()}` : `/${commandName}`;
+  }
+
+  public async openRun(flowId: string, runId: string) {
+    // Ensure the panel is ready before sending the explicit restore message
+    if (!this._isReady) {
+      // If we enqueue this, we must ensure it runs *after* the initial restore() call
+      // that might happen on 'ready'. But since this is a user action, we can just wait a bit or let
+      // the front-end fetch it via 'switchRun'. Instead, we push it as a HostMessage.
+      // But we need to load the run first.
+    }
+    const [runs, flows] = await Promise.all([
+      this.stateManager.loadRuns(),
+      this.configManager.loadFlows()
+    ]);
+    const run = runs.find(r => r.flowId === flowId && r.runId === runId);
+    const flow = flows.find(f => f.id === flowId);
+    if (run && flow) {
+      this._runner.setFlowAndRunState(flow, run);
+      this.postMessage({ type: 'restoreRun', flow, runState: run });
+      this.postMessage({ type: 'navigateToTab', tab: 'flows' });
+    }
   }
 
   public dispose() {

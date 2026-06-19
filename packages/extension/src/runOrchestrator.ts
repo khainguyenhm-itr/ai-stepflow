@@ -373,8 +373,15 @@ export class RunOrchestrator {
     }
   }
 
-  /** Clear the current active run from the cockpit view without deleting its data. */
-  async closeRun(): Promise<void> {
+  /** Clear the current active run from the cockpit view. */
+  async closeRun(finalize?: boolean): Promise<void> {
+    if (this._runState) {
+      if (finalize) {
+        // When finalizing, mark the whole flow closed.
+        this._runState = { ...this._runState, isClosed: true };
+      }
+      await this.stateManager.saveRun(this._runState);
+    }
     this._currentFlow = undefined;
     this._runState = undefined;
     this._cancelledStepIds.clear();

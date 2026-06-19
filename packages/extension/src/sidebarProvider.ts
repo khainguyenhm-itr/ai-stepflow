@@ -37,9 +37,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       };
       view.webview.html = this._getHtml(view.webview);
 
-      view.webview.onDidReceiveMessage(async (message: { type?: string; path?: string; url?: string; pluginId?: string; pluginName?: string; enable?: boolean; mcpName?: string; mcpTarget?: string; tab?: string; kind?: BundledKind; filename?: string; isGlobal?: boolean }) => {
+      view.webview.onDidReceiveMessage(async (message: { type?: string; path?: string; url?: string; pluginId?: string; pluginName?: string; enable?: boolean; mcpName?: string; mcpTarget?: string; tab?: string; kind?: BundledKind; filename?: string; isGlobal?: boolean; flowId?: string; runId?: string; }) => {
         try {
           switch (message?.type) {
+            case 'openRun':
+              if (message.flowId && message.runId) {
+                await vscode.commands.executeCommand('ai-stepflow.openRun', message.flowId, message.runId);
+              } else {
+                await vscode.commands.executeCommand('ai-stepflow.openOverview');
+              }
+              return;
             case 'openOverview':
               if (message.tab) {
                 await vscode.commands.executeCommand('ai-stepflow.openTab', message.tab);
@@ -1017,7 +1024,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         else if (act === 'uninstall') vscode.postMessage({ type: 'uninstallPlugin', pluginId: id, pluginName: name });
         else if (act === 'mcpReconnect') vscode.postMessage({ type: 'reconnectMcp', mcpName: name, mcpTarget: btn.getAttribute('data-target') });
         else if (act === 'mcpDetails') vscode.postMessage({ type: 'mcpDetails', mcpName: name });
-        else if (act === 'openRun') vscode.postMessage({ type: 'openOverview' });
+        else if (act === 'openRun') vscode.postMessage({ type: 'openRun', flowId: btn.getAttribute('data-flow-id'), runId: btn.getAttribute('data-run-id') });
         else if (act === 'openFile') vscode.postMessage({ type: 'openFile', path: btn.getAttribute('data-path') });
         else if (act === 'deleteRun') vscode.postMessage({ type: 'deleteRun', path: btn.getAttribute('data-path') });
         else if (act === 'openExternal') vscode.postMessage({ type: 'openExternal', url: btn.getAttribute('data-url') });
@@ -1055,7 +1062,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     if (activeRun) {
       const step = activeRun.currentStep;
-      const detailAttr = activeRun.filePath ? 'data-act="openFile" data-path="' + esc(activeRun.filePath) + '"' : 'data-act="openRun"';
+      const detailAttr = activeRun.filePath ? 'data-act="openFile" data-path="' + esc(activeRun.filePath) + '"' : 'data-act="openRun" data-flow-id="' + esc(activeRun.flowId) + '" data-run-id="' + esc(activeRun.runId) + '"';
       const stepHtml = step
         ? '<div class="run-step-row">' +
             '<span class="run-step-name">' + esc(step.title) + '</span>' +
@@ -1070,7 +1077,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             '</div>' +
             '<span class="run-card-acts">' +
               actionMenu([
-                menuItem('Open cockpit', 'data-act="openRun"'),
+                menuItem('Open cockpit', 'data-act="openRun" data-flow-id="' + esc(activeRun.flowId) + '" data-run-id="' + esc(activeRun.runId) + '"'),
                 menuItem('View run file', detailAttr),
                 menuItem('Delete run', 'data-act="deleteRun" data-path="' + esc(activeRun.filePath || '') + '"', true, activeRun.isRunning)
               ]) +
@@ -1100,7 +1107,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             (badgeCls ? '<span class="run-sbadge ' + badgeCls + '">' + badgeLabel + '</span>' : '') +
             '<span class="run-card-acts">' +
               actionMenu([
-                menuItem('Open cockpit', 'data-act="openRun"'),
+                menuItem('Open cockpit', 'data-act="openRun" data-flow-id="' + esc(f.flowId) + '" data-run-id="' + esc(f.runId) + '"'),
                 menuItem('View run file', 'data-act="openFile" data-path="' + esc(f.filePath) + '"'),
                 menuItem('Delete run', 'data-act="deleteRun" data-path="' + esc(f.filePath) + '"', true)
               ]) +

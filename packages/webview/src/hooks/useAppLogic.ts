@@ -46,7 +46,7 @@ export const useAppLogic = () => {
   const [globalPath, setGlobalPath] = useState<string>('');
   const [projectPath, setProjectPath] = useState<string>('');
   const [connectedMcpServers, setConnectedMcpServers] = useState<string[]>([]);
-  const [runSummaries, setRunSummaries] = useState<{ flowId: string; runId: string; runName?: string; completedSteps: number; totalSteps: number; mtimeMs: number }[]>([]);
+  const [runSummaries, setRunSummaries] = useState<{ flowId: string; runId: string; runName?: string; completedSteps: number; totalSteps: number; mtimeMs: number; isClosed: boolean }[]>([]);
 
   const [activeFlow, setActiveFlow] = useState<Flow | null>(null);
   const [runState, setRunState] = useState<FlowRunState | null>(null);
@@ -177,7 +177,8 @@ export const useAppLogic = () => {
       runName: newRunState.runName,
       completedSteps: 0,
       totalSteps: flow.steps.length,
-      mtimeMs: Date.now()
+      mtimeMs: Date.now(),
+      isClosed: false
     }, ...prev]);
     sendToVSCode('updateRunState', { runState: newRunState });
   };

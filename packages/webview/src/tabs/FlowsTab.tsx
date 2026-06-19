@@ -11,7 +11,7 @@ interface FlowsTabProps {
   agents: Agent[];
   skills: Skill[];
   auditLogs: Record<string, any[]>;
-  runSummaries: { flowId: string; runId: string; runName?: string; completedSteps: number; totalSteps: number; mtimeMs: number }[];
+  runSummaries: { flowId: string; runId: string; runName?: string; completedSteps: number; totalSteps: number; mtimeMs: number; isClosed: boolean }[];
   activeFlow: Flow | null;
   runState: FlowRunState | null;
   runnerVisible: boolean;
