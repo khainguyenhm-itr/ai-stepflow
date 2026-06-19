@@ -15,6 +15,8 @@ export class ConfigManager {
   /** Markers wrapping the block we merge into a project's CLAUDE.md, so it can be removed cleanly on uninstall. */
   private static readonly CLAUDE_MD_START = '<!-- ai-stepflow:karpathy:start -->';
   private static readonly CLAUDE_MD_END = '<!-- ai-stepflow:karpathy:end -->';
+  private static readonly STYLE_MD_START = '<!-- ai-stepflow:style:start -->';
+  private static readonly STYLE_MD_END = '<!-- ai-stepflow:style:end -->';
 
   constructor(private readonly extensionPath?: string) {
     this.globalPath = path.join(os.homedir(), '.claude');
@@ -596,6 +598,43 @@ export class ConfigManager {
       await fs.writeFile(prefsPath, JSON.stringify(prefs, null, 2), 'utf8');
     } catch (e) {
       console.error('AI StepFlow: failed to save ui pref', e);
+    }
+  }
+
+  /**
+   * Inject or remove a response-style instruction block in the project CLAUDE.md.
+   * 'concise' → upserts the block; 'default' → removes it.
+   */
+  public async applyResponseStyle(style: string): Promise<void> {
+    if (!this.projectPath) return;
+    const claudeMdPath = path.join(this.projectPath, 'CLAUDE.md');
+    const start = ConfigManager.STYLE_MD_START;
+    const end = ConfigManager.STYLE_MD_END;
+    const block = style === 'concise'
+      ? `${start}\n## AI Response Style\nBe concise and direct. Skip preamble, filler phrases, and trailing summaries. Answer in the fewest words that are still complete and accurate.\n${end}`
+      : null;
+
+    let content = '';
+    try { content = await fs.readFile(claudeMdPath, 'utf8'); } catch { /* file may not exist */ }
+
+    // Remove existing block if present
+    const startIdx = content.indexOf(start);
+    const endIdx = content.indexOf(end);
+    if (startIdx !== -1 && endIdx !== -1) {
+      content = (content.slice(0, startIdx) + content.slice(endIdx + end.length)).replace(/\n{3,}/g, '\n\n').trim();
+    }
+
+    if (block) {
+      content = content ? `${content}\n\n${block}\n` : `${block}\n`;
+    }
+
+    try {
+      if (content) {
+        await fs.mkdir(path.dirname(claudeMdPath), { recursive: true });
+        await fs.writeFile(claudeMdPath, content, 'utf8');
+      }
+    } catch (e) {
+      console.error('AI StepFlow: failed to apply response style to CLAUDE.md', e);
     }
   }
 

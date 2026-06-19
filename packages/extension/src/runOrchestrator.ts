@@ -375,6 +375,8 @@ export class RunOrchestrator {
 
   /** Clear the current active run from the cockpit view. */
   async closeRun(finalize?: boolean): Promise<void> {
+    const flowId = this._currentFlow?.id;
+    const runId = this._runState?.runId;
     if (this._runState) {
       if (finalize) {
         // When finalizing, mark the whole flow closed.
@@ -387,7 +389,7 @@ export class RunOrchestrator {
     this._cancelledStepIds.clear();
     this._startedStepIds.clear();
     this._parkedStepIds.clear();
-    this.post({ type: 'runClosed' });
+    this.post({ type: 'runClosed', flowId, runId, finalized: !!finalize });
   }
 
   /** Xóa lần chạy hiện tại: kết thúc các tiến trình đang bay, xóa tệp đã lưu, thông báo webview. */

@@ -255,6 +255,13 @@ export const useAppLogic = () => {
         break;
       }
       case 'runClosed':
+        if (message.finalized && message.flowId && message.runId) {
+          setRunSummaries(prev => prev.map(s =>
+            s.flowId === message.flowId && s.runId === message.runId
+              ? { ...s, isClosed: true }
+              : s
+          ));
+        }
         setRunState(null);
         setActiveFlow(null);
         setActiveStepId(null);

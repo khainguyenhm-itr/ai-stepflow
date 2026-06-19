@@ -115,6 +115,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             case 'uninstallPlugin':
               if (message.pluginId) await this._runPluginTask(message.pluginId, message.pluginName, 'uninstall');
               return;
+            case 'savePref':
+              if ((message as any).key && (message as any).value !== undefined) {
+                await this.configManager.saveUiPref((message as any).key, (message as any).value);
+                if ((message as any).key === 'ai:responseStyle') {
+                  await this.configManager.applyResponseStyle((message as any).value);
+                }
+              }
+              return;
             case 'reconnectMcp':
               if (message.mcpName && message.mcpTarget) await this._reconnectMcp(message.mcpName, message.mcpTarget);
               return;
@@ -156,13 +164,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     if (!this._view) return;
 
     try {
-      const [flows, agents, skills, runFiles, activeRun, defaultItems] = await Promise.all([
+      const [flows, agents, skills, runFiles, activeRun, defaultItems, uiPrefs] = await Promise.all([
         this.configManager.loadFlows().catch(() => []),
         this.configManager.loadAgents().catch(() => []),
         this.configManager.loadSkills().catch(() => []),
         this.stateManager.listRunFiles().catch(() => []),
         this.stateManager.loadLatestRun().catch(() => undefined),
-        this.configManager.listBundledDefaults().catch(() => [])
+        this.configManager.listBundledDefaults().catch(() => []),
+        this.configManager.loadUiPrefs().catch(() => ({} as Record<string, string>))
       ]);
       const flowName = (id: string) => flows.find(f => f.id === id)?.name || id;
 
@@ -214,17 +223,20 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         type: 'data',
         stats: { flows: flows.length, agents: agents.length, skills: skills.length },
         defaultItems: annotatedItems,
-        activeRun: active,
+        uiPrefs,
         mcp: this._cachedMcp,
         plugins: this._cachedPlugins,
         pluginsAvailable: this._cachedAvailable,
-        runFiles: runFiles.filter(f => f.runId !== activeRun?.runId).map(file => ({
+        runFiles: runFiles.map(file => ({
+          flowId: file.flowId,
           flowName: flowName(file.flowId),
           runId: file.runId,
           runName: file.runName,
           completed: file.completedSteps,
           total: file.totalSteps,
-          filePath: file.filePath
+          filePath: file.filePath,
+          isClosed: file.isClosed,
+          isActive: file.runId === activeRun?.runId
         })),
         totalRunFiles: runFiles.length
       });
@@ -443,7 +455,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .run-card.run-done .run-card-bar-fill { background: var(--success); }
     .run-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
     .run-card-meta { font-size: 10px; color: var(--muted); }
-    .run-card-acts { flex-shrink: 0; opacity: 0; transition: opacity .1s; }
+    .run-card-acts { flex-shrink: 0; opacity: 1; }
     .run-card:hover .run-card-acts, .run-card.run-active .run-card-acts { opacity: 1; }
     .run-sbadge { display: inline-flex; align-items: center; height: 14px; padding: 0 5px; border-radius: 9px; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; white-space: nowrap; flex-shrink: 0; margin-top: 1px; }
     .run-sbadge.running { background: var(--vscode-charts-blue, var(--focus)); color: #fff; }
@@ -456,6 +468,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .badge { display: inline-flex; align-items: center; height: 16px; padding: 0 6px; border-radius: 9px; font-size: 9px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--badge-fg); background: var(--badge); white-space: nowrap; flex: 0 0 auto; }
     .badge.running { background: var(--vscode-charts-blue, var(--focus)); }
     .badge.completed { background: var(--success); }
+
+    /* ── settings ── */
+    .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); margin-top: 4px; }
+    .setting-label { font-size: 11px; color: var(--fg); }
 
     /* ── section ── */
     .sec { margin-top: 8px; }
@@ -638,6 +654,20 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       <div class="box" id="runs-panel"><div id="runs"><span class="empty">No runs yet</span></div></div>
     </section>
 
+    <!-- project settings -->
+    <section class="sec">
+      <div class="sec-hdr" style="padding: 9px 8px;">
+        <span class="sec-label">Project Settings</span>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">AI Response Style</span>
+        <select id="ai-style-select" class="input sm">
+          <option value="default">Default</option>
+          <option value="concise">Concise</option>
+        </select>
+      </div>
+    </section>
+
   </div><!-- /.body -->
 </div><!-- /.shell -->
 <footer>AI StepFlow</footer>
@@ -711,7 +741,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   let pluginQuery = '';
   let installedPlugins = [];
   let availablePlugins = [];
-  let lastActiveRun = null;
   let lastRunFiles = [];
   let lastRunTotal = 0;
   const sectionOpen = { mcp: false, plugins: false, runs: false };
@@ -1045,84 +1074,49 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     });
   }
 
-  function renderRuns(activeRun, files, total) {
-    lastActiveRun = activeRun || null;
+  function renderRuns(files, total) {
     lastRunFiles = files || [];
     lastRunTotal = total || 0;
     const el = document.getElementById('runs');
     const totalCount = total || 0;
     document.getElementById('runs-count').textContent = totalCount ? String(totalCount) : '';
 
-    if (!activeRun && (!files || !files.length)) {
+    if (!files || !files.length) {
       el.innerHTML = '<span class="empty">No runs yet</span>';
       return;
     }
 
-    let html = '';
-
-    if (activeRun) {
-      const step = activeRun.currentStep;
-      const detailAttr = activeRun.filePath ? 'data-act="openFile" data-path="' + esc(activeRun.filePath) + '"' : 'data-act="openRun" data-flow-id="' + esc(activeRun.flowId) + '" data-run-id="' + esc(activeRun.runId) + '"';
-      const stepHtml = step
-        ? '<div class="run-step-row">' +
-            '<span class="run-step-name">' + esc(step.title) + '</span>' +
-          '</div>'
-        : '';
-      html +=
-        '<div class="run-card run-active">' +
-          '<div class="run-card-head">' +
-            '<div class="run-card-titles">' +
-              '<div class="run-card-title" title="' + esc(activeRun.runName || activeRun.flowName) + '">' + esc(activeRun.runName || activeRun.flowName) + '</div>' +
-              (activeRun.runName ? '<div class="run-card-sub" title="' + esc(activeRun.flowName) + '">' + esc(activeRun.flowName) + '</div>' : '') +
-            '</div>' +
-            '<span class="run-card-acts">' +
-              actionMenu([
-                menuItem('Open cockpit', 'data-act="openRun" data-flow-id="' + esc(activeRun.flowId) + '" data-run-id="' + esc(activeRun.runId) + '"'),
-                menuItem('View run file', detailAttr),
-                menuItem('Delete run', 'data-act="deleteRun" data-path="' + esc(activeRun.filePath || '') + '"', true, activeRun.isRunning)
-              ]) +
-            '</span>' +
+    el.innerHTML = files.map(f => {
+      const isActive = !!f.isActive;
+      const isFinalized = !!f.isClosed;
+      const isDone = f.completed === f.total && f.total > 0;
+      const isPartial = f.completed > 0 && !isDone;
+      const percent = f.total > 0 ? Math.round((f.completed / f.total) * 100) : 0;
+      const cardCls = isActive ? ' run-active' : (isDone ? ' run-done' : '');
+      const badgeCls = isActive ? 'running' : isFinalized ? 'done' : isDone ? 'done' : isPartial ? 'partial' : '';
+      const badgeLabel = isActive ? 'Active' : isFinalized ? '✓ Finalized' : isDone ? '✓ Done' : f.completed + '/' + f.total;
+      return '<div class="run-card' + cardCls + '">' +
+        '<div class="run-card-head">' +
+          '<div class="run-card-titles">' +
+            '<div class="run-card-title" title="' + esc(f.runName || f.flowName) + '">' + esc(f.runName || f.flowName) + '</div>' +
+            (f.runName ? '<div class="run-card-sub" title="' + esc(f.flowName) + '">' + esc(f.flowName) + '</div>' : '') +
           '</div>' +
-          '<div class="run-card-bar"><div class="run-card-bar-fill" style="width:' + activeRun.percent + '%"></div></div>' +
-          '<div class="run-card-foot">' +
-            '<span class="run-card-meta">' + activeRun.completed + '/' + activeRun.total + ' steps · ' + activeRun.percent + '%</span>' +
-            stepHtml +
-          '</div>' +
-        '</div>';
-    }
-
-    if (files && files.length) {
-      html += files.map(f => {
-        const isDone = f.completed === f.total && f.total > 0;
-        const isPartial = f.completed > 0 && !isDone;
-        const percent = f.total > 0 ? Math.round((f.completed / f.total) * 100) : 0;
-        const badgeCls = isDone ? 'done' : isPartial ? 'partial' : '';
-        const badgeLabel = isDone ? '✓ Done' : f.completed + '/' + f.total;
-        return '<div class="run-card' + (isDone ? ' run-done' : '') + '">' +
-          '<div class="run-card-head">' +
-            '<div class="run-card-titles">' +
-              '<div class="run-card-title" title="' + esc(f.runName || f.flowName) + '">' + esc(f.runName || f.flowName) + '</div>' +
-              (f.runName ? '<div class="run-card-sub" title="' + esc(f.flowName) + '">' + esc(f.flowName) + '</div>' : '') +
-            '</div>' +
-            (badgeCls ? '<span class="run-sbadge ' + badgeCls + '">' + badgeLabel + '</span>' : '') +
-            '<span class="run-card-acts">' +
-              actionMenu([
-                menuItem('Open cockpit', 'data-act="openRun" data-flow-id="' + esc(f.flowId) + '" data-run-id="' + esc(f.runId) + '"'),
-                menuItem('View run file', 'data-act="openFile" data-path="' + esc(f.filePath) + '"'),
-                menuItem('Delete run', 'data-act="deleteRun" data-path="' + esc(f.filePath) + '"', true)
-              ]) +
-            '</span>' +
-          '</div>' +
-          '<div class="run-card-bar"><div class="run-card-bar-fill" style="width:' + percent + '%"></div></div>' +
-          '<div class="run-card-foot">' +
-            '<span class="run-card-meta">' + fmtDate(f.runId) + '</span>' +
-            '<span class="run-card-meta">' + f.completed + '/' + f.total + ' steps</span>' +
-          '</div>' +
-        '</div>';
-      }).join('');
-    }
-
-    el.innerHTML = html;
+          (badgeCls ? '<span class="run-sbadge ' + badgeCls + '">' + badgeLabel + '</span>' : '') +
+          '<span class="run-card-acts">' +
+            actionMenu([
+              menuItem('Open cockpit', 'data-act="openRun" data-flow-id="' + esc(f.flowId) + '" data-run-id="' + esc(f.runId) + '"'),
+              menuItem('View run file', 'data-act="openFile" data-path="' + esc(f.filePath) + '"'),
+              menuItem('Delete run', 'data-act="deleteRun" data-path="' + esc(f.filePath) + '"', true)
+            ]) +
+          '</span>' +
+        '</div>' +
+        '<div class="run-card-bar"><div class="run-card-bar-fill" style="width:' + percent + '%"></div></div>' +
+        '<div class="run-card-foot">' +
+          '<span class="run-card-meta">' + fmtDate(f.runId) + '</span>' +
+          '<span class="run-card-meta">' + f.completed + '/' + f.total + ' steps</span>' +
+        '</div>' +
+      '</div>';
+    }).join('');
     bindActionButtons(el);
   }
 
@@ -1139,7 +1133,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         pluginsReceived = true;
         setMcpData(m.mcp);
         setPluginData(m.plugins, m.pluginsAvailable);
-        renderRuns(m.activeRun, m.runFiles, m.totalRunFiles);
+        renderRuns(m.runFiles, m.totalRunFiles);
+        const styleSelect = document.getElementById('ai-style-select');
+        if (styleSelect && m.uiPrefs) styleSelect.value = m.uiPrefs['ai:responseStyle'] || 'default';
       } else if (m.type === 'mcp') {
         mcpReceived = true;
         setMcpData(m.mcp);
@@ -1152,6 +1148,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       renderPanelError('mcp', 'Connections');
       renderPanelError('plugins', 'Plugins');
     }
+  });
+
+  document.getElementById('ai-style-select').addEventListener('change', function() {
+    vscode.postMessage({ type: 'savePref', key: 'ai:responseStyle', value: this.value });
   });
 </script>
 </body>

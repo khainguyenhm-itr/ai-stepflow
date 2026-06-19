@@ -195,7 +195,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
               onClick={() => sendToVSCode('closeRun', { finalize: true })}
             >
               <Icon.Check size={14} style={{ marginRight: 4 }} />
-              Done Flow
+              Done Run
             </button>
           )}
           {!isFinalized && !isFlowDone && canResetRun && (
