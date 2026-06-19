@@ -507,7 +507,8 @@ export class ConfigManager {
       description: agent.description || '',
       model: agent.model || 'sonnet',
       ...(agent.tools?.length ? { tools: agent.tools } : {}),
-      ...(agent.maxTurns != null && agent.maxTurns >= 0 ? { maxTurns: agent.maxTurns } : {})
+      ...(agent.maxTurns != null && agent.maxTurns >= 0 ? { maxTurns: agent.maxTurns } : {}),
+      ...(agent.aiConversation?.length ? { aiConversation: agent.aiConversation } : {})
     });
 
     await fs.writeFile(filePath, frontmatter, 'utf8');
@@ -521,7 +522,8 @@ export class ConfigManager {
     const filePath = path.join(targetDir, 'SKILL.md');
     const frontmatter = matter.stringify(skill.instructions || '', {
       name: skill.name,
-      description: skill.description || ''
+      description: skill.description || '',
+      ...(skill.aiConversation?.length ? { aiConversation: skill.aiConversation } : {})
     });
 
     await fs.writeFile(filePath, frontmatter, 'utf8');
@@ -550,12 +552,14 @@ export class ConfigManager {
       const fallbackName = path.basename(filePath).toUpperCase() === 'SKILL.MD'
         ? path.basename(path.dirname(filePath))
         : path.basename(filePath, '.md');
+      const aiConversation = Array.isArray(data.aiConversation) ? data.aiConversation : undefined;
       return {
         name: data.name || fallbackName,
         description: data.description || '',
         instructions: body.trim(),
         sourcePath: filePath,
-        builtIn: this.hasBuiltInMarker(content)
+        builtIn: this.hasBuiltInMarker(content),
+        ...(aiConversation ? { aiConversation } : {})
       };
     } catch (e: any) {
       if (logMissing || e?.code !== 'ENOENT') {
@@ -569,7 +573,7 @@ export class ConfigManager {
   private isManagedPath(targetPath: string): boolean {
     const normalized = path.normalize(targetPath);
     const roots = [path.join(this.globalPath, '')];
-    if (this.projectPath) roots.push(path.join(this.projectPath, '.claude'));
+    if (this.projectPath) roots.push(path.join(this.projectPath, '.ai-stepflow'));
     return roots.some(root => normalized.startsWith(path.normalize(root) + path.sep));
   }
 
@@ -682,7 +686,7 @@ export class ConfigManager {
   private scopedDirs(kind: 'agents' | 'skills' | 'flows'): string[] {
     const dirs = [path.join(this.globalPath, kind)];
     if (this.projectPath) {
-      dirs.push(path.join(this.projectPath, '.claude', kind));
+      dirs.push(path.join(this.projectPath, '.ai-stepflow', kind));
     }
     return dirs;
   }
@@ -692,7 +696,7 @@ export class ConfigManager {
     if (!this.projectPath) {
       throw new Error('No workspace folder is open; cannot save to the current repo. Save globally instead.');
     }
-    return path.join(this.projectPath, '.claude', kind);
+    return path.join(this.projectPath, '.ai-stepflow', kind);
   }
 
   private async listFiles(dir: string, predicate: (name: string) => boolean): Promise<string[]> {
@@ -719,6 +723,7 @@ export class ConfigManager {
       // Strip leading HTML comment (e.g. built-in marker) so gray-matter can find --- frontmatter
       const stripped = content.replace(/^<!--[\s\S]*?-->\s*\n/, '');
       const { data, content: body } = matter(stripped);
+      const aiConversation = Array.isArray(data.aiConversation) ? data.aiConversation : undefined;
       return {
         name: data.name || path.basename(filePath, '.md'),
         description: data.description || '',
@@ -727,7 +732,8 @@ export class ConfigManager {
         systemPrompt: body.trim(),
         sourcePath: filePath,
         builtIn: this.hasBuiltInMarker(content),
-        ...(typeof data.maxTurns === 'number' ? { maxTurns: data.maxTurns } : {})
+        ...(typeof data.maxTurns === 'number' ? { maxTurns: data.maxTurns } : {}),
+        ...(aiConversation ? { aiConversation } : {})
       };
     } catch (e) {
       console.error(`Error parsing agent file ${filePath}:`, e);

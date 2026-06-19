@@ -17,6 +17,8 @@ export interface Agent {
   maxTurns?: number;
   /** True when the agent file declares itself as built-in metadata. */
   builtIn?: boolean;
+  /** History of the AI conversation that generated/refined this agent. */
+  aiConversation?: FlowAiMessage[];
 }
 
 /** Fields the create/update forms send for an agent (a subset of Agent). */
@@ -27,6 +29,7 @@ export interface AgentInput {
   tools?: string[];
   systemPrompt?: string;
   maxTurns?: number;
+  aiConversation?: FlowAiMessage[];
 }
 
 export interface Skill {
@@ -36,6 +39,8 @@ export interface Skill {
   sourcePath: string;
   /** True when the skill is a markdown file directly inside the skills directory. */
   builtIn?: boolean;
+  /** History of the AI conversation that generated/refined this skill. */
+  aiConversation?: FlowAiMessage[];
 }
 
 /** Fields the create/update forms send for a skill (a subset of Skill). */
@@ -43,6 +48,7 @@ export interface SkillInput {
   name: string;
   description?: string;
   instructions?: string;
+  aiConversation?: FlowAiMessage[];
 }
 
 export interface FlowStep {

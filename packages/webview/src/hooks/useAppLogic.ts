@@ -400,7 +400,8 @@ export const useAppLogic = () => {
         model: agentForm.model || 'claude-sonnet-4-6',
         tools: agentForm.tools,
         systemPrompt: agentForm.systemPrompt || '',
-        ...(agentForm.maxTurns != null ? { maxTurns: agentForm.maxTurns } : {})
+        ...(agentForm.maxTurns != null ? { maxTurns: agentForm.maxTurns } : {}),
+        ...(agentAiMessages.length ? { aiConversation: agentAiMessages } : {})
       },
       originalSourcePath: editingAgentSource,
       isGlobal: agentForm.scope === 'global'
@@ -428,7 +429,7 @@ export const useAppLogic = () => {
     }
     setAgentFormError(null);
     setAgentAiPrompt('');
-    setAgentAiMessages([]);
+    setAgentAiMessages(agent?.aiConversation || []);
     setAgentModalOpen(true);
   };
 
@@ -458,7 +459,8 @@ export const useAppLogic = () => {
       skill: {
         name: skillForm.name.trim(),
         description: skillForm.description || '',
-        instructions: skillForm.instructions || ''
+        instructions: skillForm.instructions || '',
+        ...(skillAiMessages.length ? { aiConversation: skillAiMessages } : {})
       },
       originalSourcePath: editingSkillSource,
       isGlobal: skillForm.scope === 'global'
@@ -483,7 +485,7 @@ export const useAppLogic = () => {
     }
     setSkillFormError(null);
     setSkillAiPrompt('');
-    setSkillAiMessages([]);
+    setSkillAiMessages(skill?.aiConversation || []);
     setSkillModalOpen(true);
   };
 
