@@ -373,8 +373,8 @@ export class RunOrchestrator {
     });
     await Promise.all([
       this.stateManager.clearAuditLog(flow.id, oldRunId),
-      this.stateManager.deleteRunFile(flow.id, oldRunId),
-      this.stateManager.deleteReportFile(flow.id, oldRunId),
+      this.stateManager.deleteRunFile(this._runState),
+      this.stateManager.deleteReportFile(this._runState),
     ]);
     this.post({ type: 'resetAuditLog', flowId: flow.id });
     await this._setRunState(freshState);
@@ -421,8 +421,8 @@ export class RunOrchestrator {
 
     await Promise.all([
       this.stateManager.clearAuditLog(flow.id, runId),
-      this.stateManager.deleteRunFile(flow.id, runId),
-      this.stateManager.deleteReportFile(flow.id, runId),
+      this.stateManager.deleteRunFile(this._runState),
+      this.stateManager.deleteReportFile(this._runState),
     ]);
 
     this._currentFlow = undefined;
@@ -455,7 +455,7 @@ export class RunOrchestrator {
     if (!this._currentFlow || !this._runState) return;
     const auditLog = await this.stateManager.loadAuditLog(this._currentFlow.id);
     const markdown = renderRunReport(this._currentFlow, this._runState, auditLog);
-    const filePath = await this.stateManager.saveReport(this._currentFlow.id, this._runState.runId, markdown);
+    const filePath = await this.stateManager.saveReport(this._runState, markdown);
     if (!filePath) return;
     const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
     await vscode.window.showTextDocument(doc, { preview: false });

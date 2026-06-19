@@ -48,6 +48,7 @@ export function initRunState(flow: Flow, opts: { runId: string; runName?: string
     flowId: flow.id,
     runId: opts.runId,
     runName: opts.runName,
+    flowName: flow.name,
     source: flow.sourcePath,
     projectPath: opts.projectPath ?? '',
     inputs: opts.inputs ?? {},

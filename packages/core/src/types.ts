@@ -142,6 +142,8 @@ export interface FlowRunState {
   flowId: string;
   runId: string;
   runName?: string;
+  /** Human-readable flow name, captured at run creation so the run file can be named by slug. */
+  flowName?: string;
   source: string;
   projectPath: string;
   inputs: Record<string, string>;

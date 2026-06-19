@@ -19,42 +19,50 @@ export class StateManager {
     return dir;
   }
 
+  /** Lowercase slug: spaces/punctuation → '-', collapsed, trimmed. Empty input → ''. */
+  private slugify(value: string): string {
+    return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  }
+
+  /** Readable run filename base: <flowName-slug>-<runName-slug>, falling back to ids when names are missing. */
+  private runFileBase(run: FlowRunState): string {
+    const flow = this.slugify(run.flowName || run.flowId) || this.slugify(run.flowId);
+    const name = this.slugify(run.runName || '') || this.slugify(run.runId);
+    return `${flow}-${name}`;
+  }
+
   public async saveRun(run: FlowRunState): Promise<void> {
     if (!this.projectPath) return;
 
     const runsDir = path.join(this.projectPath, '.ai-stepflow', 'runs');
     await fs.mkdir(runsDir, { recursive: true });
 
-    const safe = (value: string) => value.replace(/[^a-zA-Z0-9_-]+/g, '-');
-    const filePath = path.join(runsDir, `${safe(run.flowId)}-${safe(run.runId)}.json`);
+    const filePath = path.join(runsDir, `${this.runFileBase(run)}.json`);
 
     await fs.writeFile(filePath, JSON.stringify(run, null, 2), 'utf8');
   }
 
   /** Save a generated markdown report inside the repo so it can be shared or committed. */
-  public async saveReport(flowId: string, runId: string, content: string): Promise<string | undefined> {
+  public async saveReport(run: FlowRunState, content: string): Promise<string | undefined> {
     if (!this.projectPath) return undefined;
     const reportsDir = path.join(this.projectPath, '.ai-stepflow', 'reports');
     await fs.mkdir(reportsDir, { recursive: true });
-    const safe = (value: string) => value.replace(/[^a-zA-Z0-9_-]+/g, '-');
-    const filePath = path.join(reportsDir, `${safe(flowId)}-${safe(runId)}.md`);
+    const filePath = path.join(reportsDir, `${this.runFileBase(run)}.md`);
     await fs.writeFile(filePath, content, 'utf8');
     return filePath;
   }
 
-  /** Delete the persisted run JSON for a specific run. */
-  public async deleteRunFile(flowId: string, runId: string): Promise<void> {
+  /** Delete the persisted run JSON. Reconstructs the slug filename from the run itself. */
+  public async deleteRunFile(run: FlowRunState): Promise<void> {
     if (!this.projectPath) return;
-    const safe = (value: string) => value.replace(/[^a-zA-Z0-9_-]+/g, '-');
-    const filePath = path.join(this.projectPath, '.ai-stepflow', 'runs', `${safe(flowId)}-${safe(runId)}.json`);
+    const filePath = path.join(this.projectPath, '.ai-stepflow', 'runs', `${this.runFileBase(run)}.json`);
     try { await fs.unlink(filePath); } catch { /* ignore if not found */ }
   }
 
-  /** Delete the generated markdown report for a specific run. */
-  public async deleteReportFile(flowId: string, runId: string): Promise<void> {
+  /** Delete the generated markdown report. Reconstructs the slug filename from the run itself. */
+  public async deleteReportFile(run: FlowRunState): Promise<void> {
     if (!this.projectPath) return;
-    const safe = (value: string) => value.replace(/[^a-zA-Z0-9_-]+/g, '-');
-    const filePath = path.join(this.projectPath, '.ai-stepflow', 'reports', `${safe(flowId)}-${safe(runId)}.md`);
+    const filePath = path.join(this.projectPath, '.ai-stepflow', 'reports', `${this.runFileBase(run)}.md`);
     try { await fs.unlink(filePath); } catch { /* ignore if not found */ }
   }
 

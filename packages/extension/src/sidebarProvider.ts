@@ -377,7 +377,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         const raw = JSON.parse(await fsP.readFile(filePath, 'utf8'));
         await Promise.all([
           this.stateManager.clearAuditLog(raw.flowId, raw.runId),
-          this.stateManager.deleteReportFile(raw.flowId, raw.runId),
+          this.stateManager.deleteReportFile(raw),
         ]);
       } catch { /* best-effort: continue to delete the run file */ }
       await vscode.workspace.fs.delete(vscode.Uri.file(filePath));

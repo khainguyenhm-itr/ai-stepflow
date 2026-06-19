@@ -164,6 +164,7 @@ export const useAppLogic = () => {
       flowId: flow.id,
       runId: new Date().toISOString(),
       runName,
+      flowName: flow.name,
       source: flow.sourcePath,
       projectPath: '',
       inputs,

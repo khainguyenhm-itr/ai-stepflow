@@ -57,17 +57,26 @@ async function loadRunFile(filePath: string): Promise<FlowRunState> {
   return JSON.parse(await fs.readFile(filePath, 'utf8')) as FlowRunState;
 }
 
+function slugify(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
 async function saveRun(projectPath: string, run: FlowRunState): Promise<string> {
   const runsDir = path.join(projectPath, '.ai-stepflow', 'runs');
   await fs.mkdir(runsDir, { recursive: true });
-  const safe = (value: string) => value.replace(/[^a-zA-Z0-9_-]+/g, '-');
-  const filePath = path.join(runsDir, `${safe(run.flowId)}-${safe(run.runId)}.json`);
+  const filePath = path.join(runsDir, `${runFileBase(run)}.json`);
   await fs.writeFile(filePath, JSON.stringify(run, null, 2), 'utf8');
   return filePath;
 }
 
-async function saveReport(projectPath: string, flowId: string, runId: string, content: string, out?: string): Promise<string> {
-  const filePath = out ?? path.join(projectPath, '.ai-stepflow', 'reports', `${flowId.replace(/[^a-zA-Z0-9_-]+/g, '-')}-${runId.replace(/[^a-zA-Z0-9_-]+/g, '-')}.md`);
+function runFileBase(run: FlowRunState): string {
+  const flow = slugify(run.flowName || run.flowId) || slugify(run.flowId);
+  const name = slugify(run.runName || '') || slugify(run.runId);
+  return `${flow}-${name}`;
+}
+
+async function saveReport(projectPath: string, run: FlowRunState, content: string, out?: string): Promise<string> {
+  const filePath = out ?? path.join(projectPath, '.ai-stepflow', 'reports', `${runFileBase(run)}.md`);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, content, 'utf8');
   return filePath;
@@ -204,7 +213,7 @@ async function reportFromFiles(projectPath: string, flowRef: string, runFile: st
   if (!flow) throw new Error(`Flow not found: ${flowRef}`);
   const runState = await loadRunFile(runFile);
   const markdown = renderRunReport(flow, runState, []);
-  const filePath = await saveReport(projectPath, flow.id, runState.runId, markdown, out);
+  const filePath = await saveReport(projectPath, runState, markdown, out);
   process.stdout.write(`Report written to ${filePath}\n`);
   return 0;
 }
