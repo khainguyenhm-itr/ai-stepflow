@@ -8,7 +8,7 @@ import { TerminalManager } from './terminalManager.js';
 import { RunOrchestrator } from './runOrchestrator.js';
 import { validateMessage, WebviewMessage, HostMessage } from './messages.js';
 import { listConnectedMcpServers, addMcpServer } from './mcp.js';
-import { Agent, Flow, FlowStep, Skill, sanitizeFlowName } from '@ai-stepflow/core';
+import { Agent, Flow, FlowStep, Skill, extractJsonObject, sanitizeFlowName } from '@ai-stepflow/core';
 
 export class CockpitPanel {
   public static currentPanel: CockpitPanel | undefined;
@@ -352,7 +352,7 @@ export class CockpitPanel {
         return;
       }
       try {
-        const parsed = JSON.parse(this._extractJsonObject((result.resultText || text).trim())) as {
+        const parsed = JSON.parse(extractJsonObject((result.resultText || text).trim())) as {
           reply?: string; name?: string; description?: string; systemPrompt?: string; instructions?: string; maxTurns?: number | null;
         };
         this.postMessage({
@@ -421,7 +421,7 @@ export class CockpitPanel {
       }
 
       try {
-        const parsed = JSON.parse(this._extractJsonObject((result.resultText || text).trim())) as { reply?: string; flow?: Partial<Flow> };
+        const parsed = JSON.parse(extractJsonObject((result.resultText || text).trim())) as { reply?: string; flow?: Partial<Flow> };
         const generated = parsed.flow;
         if (!generated || !Array.isArray(generated.steps)) throw new Error('missing flow.steps');
         const flowName = typeof generated.name === 'string' ? generated.name : currentFlow?.name || '';
@@ -442,15 +442,6 @@ export class CockpitPanel {
         this.postMessage({ type: 'flowGenerated', error: `invalid AI response: ${why}` });
       }
     });
-  }
-
-  private _extractJsonObject(text: string): string {
-    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    const candidate = fenced?.[1]?.trim() || text;
-    const start = candidate.indexOf('{');
-    const end = candidate.lastIndexOf('}');
-    if (start < 0 || end < start) throw new Error('no JSON object found');
-    return candidate.slice(start, end + 1);
   }
 
   private _normalizeFlowInputs(inputs: unknown): Flow['inputs'] {

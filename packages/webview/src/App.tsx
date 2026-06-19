@@ -259,7 +259,7 @@ const App: React.FC = () => {
           })}
           isBookmarked={skill => isBookmarked('skill', skill.sourcePath)}
           onToggleBookmark={skill => toggleBookmark('skill', skill.sourcePath)}
-          onNew={scope => openSkillEditor({ name: '', description: '', instructions: '', sourcePath: scope === 'global' ? globalPath : projectPath })}
+          onNew={scope => openSkillEditor(undefined, scope)}
         />
       )}
 

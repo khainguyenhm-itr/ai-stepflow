@@ -101,3 +101,46 @@ export function summarizeUsage(usage: unknown): number | undefined {
 export function missingMarkers(contents: string, markers: string[]): string[] {
   return markers.filter(m => !contents.includes(m));
 }
+
+/**
+ * Extract the first complete JSON object from model output. The scanner tracks JSON
+ * strings and escapes, so braces and Markdown code fences inside string values do
+ * not truncate the object.
+ */
+export function extractJsonObject(text: string): string {
+  for (let start = text.indexOf('{'); start >= 0; start = text.indexOf('{', start + 1)) {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let index = start; index < text.length; index += 1) {
+      const char = text[index];
+
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (char === '\\') escaped = true;
+        else if (char === '"') inString = false;
+        continue;
+      }
+
+      if (char === '"') {
+        inString = true;
+      } else if (char === '{') {
+        depth += 1;
+      } else if (char === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          const candidate = text.slice(start, index + 1);
+          try {
+            JSON.parse(candidate);
+            return candidate;
+          } catch {
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  throw new Error('no JSON object found');
+}

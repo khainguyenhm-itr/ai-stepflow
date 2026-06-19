@@ -172,25 +172,21 @@ export const AgentModal: React.FC<AgentModalProps> = ({
         </div>
       </Field>
       <Field label="Max Turns" hint="limit agentic turns per headless run">
-        <input
-          className="input"
-          type="number"
-          min={0}
-          placeholder="default (global setting)"
-          value={form.maxTurns ?? ''}
-          onChange={e => {
-            const raw = e.target.value;
-            onChange({ maxTurns: raw === '' ? undefined : Math.max(0, parseInt(raw, 10) || 0) });
-          }}
-          style={{ width: 140 }}
-        />
+        <div className="max-turns-row">
+          <input
+            className="input"
+            type="number"
+            min={0}
+            placeholder="default"
+            value={form.maxTurns ?? ''}
+            onChange={e => {
+              const raw = e.target.value;
+              onChange({ maxTurns: raw === '' ? undefined : Math.max(0, parseInt(raw, 10) || 0) });
+            }}
+          />
+          <span className="max-turns-help">Để trống: mặc định (10) · Nhập <code>0</code>: không giới hạn</span>
+        </div>
       </Field>
-      <div className="info-note">
-        <strong>Max Turns</strong> giới hạn số vòng lặp tool-call Claude thực hiện mỗi step.<br />
-        Để trống → dùng setting toàn cục (<code>ai-stepflow.run.maxTurns</code>, mặc định 10).<br />
-        Nhập <code>0</code> → không giới hạn cho agent này.<br />
-        Agent có giá trị riêng sẽ ưu tiên hơn setting toàn cục.
-      </div>
       <Field label="System Prompt">
         <textarea className="input" rows={6} placeholder="Describe the agent role and operating rules." value={form.systemPrompt} onChange={e => onChange({ systemPrompt: e.target.value })} />
       </Field>

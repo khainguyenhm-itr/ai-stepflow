@@ -777,6 +777,27 @@ textarea.input {
   line-height: 1.5;
 }
 
+.max-turns-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.max-turns-row > .input {
+  flex: 0 0 140px;
+  width: 140px;
+}
+
+.max-turns-help {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
 .warning-banner {
   display: flex;
   align-items: center;
@@ -871,7 +892,6 @@ textarea.input {
   gap: 10px;
   min-height: 180px;
   padding: 14px;
-  padding-right: 42px;
   border: 1px solid var(--border);
   border-radius: 3px;
   background: var(--panel);
@@ -881,6 +901,22 @@ textarea.input {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.card-head-main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.card-head-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
 }
 
 .card-title {
@@ -897,24 +933,13 @@ textarea.input {
   flex: 0 0 auto;
 }
 
-.card-head .icon-btn {
-  margin-left: auto;
-}
-
-.card > .icon-btn.bookmark {
-  position: absolute;
-  top: 8px;
-  right: 8px;
+.card-head-actions .icon-btn.bookmark {
   color: var(--muted);
 }
 
-.card > .icon-btn.bookmark:hover,
-.card > .icon-btn.bookmark.active {
+.card-head-actions .icon-btn.bookmark:hover,
+.card-head-actions .icon-btn.bookmark.active {
   color: var(--bookmark);
-}
-
-.card-head .icon-btn.pencil {
-  margin-left: auto;
 }
 
 .card-description {

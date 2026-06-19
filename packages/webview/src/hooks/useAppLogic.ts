@@ -467,7 +467,7 @@ export const useAppLogic = () => {
     setSkillForm(emptySkillForm);
   };
 
-  const openSkillEditor = (skill?: Skill) => {
+  const openSkillEditor = (skill?: Skill, newScope: SaveScope = 'project') => {
     if (skill) {
       setSkillForm({
         name: skill.name,
@@ -477,7 +477,7 @@ export const useAppLogic = () => {
       });
       setEditingSkillSource(skill.sourcePath);
     } else {
-      setSkillForm(emptySkillForm);
+      setSkillForm({ ...emptySkillForm, scope: newScope });
       setEditingSkillSource(null);
     }
     setSkillFormError(null);
