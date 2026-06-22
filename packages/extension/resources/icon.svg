@@ -1,9 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-  <!-- Monochrome Lucide "swatch-book": the activity bar uses this as an alpha mask. -->
+  <!-- Monochrome Lucide "birdhouse": the activity bar uses this as an alpha mask. -->
   <g fill="none" stroke="#C5C5C5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M11 17a4 4 0 0 1-8 0V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2Z"/>
-    <path d="M16.7 13H19a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H7"/>
-    <path d="M 7 17h.01"/>
-    <path d="m11 8 2.3-2.3a2.4 2.4 0 0 1 3.404.004L18.6 7.6a2.4 2.4 0 0 1 .026 3.434L9.9 19.8"/>
+    <path d="M12 18v4"/>
+    <path d="m17 18 1.956-11.468"/>
+    <path d="m3 8 7.82-5.615a2 2 0 0 1 2.36 0L21 8"/>
+    <path d="M4 18h16"/>
+    <path d="M7 18 5.044 6.532"/>
+    <circle cx="12" cy="10" r="2"/>
   </g>
 </svg>

@@ -26,6 +26,10 @@ the Claude CLI without leaving the editor.
   gates via `approve`, `reject`, and `mark-done`.
 - **Create from scratch or import** — author agents/skills in the UI, draft a
   system prompt or skill body with Claude, or import an existing markdown file.
+- **GitNexus integration** — when the `gitnexus` MCP server is connected, a
+  GitNexus control appears in **Project Settings**: build/refresh the repo's
+  knowledge graph (Analyze / Re-analyze), see index freshness, join the repo to a
+  multi-repo **group**, and open the registry/group config files directly.
 
 ## Requirements
 
@@ -33,6 +37,15 @@ the Claude CLI without leaving the editor.
   ```sh
   npm install -g @anthropic-ai/claude-code
   ```
+- _(Optional)_ [GitNexus](https://www.npmjs.com/package/gitnexus) — enables the
+  GitNexus panel in **Project Settings**. Install it globally and register its MCP
+  server with Claude so the extension can detect the connection:
+  ```sh
+  npm install -g gitnexus
+  claude mcp add gitnexus -- gitnexus mcp
+  ```
+  The GitNexus control only appears once the `gitnexus` MCP server shows as
+  connected in the **MCP Connections** panel.
 
 ## Getting started
 
@@ -93,6 +106,35 @@ ai-stepflow mark-done --project . --flow .claude/flows/example.yaml --run .claud
 `verify` checks whether declared produced files and markers still match the saved
 run state. `report` writes a markdown report under `.claude-flow/reports` unless
 `--out` is provided.
+
+## GitNexus
+
+[GitNexus](https://www.npmjs.com/package/gitnexus) builds a per-repo knowledge
+graph (symbols, call edges, execution flows) and can link several repos into a
+**group** to extract cross-repo contracts (e.g. API calls between services). When
+its MCP server is connected, AI StepFlow surfaces it directly in **Project
+Settings** so you never leave the editor.
+
+**Install & connect** (global):
+
+```sh
+npm install -g gitnexus
+claude mcp add gitnexus -- gitnexus mcp
+```
+
+Reload the window; the GitNexus row appears in **Project Settings** once the
+`gitnexus` server is connected. From there you can:
+
+- **Analyze / Re-analyze** — run `gitnexus analyze` to build or refresh the
+  index. A status dot shows whether the index is up to date (green) or stale after
+  code changes (yellow); `analyze` is per-repo and does **not** depend on groups.
+- **Group select** — `Default (no group)`, any existing group, or
+  `＋ Create new group…`. Picking a group adds this repo, re-indexes, and runs
+  `group sync`; picking `Default` removes the repo from its group. Joining a group
+  requires the repo to be analyzed first.
+- **··· menu** — open the GitNexus **registry file** (`~/.gitnexus/registry.json`)
+  or the current **group config** (`~/.gitnexus/groups/<name>/group.yaml`) in the
+  editor.
 
 ## Commands
 
