@@ -196,7 +196,9 @@ export class RunOrchestrator {
       // Relative paths for agent prompt (cleaner than full system paths)
       const resolvedProduces = resolveTemplates(step.produces, runInputs)
         .map(p => resolveFlowRelativePath(p, flow.name));
-      const systemPrompt = composeSystemPrompt(agent, stepSkillNames, skills, resolvedProduces, runInputs);
+      const resolvedRequires = resolveTemplates(step.requires, runInputs)
+        .map(p => resolveFlowRelativePath(p, flow.name));
+      const systemPrompt = composeSystemPrompt(agent, stepSkillNames, skills, resolvedProduces, runInputs, resolvedRequires);
       const userMessage = resolveTemplate(description?.trim() || step.input?.prompt?.trim() || `Run step: ${step.title || step.id}`, runInputs);
       await this._setRunState(s => machine.markRunning(s, flow, stepId), { stepId, status: 'running', message: 'Run started (headless)' });
 
@@ -241,9 +243,14 @@ export class RunOrchestrator {
     const runInputs = this._runState?.inputs || {};
     const resolvedProduces = resolveTemplates(step.produces, runInputs)
       .map(p => resolveFlowRelativePath(p, flow.name));
+    const resolvedRequires = resolveTemplates(step.requires, runInputs)
+      .map(p => resolveFlowRelativePath(p, flow.name));
     const primarySkill = stepSkillNames[0];
     const desc = resolveTemplate(description?.trim() || step.input?.prompt?.trim() || `Run step: ${step.title || step.id}`, runInputs);
     let message = primarySkill ? `/${primarySkill} ${desc}` : desc;
+    if (resolvedRequires.length > 0) {
+      message += `\n\nMandatory input files (relative to workspace root, read these first):\n${resolvedRequires.map(p => `- ${p}`).join('\n')}`;
+    }
     if (resolvedProduces.length > 0) {
       message += `\n\nMandatory output files (relative to workspace root, you MUST create these):\n${resolvedProduces.map(p => `- ${p}`).join('\n')}`;
     }

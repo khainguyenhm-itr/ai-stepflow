@@ -9,7 +9,8 @@ import {
   Flow, FlowRunState, FlowStep,
   reviewStepArtifacts,
   resolveStepRunner,
-  renderVerifyReportMarkdown, verifyRun
+  renderVerifyReportMarkdown, verifyRun,
+  resolveTemplates
 } from '@ai-stepflow/core';
 import * as machine from '@ai-stepflow/core';
 
@@ -147,7 +148,7 @@ async function runFlow(projectPath: string, flowRef: string, inputs: Record<stri
 
     let output = '';
     const result = await runner({
-      systemPrompt: composeSystemPrompt(agent, stepSkillNames, skills),
+      systemPrompt: composeSystemPrompt(agent, stepSkillNames, skills, resolveTemplates(next.produces, runState.inputs), runState.inputs, resolveTemplates(next.requires, runState.inputs)),
       userMessage: next.input?.prompt?.trim() || `Run step: ${next.title || next.id}`,
       model: agent.model,
       maxTurns: agent.maxTurns ?? 10,

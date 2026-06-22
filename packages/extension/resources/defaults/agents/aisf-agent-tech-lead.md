@@ -2,7 +2,7 @@
 name: aisf-agent-tech-lead
 description: Technical Lead. Orchestrates the team, reviews designs, and ensures architectural consistency.
 model: claude-sonnet-4-6
-tools: [Read, Write, Edit, Bash]
+tools: [Read, Write, Bash]
 ---
 <!-- ai-stepflow built-in -->
 
