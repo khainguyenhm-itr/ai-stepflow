@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Flow, FlowStep, FlowRunState, StepRunState, Agent, Skill } from '@ai-stepflow/core/types';
 import { isVSCodeWebview, sendToVSCode } from '../vscode';
-import { 
-  getStepSkills, 
-  applyDependencyLocks, 
+import {
+  getStepSkills,
+  applyDependencyLocks,
   getDefaultActiveStepId,
   hasDependencyCycle
 } from '../flowUtils';
@@ -13,7 +13,8 @@ type Tab = 'flows' | 'agents' | 'skills';
 type SaveScope = 'project' | 'global';
 type FlowAiMessage = { role: 'user' | 'assistant'; content: string };
 type ScopeFilter = 'all' | 'project' | 'global';
-type ViewFilter = 'all' | 'bookmarked';
+type ViewFilter = 'all' | 'bookmarked' | 'built-in';
+type SortOrder = 'asc' | 'desc';
 
 const VALID_FILTERS: ScopeFilter[] = ['all', 'project', 'global'];
 const parseFilter = (v: string | undefined): ScopeFilter =>
@@ -98,7 +99,8 @@ export const useAppLogic = () => {
   const [skillFormError, setSkillFormError] = useState<string | null>(null);
   const [draftLoading, setDraftLoading] = useState<'agent' | 'skill' | null>(null);
   const [scopeFilters, setScopeFilters] = useState<{ flows: ScopeFilter; agents: ScopeFilter; skills: ScopeFilter }>({ flows: 'all', agents: 'all', skills: 'all' });
-  const [viewFilters, setViewFilters] = useState<{ agents: ViewFilter; skills: ViewFilter }>({ agents: 'all', skills: 'all' });
+  const [viewFilters, setViewFilters] = useState<{ flows: ViewFilter; agents: ViewFilter; skills: ViewFilter }>({ flows: 'all', agents: 'all', skills: 'all' });
+  const [sortOrders, setSortOrders] = useState<{ flows: SortOrder; agents: SortOrder; skills: SortOrder }>({ flows: 'asc', agents: 'asc', skills: 'asc' });
   const [agentAiPrompt, setAgentAiPrompt] = useState('');
   const [agentAiMessages, setAgentAiMessages] = useState<FlowAiMessage[]>([]);
   const [skillAiPrompt, setSkillAiPrompt] = useState('');
@@ -124,9 +126,9 @@ export const useAppLogic = () => {
   const getFlowScope = (flow: Flow): SaveScope => getItemScope(flow.sourcePath);
   const getAgentByName = (name: string) => agents.find(agent => agent.name === name);
   const getSkillByName = (name: string) => skills.find(skill => skill.name === name);
-  const getBookmarkKey = (kind: 'agent' | 'skill', sourcePath: string) => `${kind}:${sourcePath}`;
-  const isBookmarked = (kind: 'agent' | 'skill', sourcePath: string) => !!bookmarks[getBookmarkKey(kind, sourcePath)];
-  const toggleBookmark = (kind: 'agent' | 'skill', sourcePath: string) => {
+  const getBookmarkKey = (kind: 'agent' | 'skill' | 'flow', sourcePath: string) => `${kind}:${sourcePath}`;
+  const isBookmarked = (kind: 'agent' | 'skill' | 'flow', sourcePath: string) => !!bookmarks[getBookmarkKey(kind, sourcePath)];
+  const toggleBookmark = (kind: 'agent' | 'skill' | 'flow', sourcePath: string) => {
     const key = getBookmarkKey(kind, sourcePath);
     setBookmarks(prev => {
       const next = { ...prev };
@@ -221,9 +223,19 @@ export const useAppLogic = () => {
             agents: parseFilter(message.uiPrefs['scopeFilter:agents']),
             skills: parseFilter(message.uiPrefs['scopeFilter:skills']),
           });
+          const parseViewFilter = (v: string | undefined): ViewFilter =>
+            v === 'bookmarked' || v === 'built-in' ? v : 'all';
+          const parseSortOrder = (v: string | undefined): SortOrder =>
+            v === 'desc' ? 'desc' : 'asc';
           setViewFilters({
-            agents: (message.uiPrefs['viewFilter:agents'] as ViewFilter) || 'all',
-            skills: (message.uiPrefs['viewFilter:skills'] as ViewFilter) || 'all',
+            flows: parseViewFilter(message.uiPrefs['viewFilter:flows']),
+            agents: parseViewFilter(message.uiPrefs['viewFilter:agents']),
+            skills: parseViewFilter(message.uiPrefs['viewFilter:skills']),
+          });
+          setSortOrders({
+            flows: parseSortOrder(message.uiPrefs['sortOrder:flows']),
+            agents: parseSortOrder(message.uiPrefs['sortOrder:agents']),
+            skills: parseSortOrder(message.uiPrefs['sortOrder:skills']),
           });
         }
         break;
@@ -664,6 +676,7 @@ export const useAppLogic = () => {
     skillForm, setSkillForm,
     scopeFilters,
     viewFilters,
+    sortOrders,
     agentFormError, setAgentFormError,
     skillFormError, setSkillFormError,
     draftLoading, setDraftLoading,

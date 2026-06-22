@@ -2,7 +2,8 @@ import React from 'react';
 
 export type SaveScope = 'project' | 'global';
 export type ScopeFilter = SaveScope | 'all';
-export type ViewFilter = 'all' | 'bookmarked';
+export type ViewFilter = 'all' | 'bookmarked' | 'built-in';
+export type SortOrder = 'asc' | 'desc';
 
 interface ScopeFilterSelectProps {
   value: ScopeFilter;
@@ -17,10 +18,18 @@ export const ScopeFilterSelect: React.FC<ScopeFilterSelectProps> = ({ value, onC
   </select>
 );
 
-export const ViewFilterSelect: React.FC<{ value: ViewFilter, onChange: (v: ViewFilter) => void }> = ({ value, onChange }) => (
+export const ViewFilterSelect: React.FC<{ value: ViewFilter, onChange: (v: ViewFilter) => void, showBuiltIn?: boolean }> = ({ value, onChange, showBuiltIn = true }) => (
   <select className="select" value={value} onChange={e => onChange(e.target.value as ViewFilter)}>
     <option value="all">All Items</option>
     <option value="bookmarked">Bookmarked</option>
+    {showBuiltIn && <option value="built-in">Built-in</option>}
+  </select>
+);
+
+export const SortOrderSelect: React.FC<{ value: SortOrder, onChange: (v: SortOrder) => void }> = ({ value, onChange }) => (
+  <select className="select" value={value} onChange={e => onChange(e.target.value as SortOrder)}>
+    <option value="asc">Sort A → Z</option>
+    <option value="desc">Sort Z → A</option>
   </select>
 );
 

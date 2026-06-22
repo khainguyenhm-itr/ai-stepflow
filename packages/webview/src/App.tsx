@@ -57,6 +57,7 @@ const App: React.FC = () => {
     skillForm, setSkillForm,
     scopeFilters,
     viewFilters,
+    sortOrders,
     agentFormError, setAgentFormError,
     skillFormError, setSkillFormError,
     draftLoading, setDraftLoading,
@@ -204,6 +205,12 @@ const App: React.FC = () => {
           outputEndRef={outputEndRef}
           initialFilter={scopeFilters.flows}
           onScopeFilterChange={v => sendToVSCode('savePref', { key: 'scopeFilter:flows', value: v })}
+          initialViewFilter={viewFilters.flows}
+          onViewFilterChange={v => sendToVSCode('savePref', { key: 'viewFilter:flows', value: v })}
+          initialSortOrder={sortOrders.flows}
+          onSortOrderChange={v => sendToVSCode('savePref', { key: 'sortOrder:flows', value: v })}
+          isBookmarked={flow => isBookmarked('flow', flow.sourcePath)}
+          onToggleBookmark={flow => toggleBookmark('flow', flow.sourcePath)}
         />
       )}
 
@@ -216,6 +223,8 @@ const App: React.FC = () => {
           onScopeFilterChange={v => sendToVSCode('savePref', { key: 'scopeFilter:agents', value: v })}
           initialViewFilter={viewFilters.agents}
           onViewFilterChange={v => sendToVSCode('savePref', { key: 'viewFilter:agents', value: v })}
+          initialSortOrder={sortOrders.agents}
+          onSortOrderChange={v => sendToVSCode('savePref', { key: 'sortOrder:agents', value: v })}
           onOpenEditor={openAgentEditor}
           onRun={agent => {
             setStandaloneRun({ type: 'agent', agent });
@@ -244,6 +253,8 @@ const App: React.FC = () => {
           onScopeFilterChange={v => sendToVSCode('savePref', { key: 'scopeFilter:skills', value: v })}
           initialViewFilter={viewFilters.skills}
           onViewFilterChange={v => sendToVSCode('savePref', { key: 'viewFilter:skills', value: v })}
+          initialSortOrder={sortOrders.skills}
+          onSortOrderChange={v => sendToVSCode('savePref', { key: 'sortOrder:skills', value: v })}
           onOpenEditor={openSkillEditor}
           onRun={skill => {
             setStandaloneRun({ type: 'skill', skill });

@@ -933,12 +933,15 @@ textarea.input {
   flex: 0 0 auto;
 }
 
-.card-head-actions .icon-btn.bookmark {
+.card-head-actions .icon-btn.bookmark,
+.panel-head-actions .icon-btn.bookmark {
   color: var(--muted);
 }
 
 .card-head-actions .icon-btn.bookmark:hover,
-.card-head-actions .icon-btn.bookmark.active {
+.card-head-actions .icon-btn.bookmark.active,
+.panel-head-actions .icon-btn.bookmark:hover,
+.panel-head-actions .icon-btn.bookmark.active {
   color: var(--bookmark);
 }
 

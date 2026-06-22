@@ -2,9 +2,11 @@ import React from 'react';
 import { Flow, FlowRunState, Agent, Skill } from '@ai-stepflow/core/types';
 import { Icon } from '../components/primitives';
 import { EmptyState } from '../components/ResourceCard';
-import { ScopeFilterSelect, ScopeFilter, SaveScope } from '../components/ScopeControls';
+import { ScopeFilterSelect, ScopeFilter, SaveScope, ViewFilter, ViewFilterSelect, SortOrder, SortOrderSelect } from '../components/ScopeControls';
 import { FlowBoard } from './FlowBoard';
 import { useScopeFilter } from '../hooks/useScopeFilter';
+import { useViewFilter } from '../hooks/useViewFilter';
+import { useSortOrder } from '../hooks/useSortOrder';
 
 interface FlowsTabProps {
   flows: Flow[];
@@ -35,6 +37,12 @@ interface FlowsTabProps {
   outputEndRef: React.RefObject<HTMLDivElement | null>;
   initialFilter: ScopeFilter;
   onScopeFilterChange: (v: ScopeFilter) => void;
+  initialViewFilter: ViewFilter;
+  onViewFilterChange: (v: ViewFilter) => void;
+  initialSortOrder: SortOrder;
+  onSortOrderChange: (v: SortOrder) => void;
+  isBookmarked: (flow: Flow) => boolean;
+  onToggleBookmark: (flow: Flow) => void;
 }
 
 export const FlowsTab: React.FC<FlowsTabProps> = ({
@@ -65,19 +73,33 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
   onCopyCommand,
   outputEndRef,
   initialFilter,
-  onScopeFilterChange
+  onScopeFilterChange,
+  initialViewFilter,
+  onViewFilterChange,
+  initialSortOrder,
+  onSortOrderChange,
+  isBookmarked,
+  onToggleBookmark,
 }) => {
   const [filter, setFilter] = useScopeFilter(initialFilter, onScopeFilterChange);
+  const [viewFilter, setViewFilter] = useViewFilter(initialViewFilter, onViewFilterChange);
+  const [sortOrder, setSortOrder] = useSortOrder(initialSortOrder, onSortOrderChange);
 
   const getItemScope = (sourcePath: string): SaveScope => {
     if (globalPath && sourcePath.startsWith(globalPath)) return 'global';
     return 'project';
   };
 
-  const matchesScopeFilter = (sourcePath: string) => 
+  const matchesScopeFilter = (sourcePath: string) =>
     filter === 'all' || getItemScope(sourcePath) === filter;
 
-  const visibleFlows = flows.filter(flow => matchesScopeFilter(flow.sourcePath));
+  const visibleFlows = flows
+    .filter(flow => matchesScopeFilter(flow.sourcePath))
+    .filter(flow => viewFilter === 'all' || (viewFilter === 'bookmarked' && isBookmarked(flow)) || viewFilter === 'built-in')
+    .sort((a, b) => sortOrder === 'desc'
+      ? b.name.localeCompare(a.name)
+      : a.name.localeCompare(b.name)
+    );
 
   return (
     <div className="page">
@@ -85,6 +107,8 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
         <h2>Workflows</h2>
         <div className="page-head-actions">
           <ScopeFilterSelect value={filter} onChange={setFilter} />
+          <ViewFilterSelect value={viewFilter} onChange={setViewFilter} showBuiltIn={false} />
+          <SortOrderSelect value={sortOrder} onChange={setSortOrder} />
           <button
             className="btn primary"
             onClick={() => {
@@ -128,6 +152,8 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
               onOpenFile={onOpenFile}
               onCopyCommand={onCopyCommand}
               outputEndRef={outputEndRef}
+              bookmarked={isBookmarked(flow)}
+              onToggleBookmark={() => onToggleBookmark(flow)}
             />
           ))}
         </div>

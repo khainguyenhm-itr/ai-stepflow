@@ -30,6 +30,8 @@ interface FlowBoardProps {
   onOpenFile: (path: string) => void;
   onCopyCommand: () => void;
   outputEndRef: React.RefObject<HTMLDivElement | null>;
+  bookmarked?: boolean;
+  onToggleBookmark?: () => void;
 }
 
 export const FlowBoard: React.FC<FlowBoardProps> = ({
@@ -55,7 +57,9 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
   onRunStep,
   onOpenFile,
   onCopyCommand,
-  outputEndRef
+  outputEndRef,
+  bookmarked,
+  onToggleBookmark,
 }) => {
   const columns = getFlowColumns(flow);
   const runnerOpen = activeFlow?.id === flow.id && !!runState && runnerVisible;
@@ -100,6 +104,16 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
           {runnerOpen && runState?.isClosed && <span className="badge success">run finalized</span>}
         </div>
         <div className="panel-head-actions">
+          {onToggleBookmark && (
+            <button
+              className={`icon-btn bookmark ${bookmarked ? 'active' : ''}`}
+              title={bookmarked ? 'Remove bookmark' : 'Bookmark'}
+              aria-pressed={bookmarked}
+              onClick={onToggleBookmark}
+            >
+              <Icon.Bookmark size={14} fill={bookmarked ? 'currentColor' : 'none'} />
+            </button>
+          )}
           <button
             className="icon-btn"
             title={isExpanded ? 'Collapse' : 'Expand'}

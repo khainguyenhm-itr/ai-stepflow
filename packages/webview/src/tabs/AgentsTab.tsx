@@ -2,10 +2,11 @@ import React from 'react';
 import { Agent, Skill } from '@ai-stepflow/core/types';
 import { Icon } from '../components/primitives';
 import { ResourceCard, EmptyState } from '../components/ResourceCard';
-import { ScopeFilterSelect, ScopeFilter, SaveScope, ViewFilter, ViewFilterSelect } from '../components/ScopeControls';
+import { ScopeFilterSelect, ScopeFilter, SaveScope, ViewFilter, ViewFilterSelect, SortOrder, SortOrderSelect } from '../components/ScopeControls';
 import { sendToVSCode } from '../vscode';
 import { useScopeFilter } from '../hooks/useScopeFilter';
 import { useViewFilter } from '../hooks/useViewFilter';
+import { useSortOrder } from '../hooks/useSortOrder';
 
 interface AgentsTabProps {
   agents: Agent[];
@@ -21,6 +22,8 @@ interface AgentsTabProps {
   onScopeFilterChange: (v: ScopeFilter) => void;
   initialViewFilter: ViewFilter;
   onViewFilterChange: (v: ViewFilter) => void;
+  initialSortOrder: SortOrder;
+  onSortOrderChange: (v: SortOrder) => void;
 }
 
 export const AgentsTab: React.FC<AgentsTabProps> = ({
@@ -36,26 +39,32 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
   initialFilter,
   onScopeFilterChange,
   initialViewFilter,
-  onViewFilterChange
+  onViewFilterChange,
+  initialSortOrder,
+  onSortOrderChange,
 }) => {
   const [filter, setFilter] = useScopeFilter(initialFilter, onScopeFilterChange);
   const [viewFilter, setViewFilter] = useViewFilter(initialViewFilter, onViewFilterChange);
+  const [sortOrder, setSortOrder] = useSortOrder(initialSortOrder, onSortOrderChange);
 
   const getItemScope = (sourcePath: string): SaveScope => {
     if (globalPath && sourcePath.startsWith(globalPath)) return 'global';
     return 'project';
   };
 
-  const matchesScopeFilter = (sourcePath: string) => 
+  const matchesScopeFilter = (sourcePath: string) =>
     filter === 'all' || getItemScope(sourcePath) === filter;
 
   const visibleAgents = agents
     .filter(agent => matchesScopeFilter(agent.sourcePath))
-    .filter(agent => viewFilter === 'all' || isBookmarked(agent))
-    // Built-ins first, then alphabetical.
+    .filter(agent =>
+      viewFilter === 'all' ||
+      (viewFilter === 'bookmarked' && isBookmarked(agent)) ||
+      (viewFilter === 'built-in' && !!agent.builtIn)
+    )
     .sort((a, b) =>
-      (Number(!!b.builtIn) - Number(!!a.builtIn))
-      || a.name.localeCompare(b.name)
+      (Number(!!b.builtIn) - Number(!!a.builtIn)) ||
+      (sortOrder === 'desc' ? b.name.localeCompare(a.name) : a.name.localeCompare(b.name))
     );
 
   const renderScopeBadge = (sourcePath: string) => {
@@ -70,6 +79,7 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
         <div className="page-head-actions">
           <ScopeFilterSelect value={filter} onChange={setFilter} />
           <ViewFilterSelect value={viewFilter} onChange={setViewFilter} />
+          <SortOrderSelect value={sortOrder} onChange={setSortOrder} />
           <button className="btn" title="Create an agent from an existing markdown file" onClick={() => sendToVSCode('importAgentFile', {})}>
             <span className="btn-glyph"><Icon.Upload size={14} /></span>Import file
           </button>
