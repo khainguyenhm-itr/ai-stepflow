@@ -1,4 +1,7 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { ChildProcess } from 'child_process';
 import { randomUUID } from 'crypto';
 import { ConfigManager } from './configManager.js';
@@ -620,13 +623,16 @@ export class RunOrchestrator {
 
     if (result.status === 'approved') {
       this._advanceReadySteps();
-    } else if (result.status === 'rejected' && !this._autoRetryStepIds.has(stepId)) {
-      // First rejection: auto-retry the step once before surfacing to the user.
+    } else if (result.status === 'rejected' && result.source === 'validator' && !this._autoRetryStepIds.has(stepId)) {
+      // Auto-retry only for a deterministic layer-1 validator rejection (a concrete, fixable
+      // miss like a missing file or a leftover TODO). A subjective LLM rejection is surfaced to
+      // the user instead, so we don't burn a full re-run + re-review on a verdict a retry is
+      // unlikely to flip.
       this._autoRetryStepIds.add(stepId);
-      this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[review rejected — retrying automatically (1/1)]\n` });
+      this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[validator rejected — retrying automatically (1/1)]\n` });
       await this._run(stepId);
     }
-    // Second rejection (stepId already in _autoRetryStepIds): leave in rejected state for user.
+    // LLM rejection, or a second validator rejection: leave in rejected state for the user.
   }
 
   /** Hết thời gian chờ đã định cấu hình cho mỗi lần chạy tính bằng ms (0 = không giới hạn). */
@@ -635,14 +641,46 @@ export class RunOrchestrator {
     return seconds > 0 ? seconds * 1000 : 0;
   }
 
-  /** Số lượt đại lý tối đa cho một lần chạy không đầu: ghi đè cấp đại lý > cài đặt chung > mặc định 10. */
+  /** Số lượt đại lý tối đa cho một lần chạy không đầu: ghi đè cấp đại lý > cài đặt chung > mặc định 6. */
   private _runMaxTurns(agent?: { maxTurns?: number }): number {
     if (agent?.maxTurns != null && agent.maxTurns >= 0) return agent.maxTurns;
-    return vscode.workspace.getConfiguration('ai-stepflow').get<number>('run.maxTurns', 10);
+    return vscode.workspace.getConfiguration('ai-stepflow').get<number>('run.maxTurns', 6);
+  }
+
+  /**
+   * MCP config (a `{"mcpServers":{...}}` JSON string) for headless runs, built from the
+   * `ai-stepflow.run.headlessMcpServers` allowlist. Default is empty — headless runs and AI
+   * reviews carry no MCP servers, so their system context (and token cost) stays minimal.
+   * Listed names are resolved against the user's ambient MCP config so an allowlisted server
+   * keeps its real definition. Interactive terminal runs are unaffected.
+   */
+  private _headlessMcpConfig(): string {
+    const allow = vscode.workspace.getConfiguration('ai-stepflow').get<string[]>('run.headlessMcpServers', []);
+    if (!allow || allow.length === 0) return '{"mcpServers":{}}';
+    const ambient = this._readAmbientMcpServers();
+    const servers: Record<string, unknown> = {};
+    for (const name of allow) {
+      if (ambient[name] !== undefined) servers[name] = ambient[name];
+    }
+    return JSON.stringify({ mcpServers: servers });
+  }
+
+  /** Read MCP server definitions from the user's `~/.claude.json` (global + this project). Never throws. */
+  private _readAmbientMcpServers(): Record<string, unknown> {
+    try {
+      const cfgPath = path.join(os.homedir(), '.claude.json');
+      const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+      const global = raw?.mcpServers ?? {};
+      const projectPath = this.configManager.getProjectPath();
+      const project = projectPath ? (raw?.projects?.[projectPath]?.mcpServers ?? {}) : {};
+      return { ...global, ...project };
+    } catch {
+      return {};
+    }
   }
 
   private _spawnClaudeStreaming(opts: ClaudeStreamingRunOptions, stepId?: string): Promise<ClaudeStreamingRunResult> {
-    const handle = runClaudeStreaming({ ...opts, timeoutMs: opts.timeoutMs ?? this._runTimeoutMs() });
+    const handle = runClaudeStreaming({ mcpConfig: this._headlessMcpConfig(), ...opts, timeoutMs: opts.timeoutMs ?? this._runTimeoutMs() });
     this._activeRuns.add(handle.child);
     if (stepId) this._runChildrenByStep.set(stepId, handle.child);
     return handle.completed.finally(() => {

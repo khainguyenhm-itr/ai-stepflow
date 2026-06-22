@@ -125,9 +125,15 @@
         },
         "ai-stepflow.run.maxTurns": {
           "type": "number",
-          "default": 10,
+          "default": 6,
           "minimum": 0,
           "description": "Maximum number of agentic turns per headless step run. Prevents runaway multi-turn execution from consuming excessive tokens. Set to 0 to disable the limit. Individual agents can override this via their maxTurns field."
+        },
+        "ai-stepflow.run.headlessMcpServers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "MCP servers (by name, as configured in your ~/.claude.json) to make available to headless step runs and AI reviews. Default is empty: headless runs carry NO MCP servers, which keeps their tool/instruction context — and token cost — minimal. Add names (e.g. \"ast-graph\") only for servers a headless step genuinely needs. Does not affect interactive terminal steps, which always use your full MCP config."
         }
       }
     }

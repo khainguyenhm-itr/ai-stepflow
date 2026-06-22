@@ -11,6 +11,13 @@ export interface ClaudeStreamingRunOptions {
   timeoutMs?: number;
   /** Cap the number of agentic turns. 0/undefined = no limit. */
   maxTurns?: number;
+  /**
+   * MCP servers (as a `{"mcpServers":{...}}` JSON string) to use for this run, passed via
+   * `--mcp-config --strict-mcp-config` so the run ignores the user's ambient MCP config.
+   * Headless runs default this to `{}` (no MCP), keeping their tool/instruction context — and
+   * token cost — minimal. Undefined leaves the user's MCP config in effect.
+   */
+  mcpConfig?: string;
 }
 
 export interface ClaudeStreamingRunResult {
@@ -51,6 +58,7 @@ export const HEADLESS_PERMISSION_MODE = 'acceptEdits';
 export function runClaudeStreaming(opts: ClaudeStreamingRunOptions, spawnFn: SpawnFn = spawn): ClaudeStreamingRunHandle {
   const args = ['--print', '--output-format', 'stream-json', '--verbose', '--permission-mode', HEADLESS_PERMISSION_MODE];
   if (opts.model) args.push('--model', opts.model);
+  if (opts.mcpConfig !== undefined) args.push('--mcp-config', opts.mcpConfig, '--strict-mcp-config');
   if (opts.maxTurns && opts.maxTurns > 0) args.push('--max-turns', String(opts.maxTurns));
   if (opts.systemPrompt) args.push('--append-system-prompt', opts.systemPrompt);
   args.push(opts.userMessage);
