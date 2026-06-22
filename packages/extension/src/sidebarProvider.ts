@@ -342,6 +342,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   /** Retry a failed remote MCP server from the sidebar using its current target. */
   private async _reconnectMcp(name: string, target: string): Promise<void> {
+    // Plugin-managed and claude.ai servers are not managed via `claude mcp add/remove`
+    if (name.startsWith('plugin:') || name.startsWith('claude.ai ')) {
+      vscode.window.showInformationMessage(
+        `'${name}' is managed by Claude Code plugins. To fix it, authenticate or reinstall the plugin from the Plugins tab.`
+      );
+      return;
+    }
     await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
       title: `Reconnecting MCP server '${name}'…`,
