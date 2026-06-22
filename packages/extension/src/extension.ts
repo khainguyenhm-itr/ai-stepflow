@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { ConfigManager } from './configManager.js';
 import { CockpitPanel } from './webviewPanel.js';
 import { StateManager } from './stateManager.js';
@@ -68,6 +70,18 @@ export function activate(context: vscode.ExtensionContext) {
       runsWatcher.onDidDelete(refreshSidebar);
       context.subscriptions.push(runsWatcher);
     }
+
+    // GitNexus rewrites ~/.gitnexus/registry.json after `analyze` and group.yaml files under
+    // ~/.gitnexus/groups/ on group create/add/remove; watch both so the sidebar's GitNexus
+    // status (Analyze → Re-analyze / Up to date) and group select update live.
+    const gxWatcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(vscode.Uri.file(join(homedir(), '.gitnexus')), '{registry.json,groups/**}')
+    );
+    const refreshSidebarOnly = () => void sidebar.refresh(false);
+    gxWatcher.onDidCreate(refreshSidebarOnly);
+    gxWatcher.onDidChange(refreshSidebarOnly);
+    gxWatcher.onDidDelete(refreshSidebarOnly);
+    context.subscriptions.push(gxWatcher);
 
     // Re-attach the cockpit after a window reload instead of showing a dead panel.
     context.subscriptions.push(

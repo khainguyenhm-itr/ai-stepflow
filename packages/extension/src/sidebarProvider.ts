@@ -1,5 +1,10 @@
 import * as vscode from 'vscode';
 import * as crypto from 'node:crypto';
+import { readFileSync, readdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { ConfigManager } from './configManager.js';
 import type { BundledKind } from './configManager.js';
 import { StateManager } from './stateManager.js';
@@ -7,6 +12,18 @@ import { listMcpServers, reconnectRemoteMcpServer, findMcpConfigFile } from './m
 import type { McpServer } from './mcp.js';
 import { listPluginCatalog, togglePlugin, installPlugin, updatePlugin, uninstallPlugin, pluginDetails } from './plugins.js';
 import type { PluginInfo, AvailablePlugin } from './plugins.js';
+
+/** GitNexus index + group state for the current project (read cheaply from ~/.gitnexus). */
+interface GitnexusStatus {
+  indexed: boolean;
+  stale: boolean;
+  files: number;
+  indexedAt: string | null;
+  registryName: string | null;
+  groups: string[];
+  currentGroup: string | null;
+  currentAlias: string | null;
+}
 
 /**
  * Renders the activity-bar sidebar as a compact dashboard: the active run, library
@@ -37,7 +54,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       };
       view.webview.html = this._getHtml(view.webview);
 
-      view.webview.onDidReceiveMessage(async (message: { type?: string; path?: string; url?: string; pluginId?: string; pluginName?: string; enable?: boolean; mcpName?: string; mcpTarget?: string; tab?: string; kind?: BundledKind; filename?: string; isGlobal?: boolean; flowId?: string; runId?: string; }) => {
+      view.webview.onDidReceiveMessage(async (message: { type?: string; path?: string; url?: string; pluginId?: string; pluginName?: string; enable?: boolean; mcpName?: string; mcpTarget?: string; tab?: string; kind?: BundledKind; filename?: string; isGlobal?: boolean; flowId?: string; runId?: string; group?: string; }) => {
         try {
           switch (message?.type) {
             case 'openRun':
@@ -143,6 +160,23 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             case 'openAstSettings':
               await vscode.commands.executeCommand('workbench.action.openSettings', 'ai-stepflow.astGraph');
               return;
+            case 'gitnexusAnalyze':
+              this._runGitnexusAnalyze();
+              return;
+            case 'gitnexusCreateGroup':
+              await this._createGitnexusGroup();
+              return;
+            case 'gitnexusSelectGroup':
+              if (message.group) await this._selectGitnexusGroup(message.group);
+              return;
+            case 'gitnexusOpenRegistry':
+              await this._openGitnexusFile(join(homedir(), '.gitnexus', 'registry.json'), 'registry not found yet — run Analyze first.');
+              return;
+            case 'gitnexusOpenGroup': {
+              const st = await this._readGitnexusStatus();
+              if (st.currentGroup) await this._openGitnexusFile(join(homedir(), '.gitnexus', 'groups', st.currentGroup, 'group.yaml'), 'group config not found.');
+              return;
+            }
           }
         } catch (e) {
           vscode.window.showErrorMessage(`AI StepFlow: ${e instanceof Error ? e.message : String(e)}`);
@@ -167,14 +201,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     if (!this._view) return;
 
     try {
-      const [flows, agents, skills, runFiles, activeRun, defaultItems, uiPrefs] = await Promise.all([
+      const [flows, agents, skills, runFiles, activeRun, defaultItems, uiPrefs, gitnexus] = await Promise.all([
         this.configManager.loadFlows().catch(() => []),
         this.configManager.loadAgents().catch(() => []),
         this.configManager.loadSkills().catch(() => []),
         this.stateManager.listRunFiles().catch(() => []),
         this.stateManager.loadLatestRun().catch(() => undefined),
         this.configManager.listBundledDefaults().catch(() => []),
-        this.configManager.loadUiPrefs().catch(() => ({} as Record<string, string>))
+        this.configManager.loadUiPrefs().catch(() => ({} as Record<string, string>)),
+        this._readGitnexusStatus().catch(() => ({ indexed: false, stale: false, files: 0, indexedAt: null, registryName: null, groups: [], currentGroup: null, currentAlias: null } as GitnexusStatus))
       ]);
       const flowName = (id: string) => flows.find(f => f.id === id)?.name || id;
       const visibleRunFiles = runFiles.filter(file => !file.isClosed);
@@ -228,6 +263,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         stats: { flows: flows.length, agents: agents.length, skills: skills.length },
         defaultItems: annotatedItems,
         uiPrefs,
+        gitnexus,
         mcp: this._cachedMcp,
         plugins: this._cachedPlugins,
         pluginsAvailable: this._cachedAvailable,
@@ -364,6 +400,175 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     });
   }
 
+  /**
+   * Reads the GitNexus index state for the current project from the global registry
+   * (`~/.gitnexus/registry.json`) — a cheap file read, no CLI cold start. Compares the
+   * indexed commit against the working tree's HEAD to flag a stale (out-of-date) index.
+   */
+  private async _readGitnexusStatus(): Promise<GitnexusStatus> {
+    const none: GitnexusStatus = { indexed: false, stale: false, files: 0, indexedAt: null, registryName: null, groups: [], currentGroup: null, currentAlias: null };
+    const projectPath = this.configManager.getProjectPath();
+    if (!projectPath) return none;
+    let registry: Array<{ path?: string; name?: string; indexedAt?: string; lastCommit?: string; stats?: { files?: number } }>;
+    try {
+      registry = JSON.parse(readFileSync(join(homedir(), '.gitnexus', 'registry.json'), 'utf8'));
+    } catch {
+      return none; // registry missing/unreadable → treat as never indexed
+    }
+    const entry = Array.isArray(registry) ? registry.find(r => r.path === projectPath) : undefined;
+    // Groups exist independently of whether this repo is indexed, so always read them.
+    const registryName = entry?.name ?? null;
+    const { groups, currentGroup, currentAlias } = this._readGitnexusGroups(registryName);
+    if (!entry) return { ...none, groups, currentGroup, currentAlias };
+
+    // Stale if HEAD moved past the indexed commit, or the working tree has uncommitted changes.
+    let stale = false;
+    try {
+      const run = promisify(execFile);
+      const [head, dirty] = await Promise.all([
+        run('git', ['rev-parse', 'HEAD'], { cwd: projectPath }).then(r => r.stdout.trim()).catch(() => ''),
+        run('git', ['status', '--porcelain'], { cwd: projectPath }).then(r => r.stdout.trim()).catch(() => '')
+      ]);
+      stale = (!!entry.lastCommit && !!head && entry.lastCommit !== head) || dirty.length > 0;
+    } catch { /* not a git repo / git missing → leave stale=false */ }
+
+    return { indexed: true, stale, files: entry.stats?.files ?? 0, indexedAt: entry.indexedAt ?? null, registryName, groups, currentGroup, currentAlias };
+  }
+
+  /**
+   * Lists GitNexus groups (dir names under `~/.gitnexus/groups/`) and finds which one this
+   * repo belongs to by scanning each `group.yaml`'s `repos:` block for its registry name.
+   * Lightweight line-parse — group.yaml is flat (`  alias: registryName`), so no YAML lib.
+   */
+  private _readGitnexusGroups(registryName: string | null): { groups: string[]; currentGroup: string | null; currentAlias: string | null } {
+    const groupsDir = join(homedir(), '.gitnexus', 'groups');
+    let names: string[];
+    try {
+      names = readdirSync(groupsDir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort();
+    } catch {
+      return { groups: [], currentGroup: null, currentAlias: null };
+    }
+    let currentGroup: string | null = null, currentAlias: string | null = null;
+    if (registryName) {
+      for (const name of names) {
+        try {
+          const yaml = readFileSync(join(groupsDir, name, 'group.yaml'), 'utf8');
+          const alias = this._findGroupAlias(yaml, registryName);
+          if (alias) { currentGroup = name; currentAlias = alias; break; }
+        } catch { /* unreadable group → skip */ }
+      }
+    }
+    return { groups: names, currentGroup, currentAlias };
+  }
+
+  /** Returns the alias key mapping to `registryName` inside a group.yaml `repos:` block, else null. */
+  private _findGroupAlias(yaml: string, registryName: string): string | null {
+    const lines = yaml.split(/\r?\n/);
+    let inRepos = false;
+    for (const line of lines) {
+      if (/^repos:\s*$/.test(line)) { inRepos = true; continue; }
+      if (inRepos) {
+        if (!/^\s/.test(line)) break; // dedent → end of repos block
+        const m = line.match(/^\s+(.+?):\s*(.+?)\s*$/);
+        if (m && m[2] === registryName) return m[1].trim();
+      }
+    }
+    return null;
+  }
+
+  /** Opens a GitNexus state file (registry.json / group.yaml) in an editor; warns if missing. */
+  private async _openGitnexusFile(filePath: string, missingHint: string): Promise<void> {
+    try {
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
+      await vscode.window.showTextDocument(doc, { preview: true });
+    } catch {
+      vscode.window.showWarningMessage(`AI StepFlow: GitNexus ${missingHint}`);
+    }
+  }
+
+  /** Runs `npx gitnexus analyze` in a terminal to (re)build the GitNexus knowledge graph. */
+  private _runGitnexusAnalyze(): void {
+    const cwd = this.configManager.getProjectPath();
+    const terminal = vscode.window.createTerminal({ name: 'GitNexus Analyze', cwd: cwd || undefined });
+    terminal.show();
+    terminal.sendText('npx gitnexus analyze', true);
+    // The terminal runs detached; reset the sidebar button so it's clickable again.
+    this._view?.webview.postMessage({ type: 'gitnexusAnalyzeStarted' });
+  }
+
+  /**
+   * Commands to put this repo into `group`: leave the old group if any, add here, re-index,
+   * then sync so cross-repo contracts use a fresh index. Caller guarantees a registry name.
+   */
+  private _joinGroupCmds(group: string, status: GitnexusStatus): string[] {
+    const alias = status.registryName!; // derived alias (flat); editable later in group.yaml
+    const cmds: string[] = [];
+    if (status.currentGroup && status.currentGroup !== group && status.currentAlias) {
+      cmds.push(`npx gitnexus group remove ${status.currentGroup} ${status.currentAlias}`);
+    }
+    cmds.push(`npx gitnexus group add ${group} ${alias} ${status.registryName}`);
+    cmds.push('npx gitnexus analyze');             // re-index this repo
+    cmds.push(`npx gitnexus group sync ${group}`); // rebuild cross-repo contracts
+    return cmds;
+  }
+
+  private _runGroupTerminal(cmds: string[]): void {
+    const cwd = this.configManager.getProjectPath();
+    const terminal = vscode.window.createTerminal({ name: 'GitNexus Group', cwd: cwd || undefined });
+    terminal.show();
+    terminal.sendText(cmds.join(' && '), true);
+  }
+
+  /**
+   * "＋ Create new group…": prompt a name, then create it AND join this repo in one flow
+   * (create → add → analyze → sync), so there's no confusing empty-group middle state.
+   */
+  private async _createGitnexusGroup(): Promise<void> {
+    const status = await this._readGitnexusStatus();
+    if (!status.indexed || !status.registryName) {
+      vscode.window.showWarningMessage('AI StepFlow: analyze the repo first before creating a GitNexus group for it.');
+      await this.refresh(false);
+      return;
+    }
+    const name = await vscode.window.showInputBox({
+      title: 'Create GitNexus Group',
+      prompt: 'New group name — this repo will be added to it',
+      placeHolder: 'e.g. my-services',
+      validateInput: v => {
+        const t = v.trim();
+        if (!/^[a-zA-Z0-9._-]+$/.test(t)) return 'Use letters, digits, dot, dash or underscore';
+        if (status.groups.includes(t)) return 'A group with this name already exists — pick it from the list instead';
+        return null;
+      }
+    });
+    if (!name) return;
+    this._runGroupTerminal([`npx gitnexus group create ${name.trim()}`, ...this._joinGroupCmds(name.trim(), status)]);
+  }
+
+  /**
+   * Joins/leaves a GitNexus group from the select. Default → remove this repo from its group.
+   * A group → (re-)join then re-index + sync so cross-repo contracts use a fresh index.
+   */
+  private async _selectGitnexusGroup(group: string): Promise<void> {
+    const status = await this._readGitnexusStatus();
+
+    if (group === 'default') {
+      if (status.currentGroup && status.currentAlias) {
+        this._runGroupTerminal([`npx gitnexus group remove ${status.currentGroup} ${status.currentAlias}`]);
+      }
+      await this.refresh(false);
+      return;
+    }
+
+    // Joining a group needs a registry name, which only exists after the repo is analyzed.
+    if (!status.indexed || !status.registryName) {
+      vscode.window.showWarningMessage('AI StepFlow: analyze the repo first before adding it to a GitNexus group.');
+      await this.refresh(false); // revert the select to its real value
+      return;
+    }
+    this._runGroupTerminal(this._joinGroupCmds(group, status));
+  }
+
   /** Deletes a run file, its report, and audit log entries after confirmation. */
   private async _deleteRun(filePath: string): Promise<void> {
     const name = filePath.split(/[\\/]/).pop() || filePath;
@@ -485,6 +690,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .setting-row + .setting-row { border-top: 1px solid rgba(127,127,127,.07); }
     .setting-label { font-size: 11px; color: var(--fg); font-weight: 500; }
     .setting-desc { font-size: 10px; color: var(--muted); margin-top: 1px; }
+    .gx-dot { display: none; width: 6px; height: 6px; border-radius: 50%; margin-right: 5px; vertical-align: middle; background: var(--muted); }
+    /* GitNexus row stacks vertically: status line (with ··· menu) on top, controls on a second line. */
+    .gx-row { flex-direction: column; align-items: stretch; gap: 8px; }
+    .gx-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+    .gx-ctl { display: flex; align-items: center; gap: 6px; }
+    .gx-ctl #gitnexus-group-select { flex: 1 1 auto; max-width: none; }
 
     /* ── section ── */
     .sec { margin-top: 8px; }
@@ -673,6 +884,22 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             <option value="default">Default</option>
             <option value="concise">Concise</option>
           </select>
+        </div>
+        <div class="setting-row gx-row" id="gitnexus-setting-row" style="display:none">
+          <div class="gx-head">
+            <div style="min-width:0">
+              <div class="setting-label"><span id="gitnexus-dot" class="gx-dot"></span>GitNexus</div>
+              <div class="setting-desc" id="gitnexus-desc">Build the GitNexus knowledge graph</div>
+            </div>
+            <details class="menu" id="gitnexus-menu">
+              <summary class="menu-btn" title="More actions" aria-label="More">···</summary>
+              <div class="menu-pop" id="gitnexus-menu-pop"></div>
+            </details>
+          </div>
+          <div class="gx-ctl">
+            <select id="gitnexus-group-select" class="input sm" style="display:none"><option value="default">Default (no group)</option></select>
+            <button id="gitnexus-analyze-btn" class="pill accent" type="button">Analyze</button>
+          </div>
         </div>
       </div>
     </section>
@@ -923,6 +1150,87 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   function setMcpData(list) {
     mcpServers = (list || []).slice();
     renderMcp();
+    gitnexusConnected = mcpServers.some(s => s.status === 'connected' && s.name.toLowerCase().includes('gitnexus'));
+    updateGitnexusRow();
+  }
+
+  // GitNexus row state: visibility gated by MCP connection, content driven by index status.
+  let gitnexusConnected = false;
+  let gitnexusStatus = { indexed: false, stale: false, files: 0, indexedAt: null, registryName: null, groups: [], currentGroup: null, currentAlias: null };
+
+  function gxRelTime(iso) {
+    const d = new Date(iso); if (isNaN(d.getTime())) return '';
+    const s = Math.max(0, (Date.now() - d.getTime()) / 1000);
+    if (s < 90) return 'just now';
+    const m = s / 60; if (m < 90) return Math.round(m) + 'm ago';
+    const h = m / 60; if (h < 36) return Math.round(h) + 'h ago';
+    return Math.round(h / 24) + 'd ago';
+  }
+
+  // Single merged GitNexus row: status (dot+desc) on the left; contextual action button,
+  // group select, and a ··· menu (Analyze/Re-analyze, Open registry, Open group config) on the right.
+  function updateGitnexusRow() {
+    const row = document.getElementById('gitnexus-setting-row');
+    const dot = document.getElementById('gitnexus-dot');
+    const desc = document.getElementById('gitnexus-desc');
+    const btn = document.getElementById('gitnexus-analyze-btn');
+    const sel = document.getElementById('gitnexus-group-select');
+    const menuPop = document.getElementById('gitnexus-menu-pop');
+    if (!row || !dot || !desc || !btn || !sel || !menuPop) return;
+    row.style.display = gitnexusConnected ? '' : 'none';
+    if (!gitnexusConnected) return;
+
+    const indexed = gitnexusStatus.indexed;
+    const stale = gitnexusStatus.stale;
+    btn.disabled = false;
+
+    // Status dot + description.
+    if (!indexed) {
+      dot.style.display = 'none';
+      desc.textContent = 'Not indexed — run Analyze';
+    } else if (stale) {
+      dot.style.display = 'inline-block';
+      dot.style.background = 'var(--vscode-charts-yellow, #d7a000)';
+      desc.textContent = 'Code changed since last analyze — re-index recommended';
+    } else {
+      dot.style.display = 'inline-block';
+      dot.style.background = 'var(--success)';
+      const parts = [];
+      if (gitnexusStatus.files) parts.push(gitnexusStatus.files + ' files');
+      const t = gxRelTime(gitnexusStatus.indexedAt);
+      if (t) parts.push('indexed ' + t);
+      const grp = gitnexusStatus.currentGroup ? ' · group: ' + gitnexusStatus.currentGroup : '';
+      desc.textContent = 'Up to date' + (parts.length ? ' · ' + parts.join(' · ') : '') + grp;
+    }
+
+    // Inline action button only when an action is recommended (not indexed → Analyze, stale → Re-analyze).
+    if (!indexed) {
+      btn.style.display = ''; btn.textContent = 'Analyze';
+    } else if (stale) {
+      btn.style.display = ''; btn.textContent = 'Re-analyze';
+    } else {
+      btn.style.display = 'none';
+    }
+
+    // Group select shown once indexed (joining a group needs a registry entry).
+    if (indexed) {
+      sel.style.display = '';
+      const current = gitnexusStatus.currentGroup || 'default';
+      const groups = gitnexusStatus.groups || [];
+      sel.innerHTML = '<option value="default">Default (no group)</option>' +
+        groups.map(g => '<option value="' + esc(g) + '">' + esc(g) + '</option>').join('') +
+        '<option value="__create__">＋ Create new group…</option>';
+      sel.value = current;
+    } else {
+      sel.style.display = 'none';
+    }
+
+    // ··· menu: Re-analyze appears here only when there's no inline button (up-to-date).
+    const items = [];
+    if (indexed && !stale) items.push(menuItem('Re-analyze', 'data-act="analyze"'));
+    items.push(menuItem('Open registry file', 'data-act="openRegistry"'));
+    if (indexed && gitnexusStatus.currentGroup) items.push(menuItem('Open group config', 'data-act="openGroup"'));
+    menuPop.innerHTML = items.join('');
   }
 
   function renderMcp() {
@@ -1152,6 +1460,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         renderDefaults(m.defaultItems || []);
         mcpReceived = true;
         pluginsReceived = true;
+        if (m.gitnexus) gitnexusStatus = m.gitnexus;
         setMcpData(m.mcp);
         setPluginData(m.plugins, m.pluginsAvailable);
         renderRuns(m.runFiles, m.totalRunFiles);
@@ -1163,6 +1472,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       } else if (m.type === 'plugins') {
         pluginsReceived = true;
         setPluginData(m.plugins, m.pluginsAvailable);
+      } else if (m.type === 'gitnexusAnalyzeStarted') {
+        updateGitnexusRow();
       }
     } catch (err) {
       console.error('AI StepFlow sidebar render failed', err);
@@ -1173,6 +1484,34 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   document.getElementById('ai-style-select').addEventListener('change', function() {
     vscode.postMessage({ type: 'savePref', key: 'ai:responseStyle', value: this.value });
+  });
+
+  document.getElementById('gitnexus-analyze-btn').addEventListener('click', function() {
+    this.disabled = true;
+    this.textContent = 'Analyzing…';
+    vscode.postMessage({ type: 'gitnexusAnalyze' });
+  });
+
+  document.getElementById('gitnexus-group-select').addEventListener('change', function() {
+    const current = gitnexusStatus.currentGroup || 'default';
+    if (this.value === '__create__') {
+      this.value = current; // the create action is async; keep the select on its real value
+      vscode.postMessage({ type: 'gitnexusCreateGroup' });
+      return;
+    }
+    if (this.value === current) return;
+    vscode.postMessage({ type: 'gitnexusSelectGroup', group: this.value });
+  });
+
+  document.getElementById('gitnexus-menu-pop').addEventListener('click', function(e) {
+    const item = e.target instanceof Element ? e.target.closest('[data-act]') : null;
+    if (!item) return;
+    const menu = document.getElementById('gitnexus-menu');
+    if (menu) menu.open = false;
+    const act = item.getAttribute('data-act');
+    if (act === 'analyze') vscode.postMessage({ type: 'gitnexusAnalyze' });
+    else if (act === 'openRegistry') vscode.postMessage({ type: 'gitnexusOpenRegistry' });
+    else if (act === 'openGroup') vscode.postMessage({ type: 'gitnexusOpenGroup' });
   });
 </script>
 </body>
