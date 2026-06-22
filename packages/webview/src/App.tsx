@@ -240,7 +240,7 @@ const App: React.FC = () => {
           })}
           isBookmarked={agent => isBookmarked('agent', agent.sourcePath)}
           onToggleBookmark={agent => toggleBookmark('agent', agent.sourcePath)}
-          onNew={scope => openAgentEditor({ name: '', description: '', model: 'claude-sonnet-4-6', tools: [], systemPrompt: '', sourcePath: scope === 'global' ? globalPath : projectPath })}
+          onNew={scope => openAgentEditor({ name: '', description: '', model: 'sonnet', tools: [], systemPrompt: '', sourcePath: scope === 'global' ? globalPath : projectPath })}
         />
       )}
 

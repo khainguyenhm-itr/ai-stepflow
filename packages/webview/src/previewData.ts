@@ -32,7 +32,7 @@ export const previewAgents: Agent[] = [
   {
     name: 'aidlc-developer',
     description: 'Implements and checks code changes for AI StepFlow workflows.',
-    model: 'claude-sonnet-4-6',
+    model: 'sonnet',
     tools: ['files'],
     systemPrompt: 'You are a pragmatic implementation agent.',
     sourcePath: '/preview/.claude/agents/aidlc-developer.md',
@@ -41,7 +41,7 @@ export const previewAgents: Agent[] = [
   {
     name: 'aidlc-docs-writer',
     description: 'Writes concise workflow documentation and review summaries.',
-    model: 'claude-sonnet-4-6',
+    model: 'sonnet',
     tools: ['files'],
     systemPrompt: 'You write clear internal documentation.',
     sourcePath: '/preview/.claude/agents/aidlc-docs-writer.md'

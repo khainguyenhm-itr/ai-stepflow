@@ -3,10 +3,13 @@ import { AgentInput } from '@ai-stepflow/core';
 import { Modal, Field, Icon } from '../components/primitives';
 import { SaveScope, SaveScopeSelect } from '../components/ScopeControls';
 
+// Aliases resolve to the latest model for each tier — the CLI maps them at run
+// time, so this list never goes stale when Anthropic ships a new model.
 const availableModels = [
-  'claude-opus-4-7',
-  'claude-sonnet-4-6',
-  'claude-haiku-4-5'
+  'default',
+  'opus',
+  'sonnet',
+  'haiku'
 ];
 
 const standardCapabilities = [

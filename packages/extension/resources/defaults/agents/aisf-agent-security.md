@@ -1,7 +1,7 @@
 ---
 name: aisf-agent-security
 description: Security Engineer. Threat-models features and audits code for vulnerabilities before release.
-model: claude-sonnet-4-6
+model: sonnet
 tools: [Read, Write, Bash]
 ---
 <!-- ai-stepflow built-in -->

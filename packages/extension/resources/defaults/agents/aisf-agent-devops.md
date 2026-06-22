@@ -1,7 +1,7 @@
 ---
 name: aisf-agent-devops
 description: DevOps / Release Engineer. Owns CI/CD, build, deployment, and operational readiness.
-model: claude-sonnet-4-6
+model: sonnet
 tools: [Read, Write, Edit, Bash]
 ---
 <!-- ai-stepflow built-in -->
