@@ -1196,8 +1196,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           return '<div class="item' + (item.hasUpdate ? ' has-update' : '') + '">' +
             '<span class="item-dot" style="background:' + (item.installed ? 'var(--success)' : 'var(--badge)') + '"></span>' +
             '<span class="item-body">' +
-              '<span class="item-name" title="' + esc(item.filename) + '">' + esc(item.filename) + (item.hasUpdate ? '<span class="update-dot" title="Update available"></span>' : '') + '</span>' +
-              '<span class="item-sub" title="' + esc(item.description) + '">' + esc(item.description) + '</span>' +
+              '<span class="item-name" title="' + esc(item.filename.replace(/\.md$/i, '')) + '">' + esc(item.filename.replace(/\.md$/i, '')) + (item.hasUpdate ? '<span class="update-dot" title="Update available"></span>' : '') + '</span>' +
+              '<span class="item-sub" title="' + esc(item.name) + '">' + esc(item.name) + '</span>' +
             '</span>' +
             '<span class="item-acts">' + actsHtml + '</span>' +
             '</div>';

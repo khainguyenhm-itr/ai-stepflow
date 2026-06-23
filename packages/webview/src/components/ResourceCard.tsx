@@ -3,6 +3,7 @@ import { Icon } from './primitives';
 
 interface ResourceCardProps {
   title: string;
+  subtitle?: string;
   description: string;
   badge?: React.ReactNode;
   scopeBadge?: React.ReactNode;
@@ -16,6 +17,7 @@ interface ResourceCardProps {
 
 export const ResourceCard: React.FC<ResourceCardProps> = ({
   title,
+  subtitle,
   description,
   badge,
   scopeBadge,
@@ -29,7 +31,10 @@ export const ResourceCard: React.FC<ResourceCardProps> = ({
   <div className={`card ${bookmarked ? 'bookmarked' : ''}`}>
     <div className="card-head">
       <div className="card-head-main">
-        <span className="card-title" title={title}>{title}</span>
+        <div className="card-title-group">
+          <span className="card-title" title={title}>{title}</span>
+          {subtitle && <span className="card-subtitle" title={subtitle}>{subtitle}</span>}
+        </div>
         {scopeBadge}
         {badge}
       </div>

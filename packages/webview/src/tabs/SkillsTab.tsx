@@ -66,10 +66,12 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
       skill.name.toLowerCase().includes(q) ||
       (skill.description ?? '').toLowerCase().includes(q)
     )
-    .sort((a, b) =>
-      (Number(!!b.builtIn) - Number(!!a.builtIn)) ||
-      (sortOrder === 'desc' ? b.name.localeCompare(a.name) : a.name.localeCompare(b.name))
-    );
+    .sort((a, b) => {
+      if (sortOrder === 'newest') return (b.modifiedAt ?? 0) - (a.modifiedAt ?? 0);
+      if (sortOrder === 'oldest') return (a.modifiedAt ?? 0) - (b.modifiedAt ?? 0);
+      return (Number(!!b.builtIn) - Number(!!a.builtIn)) ||
+        (sortOrder === 'desc' ? b.name.localeCompare(a.name) : a.name.localeCompare(b.name));
+    });
 
   const renderScopeBadge = (sourcePath: string) => {
     const scope = getItemScope(sourcePath);
@@ -112,10 +114,17 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
         <EmptyState title="No skills found" text={q ? `No skills match "${search}"` : 'Create reusable skills that agents can use across different steps.'} icon={<Icon.Zap size={24} />} />
       ) : (
         <div className="card-grid">
-          {visibleSkills.map(skill => (
+          {visibleSkills.map(skill => {
+            const parts = skill.sourcePath.split('/');
+            const basename = parts[parts.length - 1] ?? '';
+            const fileTitle = basename.toUpperCase() === 'SKILL.MD'
+              ? (parts[parts.length - 2] ?? skill.name)
+              : basename.replace(/\.md$/i, '') || skill.name;
+            return (
             <ResourceCard
               key={skill.name}
-              title={skill.name}
+              title={fileTitle}
+              subtitle={skill.name}
               description={skill.description}
               scopeBadge={renderScopeBadge(skill.sourcePath)}
               badge={skill.builtIn ? <span className="badge built-in">Build-in</span> : undefined}
@@ -129,7 +138,8 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
               }
               onDetail={() => onDetail(skill)}
             />
-          ))}
+          );
+          })}
         </div>
       )}
     </div>

@@ -5,7 +5,7 @@ export type SaveScope = 'project' | 'global';
 export type ScopeFilter = SaveScope | 'all';
 export type ViewFilterItem = 'bookmarked' | 'built-in';
 export type ViewFilter = ReadonlyArray<ViewFilterItem>; // [] = "all items"
-export type SortOrder = 'asc' | 'desc';
+export type SortOrder = 'asc' | 'desc' | 'newest' | 'oldest';
 
 // ── Legacy dropdown components (kept for any remaining uses) ─────────────────
 
@@ -35,6 +35,8 @@ export const SortOrderSelect: React.FC<{ value: SortOrder; onChange: (v: SortOrd
   <select className="select" value={value} onChange={e => onChange(e.target.value as SortOrder)}>
     <option value="asc">Sort A → Z</option>
     <option value="desc">Sort Z → A</option>
+    <option value="newest">Newest first</option>
+    <option value="oldest">Oldest first</option>
   </select>
 );
 
@@ -147,11 +149,23 @@ export const UnifiedFilterPanel: React.FC<UnifiedFilterPanelProps> = ({
             </div>
           </div>
 
-          {/* ── Sort ── */}
+          {/* ── Sort by name ── */}
           <div className="fp-section">
-            <div className="fp-section-title">Sort</div>
+            <div className="fp-section-title">Sort by name</div>
             <div className="fp-options">
               {([['asc', 'A → Z'], ['desc', 'Z → A']] as [SortOrder, string][]).map(([v, label]) => (
+                <button key={v} type="button" className="fp-option" onClick={() => setPSort(v)}>
+                  <Radio on={pSort === v} />{label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Sort by time ── */}
+          <div className="fp-section">
+            <div className="fp-section-title">Sort by time</div>
+            <div className="fp-options">
+              {([['newest', 'Newest first'], ['oldest', 'Oldest first']] as [SortOrder, string][]).map(([v, label]) => (
                 <button key={v} type="button" className="fp-option" onClick={() => setPSort(v)}>
                   <Radio on={pSort === v} />{label}
                 </button>

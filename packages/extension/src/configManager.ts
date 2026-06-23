@@ -545,7 +545,7 @@ export class ConfigManager {
     logMissing: boolean = true
   ): Promise<Skill | undefined> {
     try {
-      const content = await fs.readFile(filePath, 'utf8');
+      const [content, stat] = await Promise.all([fs.readFile(filePath, 'utf8'), fs.stat(filePath).catch(() => null)]);
       // Strip leading HTML comment (e.g. built-in marker) so gray-matter can find --- frontmatter
       const stripped = content.replace(/^<!--[\s\S]*?-->\s*\n/, '');
       const { data, content: body } = matter(stripped);
@@ -559,6 +559,7 @@ export class ConfigManager {
         instructions: body.trim(),
         sourcePath: filePath,
         builtIn: this.hasBuiltInMarker(content),
+        ...(stat ? { modifiedAt: stat.mtimeMs } : {}),
         ...(aiConversation ? { aiConversation } : {})
       };
     } catch (e: any) {
@@ -719,7 +720,7 @@ export class ConfigManager {
 
   private async parseAgentFile(filePath: string): Promise<Agent | undefined> {
     try {
-      const content = await fs.readFile(filePath, 'utf8');
+      const [content, stat] = await Promise.all([fs.readFile(filePath, 'utf8'), fs.stat(filePath).catch(() => null)]);
       // Strip leading HTML comment (e.g. built-in marker) so gray-matter can find --- frontmatter
       const stripped = content.replace(/^<!--[\s\S]*?-->\s*\n/, '');
       const { data, content: body } = matter(stripped);
@@ -732,6 +733,7 @@ export class ConfigManager {
         systemPrompt: body.trim(),
         sourcePath: filePath,
         builtIn: this.hasBuiltInMarker(content),
+        ...(stat ? { modifiedAt: stat.mtimeMs } : {}),
         ...(typeof data.maxTurns === 'number' ? { maxTurns: data.maxTurns } : {}),
         ...(aiConversation ? { aiConversation } : {})
       };

@@ -66,10 +66,12 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
       agent.name.toLowerCase().includes(q) ||
       (agent.description ?? '').toLowerCase().includes(q)
     )
-    .sort((a, b) =>
-      (Number(!!b.builtIn) - Number(!!a.builtIn)) ||
-      (sortOrder === 'desc' ? b.name.localeCompare(a.name) : a.name.localeCompare(b.name))
-    );
+    .sort((a, b) => {
+      if (sortOrder === 'newest') return (b.modifiedAt ?? 0) - (a.modifiedAt ?? 0);
+      if (sortOrder === 'oldest') return (a.modifiedAt ?? 0) - (b.modifiedAt ?? 0);
+      return (Number(!!b.builtIn) - Number(!!a.builtIn)) ||
+        (sortOrder === 'desc' ? b.name.localeCompare(a.name) : a.name.localeCompare(b.name));
+    });
 
   const renderScopeBadge = (sourcePath: string) => {
     const scope = getItemScope(sourcePath);
@@ -115,7 +117,8 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
           {visibleAgents.map(agent => (
             <ResourceCard
               key={agent.name}
-              title={agent.name}
+              title={agent.sourcePath.split('/').pop()?.replace(/\.md$/i, '') ?? agent.name}
+              subtitle={agent.name}
               description={agent.description}
               scopeBadge={renderScopeBadge(agent.sourcePath)}
               badge={agent.builtIn ? <span className="badge built-in">Build-in</span> : undefined}
