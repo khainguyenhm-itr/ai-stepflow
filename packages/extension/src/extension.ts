@@ -24,10 +24,23 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.window.registerWebviewViewProvider(SidebarProvider.viewType, sidebar)
     );
 
-    const refreshAll = () => {
+    /**
+     * Debounce helper — collapses bursts of file-system events (e.g. a `git checkout`
+     * touching dozens of files) into a single refresh call, preventing the extension from
+     * hammering disk reads and webview postMessages for every individual file write.
+     */
+    const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number): T => {
+      let timer: ReturnType<typeof setTimeout>;
+      return ((...args: unknown[]) => {
+        clearTimeout(timer);
+        timer = setTimeout(() => fn(...args), ms);
+      }) as T;
+    };
+
+    const refreshAll = debounce(() => {
       void CockpitPanel.currentPanel?.refreshData();
       void sidebar.refresh(false);
-    };
+    }, 300);
 
     // The cockpit can also be opened from the status bar.
     const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);

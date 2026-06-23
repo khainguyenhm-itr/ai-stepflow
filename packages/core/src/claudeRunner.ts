@@ -3,6 +3,18 @@ import { summarizeUsage } from './runUtils.js';
 
 export interface ClaudeStreamingRunOptions {
   systemPrompt: string;
+  /**
+   * When set, `systemPrompt` is used as the **static prefix** (agent + skills body) and this
+   * field carries the **dynamic per-run suffix** (inputs, requires, produces). The static prefix
+   * is passed via `--system-prompt` so Claude's prompt-prefix cache can serve it from cache on
+   * repeated calls; the dynamic suffix is appended via `--append-system-prompt`. When absent,
+   * the full `systemPrompt` is appended to whatever Claude's ambient system prompt is, matching
+   * the pre-existing behaviour.
+   *
+   * Practically: headless step runs populate both fields (via {@link composeSystemPromptParts});
+   * review runs and interactive steps keep only `systemPrompt` (single string, as before).
+   */
+  dynamicSystemPrompt?: string;
   userMessage: string;
   model?: string;
   projectPath: string;
@@ -60,7 +72,16 @@ export function runClaudeStreaming(opts: ClaudeStreamingRunOptions, spawnFn: Spa
   if (opts.model) args.push('--model', opts.model);
   if (opts.mcpConfig !== undefined) args.push('--mcp-config', opts.mcpConfig, '--strict-mcp-config');
   if (opts.maxTurns && opts.maxTurns > 0) args.push('--max-turns', String(opts.maxTurns));
-  if (opts.systemPrompt) args.push('--append-system-prompt', opts.systemPrompt);
+
+  // When dynamicSystemPrompt is provided the static prefix goes to --system-prompt (cacheable)
+  // and the dynamic suffix is appended. Otherwise fall back to appending the whole prompt.
+  if (opts.dynamicSystemPrompt !== undefined) {
+    if (opts.systemPrompt) args.push('--system-prompt', opts.systemPrompt);
+    if (opts.dynamicSystemPrompt) args.push('--append-system-prompt', opts.dynamicSystemPrompt);
+  } else if (opts.systemPrompt) {
+    args.push('--append-system-prompt', opts.systemPrompt);
+  }
+
   args.push(opts.userMessage);
 
   const child = spawnFn('claude', args, { cwd: opts.projectPath || undefined, env: process.env });

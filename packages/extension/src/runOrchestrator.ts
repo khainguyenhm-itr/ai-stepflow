@@ -10,8 +10,9 @@ import { TerminalManager } from './terminalManager.js';
 import { HostMessage, HumanReview, HistoryEvent } from './messages.js';
 import { readInteractiveSessionStats } from './sessionStats.js';
 import {
-  Flow, FlowRunState, FlowStep,
-  runClaudeStreaming, ClaudeStreamingRunOptions, ClaudeStreamingRunResult, composeSystemPrompt,
+  Flow, FlowRunState, FlowStep, Skill,
+  runClaudeStreaming, ClaudeStreamingRunOptions, ClaudeStreamingRunResult,
+  composeSystemPrompt, composeSystemPromptParts,
   validateProduces, validateRequires,
   renderRunReport,
   pickAutoAdvanceSteps,
@@ -50,6 +51,22 @@ export class RunOrchestrator {
   private _stepStartTimes = new Map<string, Date>();
   private _bookkeepingRunId: string | undefined;
   private _stateUpdateQueue = Promise.resolve();
+
+  /**
+   * Per-run skills cache. Skills are read from disk once per run (populated on the first
+   * headless step and reused by every parallel step that follows). Cleared whenever the
+   * run ID changes so a reload in the middle of a run picks up new skills.
+   */
+  private _skillsCache: Skill[] | undefined;
+
+  /**
+   * Output streaming buffer: accumulate text chunks from headless `claude` runs and flush
+   * them to the webview in a single postMessage per 50 ms tick. This prevents React from
+   * re-rendering on every streamed token (LLMs emit ~10–30 chunks/s) and keeps the UI
+   * responsive even during long-running steps.
+   */
+  private _outputChunkBuffer = new Map<string, string>();
+  private _outputFlushTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(
     private readonly configManager: ConfigManager,
@@ -194,27 +211,34 @@ export class RunOrchestrator {
     // thu thập output, sau đó tự động chạy review hai lớp và tự động chuyển bước khi đạt yêu cầu
     // — không Enter, không nhấn "Mark step done".
     if (isHeadless) {
-      const skills = await this.configManager.loadSkills();
+      const skills = await this._getSkillsForRun();
       const runInputs = this._runState?.inputs || {};
       // Relative paths for agent prompt (cleaner than full system paths)
       const resolvedProduces = resolveTemplates(step.produces, runInputs)
         .map(p => resolveFlowRelativePath(p, flow.name));
       const resolvedRequires = resolveTemplates(step.requires, runInputs)
         .map(p => resolveFlowRelativePath(p, flow.name));
-      const systemPrompt = composeSystemPrompt(agent, stepSkillNames, skills, resolvedProduces, runInputs, resolvedRequires);
+
+      // Split into static (cacheable prefix: agent + skills body) and dynamic (per-run context).
+      // The static part is passed via --system-prompt so Claude's prompt-prefix cache can reuse it
+      // across steps sharing the same agent; the dynamic part is appended via --append-system-prompt.
+      const promptParts = composeSystemPromptParts(agent, stepSkillNames, skills, resolvedProduces, runInputs, resolvedRequires);
       const userMessage = resolveTemplate(description?.trim() || step.input?.prompt?.trim() || `Run step: ${step.title || step.id}`, runInputs);
       await this._setRunState(s => machine.markRunning(s, flow, stepId), { stepId, status: 'running', message: 'Run started (headless)' });
 
       let output = '';
       const result = await this._spawnClaudeStreaming({
-        systemPrompt, userMessage, model: agent.model, projectPath,
+        systemPrompt: promptParts.static,
+        dynamicSystemPrompt: promptParts.dynamic,
+        userMessage, model: agent.model, projectPath,
         maxTurns: this._runMaxTurns(agent),
         onText: chunk => {
           output += chunk;
-          this.post({ type: 'stepUpdate', stepId, append: true, output: chunk });
+          this._bufferOutput(stepId, chunk);
           void this._patchStepState(stepId, { output });
         }
       }, stepId);
+      this._flushOutputBuffer(); // Flush any remaining buffered chunks immediately on run end.
       // The user cancelled this run: cancelStep already moved the step to 'cancelled',
       // so don't also record a failure for the kill that cancel triggered.
       if (this._cancelledStepIds.delete(stepId)) return;
@@ -774,6 +798,46 @@ export class RunOrchestrator {
     }));
   }
 
+  /**
+   * Return the skills list for this run, loading from disk only on the first call per run.
+   * Parallel headless steps all share one read; clearing `_skillsCache` in
+   * `_resetBookkeepingIfNewRun` ensures a new run always sees fresh skills.
+   */
+  private async _getSkillsForRun(): Promise<Skill[]> {
+    if (!this._skillsCache) {
+      this._skillsCache = await this.configManager.loadSkills();
+    }
+    return this._skillsCache;
+  }
+
+  /**
+   * Accumulate a streamed output chunk for `stepId` and schedule a flush. The 50 ms
+   * batch window prevents React from re-rendering on every token the LLM emits while
+   * keeping perceived latency well within acceptable limits for a developer tool.
+   */
+  private _bufferOutput(stepId: string, chunk: string): void {
+    this._outputChunkBuffer.set(stepId, (this._outputChunkBuffer.get(stepId) ?? '') + chunk);
+    if (!this._outputFlushTimer) {
+      this._outputFlushTimer = setTimeout(() => this._flushOutputBuffer(), 50);
+    }
+  }
+
+  /**
+   * Flush all buffered output chunks to the webview in one postMessage per step, then
+   * clear the buffer. Called by the 50 ms timer and also immediately at the end of each
+   * run so the final tail of output is never left in the buffer.
+   */
+  private _flushOutputBuffer(): void {
+    if (this._outputFlushTimer) {
+      clearTimeout(this._outputFlushTimer);
+      this._outputFlushTimer = undefined;
+    }
+    for (const [stepId, text] of this._outputChunkBuffer) {
+      if (text) this.post({ type: 'stepUpdate', stepId, append: true, output: text });
+    }
+    this._outputChunkBuffer.clear();
+  }
+
   private _resetBookkeepingIfNewRun(): void {
     const runId = this._runState?.runId;
     if (runId === this._bookkeepingRunId) return;
@@ -782,5 +846,8 @@ export class RunOrchestrator {
     this._parkedStepIds = new Set<string>();
     this._autoRetryStepIds = new Set<string>();
     this._stepStartTimes = new Map<string, Date>();
+    // Clear per-run caches so a new run always sees fresh data.
+    this._skillsCache = undefined;
+    this._flushOutputBuffer();
   }
 }
