@@ -658,10 +658,24 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 13px; line-height: 1; }
     .icon-btn:hover { color: var(--fg); background: var(--hover); }
 
-    /* scrollable content area */
-    .body { flex: 1 1 0; overflow-y: auto; overflow-x: hidden; padding: 0 12px 16px; overscroll-behavior: contain; }
-    .body::-webkit-scrollbar { display: none; }
-    .body { scrollbar-width: none; }
+    /* scrollable content area — flex column so expanded accordion section can grow */
+    .body { flex: 1 1 0; overflow: hidden; display: flex; flex-direction: column; padding: 0 12px 8px; }
+
+    /* ── accordion: expanded section fills remaining sidebar height ── */
+    .sec.expanded { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+    .sec.expanded > .sec-hdr { flex: 0 0 auto; }
+    .sec.expanded > .box { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+    .sec.expanded > .box > .box-tabs,
+    .sec.expanded > .box > .box-search { flex: 0 0 auto; }
+    .sec.expanded > .box > #mcp,
+    .sec.expanded > .box > #plugins,
+    .sec.expanded > .box > #runs { flex: 1; min-height: 0; overflow-y: auto; max-height: none; scrollbar-width: none; }
+    .sec.expanded > .box > #mcp::-webkit-scrollbar,
+    .sec.expanded > .box > #plugins::-webkit-scrollbar,
+    .sec.expanded > .box > #runs::-webkit-scrollbar { display: none; }
+    /* Default Library expanded */
+    .sec.expanded > #defaults-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    .sec.expanded .lib-panel { flex: 1; min-height: 0; max-height: none; overflow-y: auto; }
 
     /* ── run cards ── */
     #runs { padding: 4px 6px; display: flex; flex-direction: column; gap: 6px; }
@@ -732,15 +746,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .lib-toggle-badge { display: inline-flex; align-items: center; height: 15px; padding: 0 5px; border-radius: 9px; font-size: 9px; font-weight: 700; color: var(--badge-fg); background: var(--success); flex: 0 0 auto; }
     .lib-toggle-badge:empty { display: none; }
     .lib-panel { margin-top: 2px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
-    .lib-filter { padding: 7px 8px 6px; border-bottom: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; gap: 5px; }
-    .lib-filter-row { display: flex; align-items: center; gap: 6px; }
-    .lib-filter-label { font-size: 10.5px; color: var(--muted); font-weight: 600; flex: 0 0 42px; }
-    .lib-chips { display: flex; flex-wrap: wrap; gap: 3px; flex: 1; }
-    .lib-chip { display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 8px; border: 1px solid var(--border); border-radius: 10px; background: transparent; color: var(--muted); font-size: 10.5px; font-weight: 600; cursor: pointer; font-family: inherit; transition: background .1s, color .1s, border-color .1s; white-space: nowrap; }
-    .lib-chip:hover { color: var(--fg); border-color: var(--muted); }
-    .lib-chip.on { background: var(--btn); border-color: var(--btn); color: var(--btn-fg); }
-    .lib-chip.status-on { background: var(--focus); border-color: var(--focus); color: #fff; }
-    .lib-filter-actions { display: flex; justify-content: flex-end; gap: 4px; margin-top: 1px; }
 
     /* ── box (bordered list container) ── */
     .box { border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
@@ -768,6 +773,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     /* action buttons: hidden until hover so narrow sidebars don't clip content */
     .item-acts { display: flex; align-items: center; gap: 3px; opacity: 0; transition: opacity .1s; }
     .item:hover .item-acts, .item.menu-open .item-acts { opacity: 1; }
+    .item.has-update .item-acts { opacity: 1; }
+    .update-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--vscode-charts-yellow, #d7ba7d); margin-left: 5px; flex-shrink: 0; vertical-align: middle; }
+    .icon-update { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1px solid transparent; border-radius: var(--r-sm); background: transparent; color: var(--vscode-charts-yellow, #d7ba7d); font-size: 14px; line-height: 1; cursor: pointer; font-family: inherit; }
+    .icon-update:hover { border-color: var(--vscode-charts-yellow, #d7ba7d); background: var(--hover); }
 
     /* ── pill action buttons ── */
     .pill { display: inline-flex; align-items: center; justify-content: center; height: 22px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--r-sm); background: transparent; color: var(--fg); font-size: 10.5px; font-weight: 600; cursor: pointer; white-space: nowrap; font-family: inherit; transition: background .1s, border-color .1s; }
@@ -801,8 +810,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     /* list footer */
     .list-more { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--muted); padding: 5px 8px 6px; border-top: 1px solid rgba(127,127,127,.08); }
-    /* Default Library filter bar: sticky so it stays visible while scrolling items */
-    .lib-panel .lib-filter { position: sticky; top: 0; z-index: 1; }
+    /* Default Library search bar: sticky so it stays visible while scrolling items */
+    .lib-panel .box-search { position: sticky; top: 0; z-index: 1; background: var(--panel); border-bottom: 1px solid var(--border); }
 
     /* ── states ── */
     .empty { display: block; color: var(--muted); font-size: 11.5px; padding: 8px; font-style: italic; }
@@ -814,10 +823,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     @keyframes spin { to { transform: rotate(360deg); } }
     .spin { display: inline-block; width: 9px; height: 9px; border: 1.5px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin .65s linear infinite; vertical-align: middle; margin-right: 4px; flex-shrink: 0; }
 
-    /* ── fixed-height list containers: each section scrolls internally, scrollbar hidden ── */
-    #mcp, #plugins, #runs { max-height: 300px; overflow-y: auto; scrollbar-width: none; }
+    /* fallback scroll for non-expanded state */
+    #mcp, #plugins, #runs { overflow-y: auto; scrollbar-width: none; }
     #mcp::-webkit-scrollbar, #plugins::-webkit-scrollbar, #runs::-webkit-scrollbar { display: none; }
-    .lib-panel { max-height: 180px; overflow-y: auto; scrollbar-width: none; }
+    .lib-panel { overflow-y: auto; scrollbar-width: none; }
     .lib-panel::-webkit-scrollbar { display: none; }
 
     footer { display: none; }
@@ -1020,23 +1029,43 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   let availablePlugins = [];
   let lastRunFiles = [];
   let lastRunTotal = 0;
-  const sectionOpen = { mcp: false, plugins: false, runs: false, settings: false };
+  // lib is included — all 5 sections share the same accordion state and helpers
+  const sectionOpen = { lib: false, mcp: false, plugins: false, runs: false, settings: false };
 
-  function setSectionOpen(key, open) {
+  function _applySection(key, open) {
     sectionOpen[key] = open;
-    const panel = document.getElementById(key + '-panel');
-    const caret = document.getElementById(key + '-caret');
-    const toggle = document.getElementById(key + '-section-toggle');
-    if (panel) panel.style.display = open ? '' : 'none';
-    if (caret) caret.className = 'lib-caret' + (open ? ' open' : '');
-    if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    let toggle, sec, panel, caret;
+    if (key === 'lib') {
+      toggle = document.getElementById('lib-toggle-btn');
+      sec    = document.getElementById('lib-hdr') && document.getElementById('lib-hdr').closest('.sec');
+      panel  = document.getElementById('defaults-panel');
+      caret  = toggle && toggle.querySelector('.lib-caret');
+      if (sec) sec.classList.toggle('expanded', open);
+      if (caret) caret.className = 'lib-caret' + (open ? ' open' : '');
+      renderDefaultsPanel();
+    } else {
+      toggle = document.getElementById(key + '-section-toggle');
+      sec    = toggle && toggle.closest('.sec');
+      panel  = document.getElementById(key + '-panel');
+      caret  = document.getElementById(key + '-caret');
+      if (sec)    sec.classList.toggle('expanded', open);
+      if (panel)  panel.style.display = open ? '' : 'none';
+      if (caret)  caret.className = 'lib-caret' + (open ? ' open' : '');
+      if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
   }
 
+  function setSectionOpen(key, open) {
+    if (open) Object.keys(sectionOpen).filter(k => k !== key).forEach(k => _applySection(k, false));
+    _applySection(key, open);
+  }
+
+  // lib toggle is rendered dynamically in renderDefaults — wired there
   ['mcp', 'plugins', 'runs', 'settings'].forEach(key => {
     const toggle = document.getElementById(key + '-section-toggle');
     if (!toggle) return;
     toggle.onclick = () => setSectionOpen(key, !sectionOpen[key]);
-    setSectionOpen(key, sectionOpen[key]);
+    _applySection(key, false);
   });
 
   // Plugin tab switcher
@@ -1094,28 +1123,29 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     document.getElementById('lib-count').textContent = total ? String(total) : '';
   }
 
-  let defaultLibraryOpen = false;
   let defaultItemsData = [];
-  const LIB_KINDS = ['agents', 'skills', 'reviews', 'validators'];
-  const LIB_KIND_LABEL = { agents: 'Agents', skills: 'Skills', reviews: 'Reviews', validators: 'Validators' };
-  // pending = what user is picking; applied = what drives the item list (set on Filter click)
-  let libPending  = { types: LIB_KINDS.slice(), status: 'all', text: '' };
-  let libApplied  = { types: LIB_KINDS.slice(), status: 'all', text: '' };
+  let libQuery = '';
+  let libActiveTab = 'agents'; // 'agents' | 'skills' | 'reviews' | 'validators'
+  const libPendingOps = new Map(); // filename → 'installing' | 'updating' | 'removing'
+  const LIB_TABS = [
+    { key: 'agents',     label: 'Agents' },
+    { key: 'skills',     label: 'Skills' },
+    { key: 'reviews',    label: 'Reviews' },
+    { key: 'validators', label: 'Validators' },
+  ];
 
   function renderDefaults(items) {
     defaultItemsData = items || [];
+    libPendingOps.clear(); // data refresh = operation settled
     const installedCount = defaultItemsData.filter(i => i.installed).length;
     const toggle = document.getElementById('defaults-toggle');
     toggle.innerHTML =
       '<button class="lib-toggle" id="lib-toggle-btn">' +
-      '<span class="lib-caret' + (defaultLibraryOpen ? ' open' : '') + '">&#9658;</span>' +
+      '<span class="lib-caret' + (sectionOpen.lib ? ' open' : '') + '">&#9658;</span>' +
       '<span class="lib-toggle-label">Default Library</span>' +
       (installedCount ? '<span class="lib-toggle-badge">' + installedCount + ' installed</span>' : '') +
       '</button>';
-    document.getElementById('lib-toggle-btn').onclick = () => {
-      defaultLibraryOpen = !defaultLibraryOpen;
-      renderDefaultsPanel();
-    };
+    document.getElementById('lib-toggle-btn').onclick = () => setSectionOpen('lib', !sectionOpen.lib);
     renderDefaultsPanel();
   }
 
@@ -1126,112 +1156,85 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   function renderDefaultsPanel() {
     const panel = document.getElementById('defaults-panel');
     const btn = document.getElementById('lib-toggle-btn');
-    if (btn) btn.querySelector('.lib-caret').className = 'lib-caret' + (defaultLibraryOpen ? ' open' : '');
-    if (!defaultLibraryOpen) { panel.style.display = 'none'; return; }
+    if (btn) btn.querySelector('.lib-caret').className = 'lib-caret' + (sectionOpen.lib ? ' open' : '');
+    if (!sectionOpen.lib) { panel.style.display = 'none'; return; }
     panel.style.display = '';
 
-    // ── filter panel ──────────────────────────────────────────────────────────
-    const typeChips = LIB_KINDS.map(k => {
-      const count = defaultItemsData.filter(i => i.kind === k).length;
-      if (!count) return '';
-      const on = libPending.types.includes(k);
-      return '<button class="lib-chip' + (on ? ' on' : '') + '" type="button" data-chip-type="' + k + '">' +
-        esc(LIB_KIND_LABEL[k]) + '<span class="sec-count">' + count + '</span></button>';
-    }).join('');
+    const q = libQuery;
+    const tabItems = defaultItemsData
+      .filter(i => i.kind === libActiveTab)
+      .sort((a, b) => (Number(!!b.installed) - Number(!!a.installed)) || a.filename.localeCompare(b.filename));
+    const items = q
+      ? tabItems.filter(i => i.filename.toLowerCase().includes(q) || (i.description || '').toLowerCase().includes(q))
+      : tabItems;
 
-    const statuses = [
-      { key: 'all',       label: 'All' },
-      { key: 'installed', label: 'Installed' },
-      { key: 'updates',   label: 'Has update' },
-    ];
-    const statusChips = statuses.map(s =>
-      '<button class="lib-chip' + (libPending.status === s.key ? ' status-on' : '') + '" type="button" data-chip-status="' + s.key + '">' + s.label + '</button>'
-    ).join('');
-
-    const filterHtml =
-      '<div class="lib-filter">' +
-        '<div class="lib-filter-row"><span class="lib-filter-label">Type</span><span class="lib-chips" id="lib-chips-type">' + typeChips + '</span></div>' +
-        '<div class="lib-filter-row"><span class="lib-filter-label">Status</span><span class="lib-chips" id="lib-chips-status">' + statusChips + '</span></div>' +
-        '<div class="lib-filter-row"><input class="search" id="lib-search" type="text" placeholder="Search name or description…" autocomplete="off" spellcheck="false" value="' + esc(libPending.text) + '"></div>' +
-        '<div class="lib-filter-actions">' +
-          '<button class="pill" type="button" id="lib-filter-reset">Reset</button>' +
-          '<button class="pill accent" type="button" id="lib-filter-apply">Filter</button>' +
-        '</div>' +
+    const tabsHtml = '<div class="box-tabs" id="lib-tabs">' +
+      LIB_TABS.map(t => {
+        const count = defaultItemsData.filter(i => i.kind === t.key).length;
+        return '<button class="tab' + (libActiveTab === t.key ? ' active' : '') + '" type="button" data-lib-tab="' + t.key + '">' +
+          t.label + (count ? ' <span class="sec-count">' + count + '</span>' : '') +
+          '</button>';
+      }).join('') +
       '</div>';
 
-    // ── item list (driven by libApplied) ──────────────────────────────────────
-    const items = defaultItemsData.filter(i => {
-      if (!libApplied.types.includes(i.kind)) return false;
-      if (libApplied.status === 'installed' && !i.installed) return false;
-      if (libApplied.status === 'updates' && !i.hasUpdate) return false;
-      if (libApplied.text && !i.name.toLowerCase().includes(libApplied.text) && !(i.description || '').toLowerCase().includes(libApplied.text)) return false;
-      return true;
-    });
-
-    const noTypesSelected = libApplied.types.length === 0;
     const itemsHtml = items.length
-      ? items.map(item =>
-          '<div class="item">' +
-          '<span class="item-dot" style="background:' + (item.installed ? 'var(--success)' : 'var(--badge)') + '"></span>' +
-          '<span class="item-body">' +
-            '<span class="item-name" title="' + esc(item.filename) + '">' + esc(item.filename) + '</span>' +
-            '<span class="item-sub" title="' + esc(item.description) + '">' + esc(item.description) + '</span>' +
-          '</span>' +
-          '<span class="item-acts">' +
-            (item.installed
-              ? (item.hasUpdate ? '<button class="pill accent" type="button" data-act="updateDefault" data-kind="' + esc(item.kind) + '" data-filename="' + esc(item.filename) + '">Update</button>' : '') +
-                (item.inUse
-                  ? '<button class="pill" type="button" disabled title="Used by a flow — remove from flows first">Remove</button>'
-                  : '<button class="pill danger" type="button" data-act="uninstallDefault" data-kind="' + esc(item.kind) + '" data-filename="' + esc(item.filename) + '">Remove</button>')
-              : '<button class="pill accent" type="button" data-act="installDefault" data-kind="' + esc(item.kind) + '" data-filename="' + esc(item.filename) + '">Install</button>') +
-          '</span>' +
-          '</div>'
-        ).join('')
-      : '<span class="empty">' + (noTypesSelected ? 'Select at least one type above.' : libApplied.text ? 'No items match "' + esc(libApplied.text) + '"' : 'No items') + '</span>';
+      ? items.map(item => {
+          const pending = libPendingOps.get(item.filename);
+          let actsHtml;
+          if (pending) {
+            const label = pending === 'installing' ? 'Installing…' : pending === 'updating' ? 'Updating…' : 'Removing…';
+            actsHtml = '<button class="pill" type="button" disabled>' + spinHtml + label + '</button>';
+          } else if (item.installed) {
+            actsHtml =
+              (item.hasUpdate ? '<button class="icon-update" type="button" data-act="updateDefault" data-kind="' + esc(item.kind) + '" data-filename="' + esc(item.filename) + '" title="Update available">↑</button>' : '') +
+              (item.inUse
+                ? '<button class="pill" type="button" disabled title="Used by a flow — remove from flows first">Remove</button>'
+                : '<button class="pill danger" type="button" data-act="uninstallDefault" data-kind="' + esc(item.kind) + '" data-filename="' + esc(item.filename) + '">Remove</button>');
+          } else {
+            actsHtml = '<button class="pill accent" type="button" data-act="installDefault" data-kind="' + esc(item.kind) + '" data-filename="' + esc(item.filename) + '">Install</button>';
+          }
+          return '<div class="item' + (item.hasUpdate ? ' has-update' : '') + '">' +
+            '<span class="item-dot" style="background:' + (item.installed ? 'var(--success)' : 'var(--badge)') + '"></span>' +
+            '<span class="item-body">' +
+              '<span class="item-name" title="' + esc(item.filename) + '">' + esc(item.filename) + (item.hasUpdate ? '<span class="update-dot" title="Update available"></span>' : '') + '</span>' +
+              '<span class="item-sub" title="' + esc(item.description) + '">' + esc(item.description) + '</span>' +
+            '</span>' +
+            '<span class="item-acts">' + actsHtml + '</span>' +
+            '</div>';
+        }).join('')
+      : '<span class="empty">' + (q ? 'No items match "' + esc(q) + '"' : 'No items') + '</span>';
 
-    panel.innerHTML = '<div class="lib-panel">' + filterHtml + itemsHtml + '</div>';
+    panel.innerHTML =
+      '<div class="lib-panel">' +
+        tabsHtml +
+        '<div class="box-search"><input class="search" id="lib-search" type="text" placeholder="Filter ' + libActiveTab + '…" autocomplete="off" spellcheck="false" value="' + esc(q) + '"></div>' +
+        itemsHtml +
+      '</div>';
 
-    // ── wire up filter controls (pending state — don't re-render until Filter clicked) ──
-    panel.querySelectorAll('[data-chip-type]').forEach(chip => {
-      chip.onclick = () => {
-        const k = chip.getAttribute('data-chip-type');
-        const idx = libPending.types.indexOf(k);
-        if (idx >= 0) libPending.types.splice(idx, 1); else libPending.types.push(k);
-        chip.classList.toggle('on', libPending.types.includes(k));
-      };
-    });
-
-    panel.querySelectorAll('[data-chip-status]').forEach(chip => {
-      chip.onclick = () => {
-        libPending.status = chip.getAttribute('data-chip-status');
-        panel.querySelectorAll('[data-chip-status]').forEach(c =>
-          c.classList.toggle('status-on', c.getAttribute('data-chip-status') === libPending.status));
+    panel.querySelectorAll('[data-lib-tab]').forEach(tab => {
+      tab.onclick = () => {
+        libActiveTab = tab.getAttribute('data-lib-tab');
+        libQuery = '';
+        renderDefaultsPanel();
       };
     });
 
     const searchEl = document.getElementById('lib-search');
     if (searchEl) {
-      searchEl.addEventListener('input', e => { libPending.text = e.target.value.trim().toLowerCase(); });
+      searchEl.addEventListener('input', e => {
+        libQuery = e.target.value.trim().toLowerCase();
+        renderDefaultsPanel();
+      });
     }
-
-    document.getElementById('lib-filter-apply').onclick = () => {
-      libApplied = { types: libPending.types.slice(), status: libPending.status, text: libPending.text };
-      renderDefaultsPanel();
-    };
-
-    document.getElementById('lib-filter-reset').onclick = () => {
-      libPending  = { types: LIB_KINDS.slice(), status: 'all', text: '' };
-      libApplied  = { types: LIB_KINDS.slice(), status: 'all', text: '' };
-      renderDefaultsPanel();
-    };
 
     panel.querySelectorAll('button[data-act]').forEach(btn => {
       btn.onclick = () => {
         const act = btn.getAttribute('data-act');
         const kind = btn.getAttribute('data-kind');
         const filename = btn.getAttribute('data-filename');
-        btn.disabled = true;
-        btn.innerHTML = spinHtml + (act === 'installDefault' ? 'Installing…' : act === 'updateDefault' ? 'Updating…' : 'Removing…');
+        const opLabel = act === 'installDefault' ? 'installing' : act === 'updateDefault' ? 'updating' : 'removing';
+        libPendingOps.set(filename, opLabel);
+        renderDefaultsPanel();
         vscode.postMessage({ type: act === 'installDefault' ? 'installDefaultItem' : act === 'updateDefault' ? 'updateDefaultItem' : 'uninstallDefaultItem', kind, filename });
       };
     });
