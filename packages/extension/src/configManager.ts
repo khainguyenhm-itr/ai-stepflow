@@ -22,6 +22,55 @@ export class ConfigManager {
     this.globalPath = path.join(os.homedir(), '.claude');
   }
 
+  // ---------------------------------------------------------------------------
+  // Library cache: load agents + skills + flows concurrently once per refresh.
+  // The cache is keyed by a simple generation counter; invalidateLibraryCache()
+  // bumps the counter so the next access triggers a fresh disk scan.
+  // ---------------------------------------------------------------------------
+
+  private _libraryCache: { agents: Agent[]; skills: Skill[]; flows: Flow[] } | undefined;
+  /** In-flight Promise so concurrent callers share one disk-scan. */
+  private _libraryCachePromise: Promise<{ agents: Agent[]; skills: Skill[]; flows: Flow[] }> | undefined;
+
+  /**
+   * Load (or return from cache) the full library triple: agents, skills, and flows.
+   * All three directories are scanned concurrently in a single Promise.all so the
+   * extension sidebar doesn't block on three serial async waterfalls.
+   */
+  private async _loadLibrary(): Promise<{ agents: Agent[]; skills: Skill[]; flows: Flow[] }> {
+    if (this._libraryCache) return this._libraryCache;
+    if (!this._libraryCachePromise) {
+      this._libraryCachePromise = this._scanLibrary().then(result => {
+        this._libraryCache = result;
+        this._libraryCachePromise = undefined;
+        return result;
+      }).catch(err => {
+        this._libraryCachePromise = undefined;
+        throw err;
+      });
+    }
+    return this._libraryCachePromise;
+  }
+
+  /** Parallel disk scan — do not call directly; use _loadLibrary() for caching. */
+  private async _scanLibrary(): Promise<{ agents: Agent[]; skills: Skill[]; flows: Flow[] }> {
+    const [agents, skills, flows] = await Promise.all([
+      this._scanAgents(),
+      this._scanSkills(),
+      this._scanFlows(),
+    ]);
+    return { agents, skills, flows };
+  }
+
+  /**
+   * Invalidate the library cache. Call this whenever a file-system change is
+   * detected in the .claude directory so the next load sees fresh data.
+   */
+  public invalidateLibraryCache(): void {
+    this._libraryCache = undefined;
+    this._libraryCachePromise = undefined;
+  }
+
   /**
    * Install the bundled default library (SDLC agents + skills + karpathy) into ~/.claude or project .claude.
    * NOT run automatically — the user opts in via the sidebar "Initialize" button, and can
@@ -371,31 +420,34 @@ export class ConfigManager {
   }
 
   public async loadAgents(): Promise<Agent[]> {
-    const agents = new Map<string, Agent>();
-    console.log('AI StepFlow: loadAgents starting...');
+    return (await this._loadLibrary()).agents;
+  }
 
+  public async loadSkills(): Promise<Skill[]> {
+    return (await this._loadLibrary()).skills;
+  }
+
+  public async loadFlows(): Promise<Flow[]> {
+    return (await this._loadLibrary()).flows;
+  }
+
+  private async _scanAgents(): Promise<Agent[]> {
+    const agents = new Map<string, Agent>();
     for (const dir of this.scopedDirs('agents')) {
       const files = await this.listFiles(dir, name => name.endsWith('.md'));
-      console.log(`AI StepFlow: checking dir ${dir}, found ${files.length} md files.`);
       for (const file of files) {
         const agent = await this.parseAgentFile(path.join(dir, file));
         if (agent) agents.set(agent.name, agent);
       }
     }
-
-    console.log(`AI StepFlow: loadAgents finished, total ${agents.size} unique agents.`);
     return Array.from(agents.values());
   }
 
-  public async loadSkills(): Promise<Skill[]> {
+  private async _scanSkills(): Promise<Skill[]> {
     const skills = new Map<string, Skill>();
-    console.log('AI StepFlow: loadSkills starting...');
-
     for (const dir of this.scopedDirs('skills')) {
       const mdFiles = await this.listFiles(dir, name => name.endsWith('.md'));
       const subDirs = await this.listDirectories(dir);
-      console.log(`AI StepFlow: checking dir ${dir}, found ${mdFiles.length} md files and ${subDirs.length} subdirs.`);
-
       for (const file of mdFiles) {
         const skill = await this.parseSkillFile(path.join(dir, file), true);
         if (skill) skills.set(skill.name, skill);
@@ -405,25 +457,18 @@ export class ConfigManager {
         if (skill) skills.set(skill.name, skill);
       }
     }
-
-    console.log(`AI StepFlow: loadSkills finished, total ${skills.size} unique skills.`);
     return Array.from(skills.values());
   }
 
-  public async loadFlows(): Promise<Flow[]> {
+  private async _scanFlows(): Promise<Flow[]> {
     const flows = new Map<string, Flow>();
-    console.log('AI StepFlow: loadFlows starting...');
-
     for (const dir of this.scopedDirs('flows')) {
       const files = await this.listFiles(dir, name => name.endsWith('.yaml') || name.endsWith('.yml'));
-      console.log(`AI StepFlow: checking dir ${dir}, found ${files.length} flow files.`);
       for (const file of files) {
         const flow = await this.parseFlowFile(path.join(dir, file));
         if (flow) flows.set(flow.id, flow);
       }
     }
-
-    console.log(`AI StepFlow: loadFlows finished, total ${flows.size} unique flows.`);
     return Array.from(flows.values());
   }
 

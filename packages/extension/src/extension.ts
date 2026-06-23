@@ -38,6 +38,8 @@ export function activate(context: vscode.ExtensionContext) {
     };
 
     const refreshAll = debounce(() => {
+      // Invalidate the in-memory library cache so the next load scans disk fresh.
+      configManager.invalidateLibraryCache();
       void CockpitPanel.currentPanel?.refreshData();
       void sidebar.refresh(false);
     }, 300);
