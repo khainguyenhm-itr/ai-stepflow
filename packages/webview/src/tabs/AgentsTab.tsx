@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Agent, Skill } from '@ai-stepflow/core/types';
 import { Icon } from '../components/primitives';
 import { ResourceCard, EmptyState } from '../components/ResourceCard';
-import { ScopeFilterSelect, ScopeFilter, SaveScope, ViewFilter, ViewFilterSelect, SortOrder, SortOrderSelect } from '../components/ScopeControls';
+import { ScopeFilter, SaveScope, ViewFilter, SortOrder, UnifiedFilterPanel } from '../components/ScopeControls';
 import { sendToVSCode } from '../vscode';
 import { useScopeFilter } from '../hooks/useScopeFilter';
 import { useViewFilter } from '../hooks/useViewFilter';
@@ -46,21 +46,25 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
   const [filter, setFilter] = useScopeFilter(initialFilter, onScopeFilterChange);
   const [viewFilter, setViewFilter] = useViewFilter(initialViewFilter, onViewFilterChange);
   const [sortOrder, setSortOrder] = useSortOrder(initialSortOrder, onSortOrderChange);
+  const [search, setSearch] = useState('');
 
   const getItemScope = (sourcePath: string): SaveScope => {
     if (globalPath && sourcePath.startsWith(globalPath)) return 'global';
     return 'project';
   };
 
-  const matchesScopeFilter = (sourcePath: string) =>
-    filter === 'all' || getItemScope(sourcePath) === filter;
-
+  const q = search.trim().toLowerCase();
   const visibleAgents = agents
-    .filter(agent => matchesScopeFilter(agent.sourcePath))
+    .filter(agent => filter === 'all' || getItemScope(agent.sourcePath) === filter)
     .filter(agent =>
-      viewFilter === 'all' ||
-      (viewFilter === 'bookmarked' && isBookmarked(agent)) ||
-      (viewFilter === 'built-in' && !!agent.builtIn)
+      viewFilter.length === 0 ||
+      (viewFilter.includes('bookmarked') && isBookmarked(agent)) ||
+      (viewFilter.includes('built-in') && !!agent.builtIn)
+    )
+    .filter(agent =>
+      !q ||
+      agent.name.toLowerCase().includes(q) ||
+      (agent.description ?? '').toLowerCase().includes(q)
     )
     .sort((a, b) =>
       (Number(!!b.builtIn) - Number(!!a.builtIn)) ||
@@ -77,9 +81,22 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
       <div className="page-head">
         <h2>Agents</h2>
         <div className="page-head-actions">
-          <ScopeFilterSelect value={filter} onChange={setFilter} />
-          <ViewFilterSelect value={viewFilter} onChange={setViewFilter} />
-          <SortOrderSelect value={sortOrder} onChange={setSortOrder} />
+          <div className="page-search">
+            <span className="page-search-icon"><Icon.Search size={14} /></span>
+            <input
+              className="page-search-input"
+              type="text"
+              placeholder="Search agents…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
+          <UnifiedFilterPanel
+            scope={filter}
+            view={viewFilter}
+            sort={sortOrder}
+            onApply={(s, v, o) => { setFilter(s); setViewFilter(v); setSortOrder(o); }}
+          />
           <button className="btn" title="Create an agent from an existing markdown file" onClick={() => sendToVSCode('importAgentFile', {})}>
             <span className="btn-glyph"><Icon.Upload size={14} /></span>Import file
           </button>
@@ -92,7 +109,7 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
         </div>
       </div>
       {visibleAgents.length === 0 ? (
-        <EmptyState title="No agents found" text="Define a specialized AI agent with a custom system prompt and tools." icon={<Icon.User size={24} />} />
+        <EmptyState title="No agents found" text={q ? `No agents match "${search}"` : 'Define a specialized AI agent with a custom system prompt and tools.'} icon={<Icon.User size={24} />} />
       ) : (
         <div className="card-grid">
           {visibleAgents.map(agent => (

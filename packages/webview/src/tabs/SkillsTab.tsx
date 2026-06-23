@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Skill } from '@ai-stepflow/core/types';
 import { Icon } from '../components/primitives';
 import { ResourceCard, EmptyState } from '../components/ResourceCard';
-import { ScopeFilterSelect, ScopeFilter, SaveScope, ViewFilter, ViewFilterSelect, SortOrder, SortOrderSelect } from '../components/ScopeControls';
+import { ScopeFilter, SaveScope, ViewFilter, SortOrder, UnifiedFilterPanel } from '../components/ScopeControls';
 import { sendToVSCode } from '../vscode';
 import { useScopeFilter } from '../hooks/useScopeFilter';
 import { useViewFilter } from '../hooks/useViewFilter';
@@ -46,21 +46,25 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
   const [filter, setFilter] = useScopeFilter(initialFilter, onScopeFilterChange);
   const [viewFilter, setViewFilter] = useViewFilter(initialViewFilter, onViewFilterChange);
   const [sortOrder, setSortOrder] = useSortOrder(initialSortOrder, onSortOrderChange);
+  const [search, setSearch] = useState('');
 
   const getItemScope = (sourcePath: string): SaveScope => {
     if (globalPath && sourcePath.startsWith(globalPath)) return 'global';
     return 'project';
   };
 
-  const matchesScopeFilter = (sourcePath: string) =>
-    filter === 'all' || getItemScope(sourcePath) === filter;
-
+  const q = search.trim().toLowerCase();
   const visibleSkills = skills
-    .filter(skill => matchesScopeFilter(skill.sourcePath))
+    .filter(skill => filter === 'all' || getItemScope(skill.sourcePath) === filter)
     .filter(skill =>
-      viewFilter === 'all' ||
-      (viewFilter === 'bookmarked' && isBookmarked(skill)) ||
-      (viewFilter === 'built-in' && !!skill.builtIn)
+      viewFilter.length === 0 ||
+      (viewFilter.includes('bookmarked') && isBookmarked(skill)) ||
+      (viewFilter.includes('built-in') && !!skill.builtIn)
+    )
+    .filter(skill =>
+      !q ||
+      skill.name.toLowerCase().includes(q) ||
+      (skill.description ?? '').toLowerCase().includes(q)
     )
     .sort((a, b) =>
       (Number(!!b.builtIn) - Number(!!a.builtIn)) ||
@@ -77,9 +81,22 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
       <div className="page-head">
         <h2>Skills</h2>
         <div className="page-head-actions">
-          <ScopeFilterSelect value={filter} onChange={setFilter} />
-          <ViewFilterSelect value={viewFilter} onChange={setViewFilter} />
-          <SortOrderSelect value={sortOrder} onChange={setSortOrder} />
+          <div className="page-search">
+            <span className="page-search-icon"><Icon.Search size={14} /></span>
+            <input
+              className="page-search-input"
+              type="text"
+              placeholder="Search skills…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
+          <UnifiedFilterPanel
+            scope={filter}
+            view={viewFilter}
+            sort={sortOrder}
+            onApply={(s, v, o) => { setFilter(s); setViewFilter(v); setSortOrder(o); }}
+          />
           <button className="btn" title="Create a skill from an existing markdown file" onClick={() => sendToVSCode('importSkillFile', {})}>
             <span className="btn-glyph"><Icon.Upload size={14} /></span>Import file
           </button>
@@ -92,7 +109,7 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
         </div>
       </div>
       {visibleSkills.length === 0 ? (
-        <EmptyState title="No skills found" text="Create reusable skills that agents can use across different steps." icon={<Icon.Zap size={24} />} />
+        <EmptyState title="No skills found" text={q ? `No skills match "${search}"` : 'Create reusable skills that agents can use across different steps.'} icon={<Icon.Zap size={24} />} />
       ) : (
         <div className="card-grid">
           {visibleSkills.map(skill => (

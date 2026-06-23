@@ -13,7 +13,8 @@ type Tab = 'flows' | 'agents' | 'skills';
 type SaveScope = 'project' | 'global';
 type FlowAiMessage = { role: 'user' | 'assistant'; content: string };
 type ScopeFilter = 'all' | 'project' | 'global';
-type ViewFilter = 'all' | 'bookmarked' | 'built-in';
+type ViewFilterItem = 'bookmarked' | 'built-in';
+type ViewFilter = ReadonlyArray<ViewFilterItem>; // [] = "all items"
 type SortOrder = 'asc' | 'desc';
 
 const VALID_FILTERS: ScopeFilter[] = ['all', 'project', 'global'];
@@ -99,7 +100,7 @@ export const useAppLogic = () => {
   const [skillFormError, setSkillFormError] = useState<string | null>(null);
   const [draftLoading, setDraftLoading] = useState<'agent' | 'skill' | null>(null);
   const [scopeFilters, setScopeFilters] = useState<{ flows: ScopeFilter; agents: ScopeFilter; skills: ScopeFilter }>({ flows: 'all', agents: 'all', skills: 'all' });
-  const [viewFilters, setViewFilters] = useState<{ flows: ViewFilter; agents: ViewFilter; skills: ViewFilter }>({ flows: 'all', agents: 'all', skills: 'all' });
+  const [viewFilters, setViewFilters] = useState<{ flows: ViewFilter; agents: ViewFilter; skills: ViewFilter }>({ flows: [], agents: [], skills: [] });
   const [sortOrders, setSortOrders] = useState<{ flows: SortOrder; agents: SortOrder; skills: SortOrder }>({ flows: 'asc', agents: 'asc', skills: 'asc' });
   const [agentAiPrompt, setAgentAiPrompt] = useState('');
   const [agentAiMessages, setAgentAiMessages] = useState<FlowAiMessage[]>([]);
@@ -223,8 +224,11 @@ export const useAppLogic = () => {
             agents: parseFilter(message.uiPrefs['scopeFilter:agents']),
             skills: parseFilter(message.uiPrefs['scopeFilter:skills']),
           });
-          const parseViewFilter = (v: string | undefined): ViewFilter =>
-            v === 'bookmarked' || v === 'built-in' ? v : 'all';
+          const parseViewFilter = (v: unknown): ViewFilter => {
+            if (Array.isArray(v)) return (v as string[]).filter((x): x is ViewFilterItem => x === 'bookmarked' || x === 'built-in');
+            if (v === 'bookmarked' || v === 'built-in') return [v]; // migrate old persisted string
+            return [];
+          };
           const parseSortOrder = (v: string | undefined): SortOrder =>
             v === 'desc' ? 'desc' : 'asc';
           setViewFilters({

@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Flow, FlowRunState, Agent, Skill } from '@ai-stepflow/core/types';
 import { Icon } from '../components/primitives';
 import { EmptyState } from '../components/ResourceCard';
-import { ScopeFilterSelect, ScopeFilter, SaveScope, ViewFilter, ViewFilterSelect, SortOrder, SortOrderSelect } from '../components/ScopeControls';
+import { ScopeFilter, SaveScope, ViewFilter, SortOrder, UnifiedFilterPanel } from '../components/ScopeControls';
 import { FlowBoard } from './FlowBoard';
 import { useScopeFilter } from '../hooks/useScopeFilter';
 import { useViewFilter } from '../hooks/useViewFilter';
@@ -84,6 +84,7 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
   const [filter, setFilter] = useScopeFilter(initialFilter, onScopeFilterChange);
   const [viewFilter, setViewFilter] = useViewFilter(initialViewFilter, onViewFilterChange);
   const [sortOrder, setSortOrder] = useSortOrder(initialSortOrder, onSortOrderChange);
+  const [search, setSearch] = useState('');
 
   const getItemScope = (sourcePath: string): SaveScope => {
     if (globalPath && sourcePath.startsWith(globalPath)) return 'global';
@@ -93,9 +94,15 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
   const matchesScopeFilter = (sourcePath: string) =>
     filter === 'all' || getItemScope(sourcePath) === filter;
 
+  const q = search.trim().toLowerCase();
   const visibleFlows = flows
     .filter(flow => matchesScopeFilter(flow.sourcePath))
-    .filter(flow => viewFilter === 'all' || (viewFilter === 'bookmarked' && isBookmarked(flow)) || viewFilter === 'built-in')
+    .filter(flow => viewFilter.length === 0 || (viewFilter.includes('bookmarked') && isBookmarked(flow)))
+    .filter(flow =>
+      !q ||
+      flow.name.toLowerCase().includes(q) ||
+      (flow.description ?? '').toLowerCase().includes(q)
+    )
     .sort((a, b) => sortOrder === 'desc'
       ? b.name.localeCompare(a.name)
       : a.name.localeCompare(b.name)
@@ -106,9 +113,23 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
       <div className="page-head">
         <h2>Workflows</h2>
         <div className="page-head-actions">
-          <ScopeFilterSelect value={filter} onChange={setFilter} />
-          <ViewFilterSelect value={viewFilter} onChange={setViewFilter} showBuiltIn={false} />
-          <SortOrderSelect value={sortOrder} onChange={setSortOrder} />
+          <div className="page-search">
+            <span className="page-search-icon"><Icon.Search size={14} /></span>
+            <input
+              className="page-search-input"
+              type="text"
+              placeholder="Search workflows…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
+          <UnifiedFilterPanel
+            scope={filter}
+            view={viewFilter}
+            sort={sortOrder}
+            showBuiltIn={false}
+            onApply={(s, v, o) => { setFilter(s); setViewFilter(v); setSortOrder(o); }}
+          />
           <button
             className="btn primary"
             onClick={() => {
@@ -123,7 +144,7 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
         </div>
       </div>
       {visibleFlows.length === 0 ? (
-        <EmptyState title="No workflows found" text="Create a new multi-step flow to automate your tasks." icon={<Icon.GitBranch size={24} />} />
+        <EmptyState title="No workflows found" text={q ? `No workflows match "${search}"` : 'Create a new multi-step flow to automate your tasks.'} icon={<Icon.GitBranch size={24} />} />
       ) : (
         <div className="stack">
           {visibleFlows.map(flow => (

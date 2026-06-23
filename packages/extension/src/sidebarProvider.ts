@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as crypto from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { ConfigManager } from './configManager.js';
@@ -161,7 +161,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
               await vscode.commands.executeCommand('workbench.action.openSettings', 'ai-stepflow.astGraph');
               return;
             case 'gitnexusAnalyze':
-              this._runGitnexusAnalyze();
+              await this._runGitnexusAnalyze(message.group);
               return;
             case 'gitnexusCreateGroup':
               await this._createGitnexusGroup();
@@ -486,29 +486,48 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  /** Runs `npx gitnexus analyze` in a terminal to (re)build the GitNexus knowledge graph. */
-  private _runGitnexusAnalyze(): void {
+  /**
+   * (Re)builds the GitNexus knowledge graph in a terminal. When `group` names a real group and
+   * the repo isn't indexed yet, runs the combined analyze+join flow so the user's up-front group
+   * choice is applied in one pass (no separate re-analyze). Otherwise a plain analyze.
+   */
+  private async _runGitnexusAnalyze(group?: string): Promise<void> {
+    if (group && group !== 'default' && group !== '__create__') {
+      const status = await this._readGitnexusStatus();
+      if (!status.indexed) {
+        this._runGroupTerminal(this._joinGroupCmds(group, status));
+        this._view?.webview.postMessage({ type: 'gitnexusAnalyzeStarted' });
+        return;
+      }
+    }
     const cwd = this.configManager.getProjectPath();
     const terminal = vscode.window.createTerminal({ name: 'GitNexus Analyze', cwd: cwd || undefined });
     terminal.show();
-    terminal.sendText('npx gitnexus analyze', true);
+    terminal.sendText('gitnexus analyze', true);
     // The terminal runs detached; reset the sidebar button so it's clickable again.
     this._view?.webview.postMessage({ type: 'gitnexusAnalyzeStarted' });
   }
 
+  /** The registry name `gitnexus analyze` assigns to this repo — always `basename(projectPath)`. */
+  private _deriveRegistryName(): string | null {
+    const p = this.configManager.getProjectPath();
+    return p ? basename(p) : null;
+  }
+
   /**
-   * Commands to put this repo into `group`: leave the old group if any, add here, re-index,
-   * then sync so cross-repo contracts use a fresh index. Caller guarantees a registry name.
+   * Commands to put this repo into `group`: leave the old group if any, (re-)index, add here,
+   * then sync so cross-repo contracts use a fresh index. `analyze` runs FIRST so the registry
+   * entry exists before `group add` — this lets the user pick a group before the first analyze.
    */
   private _joinGroupCmds(group: string, status: GitnexusStatus): string[] {
-    const alias = status.registryName!; // derived alias (flat); editable later in group.yaml
+    const name = status.registryName ?? this._deriveRegistryName()!; // registry name == alias (flat)
     const cmds: string[] = [];
     if (status.currentGroup && status.currentGroup !== group && status.currentAlias) {
-      cmds.push(`npx gitnexus group remove ${status.currentGroup} ${status.currentAlias}`);
+      cmds.push(`gitnexus group remove ${status.currentGroup} ${status.currentAlias}`);
     }
-    cmds.push(`npx gitnexus group add ${group} ${alias} ${status.registryName}`);
-    cmds.push('npx gitnexus analyze');             // re-index this repo
-    cmds.push(`npx gitnexus group sync ${group}`); // rebuild cross-repo contracts
+    cmds.push('gitnexus analyze');             // (re-)index this repo; creates registry entry if new
+    cmds.push(`gitnexus group add ${group} ${name} ${name}`);
+    cmds.push(`gitnexus group sync ${group}`); // rebuild cross-repo contracts
     return cmds;
   }
 
@@ -521,15 +540,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   /**
    * "＋ Create new group…": prompt a name, then create it AND join this repo in one flow
-   * (create → add → analyze → sync), so there's no confusing empty-group middle state.
+   * (create → analyze → add → sync), so there's no confusing empty-group middle state.
+   * Works before the first analyze — the registry name is derived from the project path.
    */
   private async _createGitnexusGroup(): Promise<void> {
     const status = await this._readGitnexusStatus();
-    if (!status.indexed || !status.registryName) {
-      vscode.window.showWarningMessage('AI StepFlow: analyze the repo first before creating a GitNexus group for it.');
-      await this.refresh(false);
-      return;
-    }
     const name = await vscode.window.showInputBox({
       title: 'Create GitNexus Group',
       prompt: 'New group name — this repo will be added to it',
@@ -542,30 +557,25 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       }
     });
     if (!name) return;
-    this._runGroupTerminal([`npx gitnexus group create ${name.trim()}`, ...this._joinGroupCmds(name.trim(), status)]);
+    this._runGroupTerminal([`gitnexus group create ${name.trim()}`, ...this._joinGroupCmds(name.trim(), status)]);
   }
 
   /**
-   * Joins/leaves a GitNexus group from the select. Default → remove this repo from its group.
-   * A group → (re-)join then re-index + sync so cross-repo contracts use a fresh index.
+   * Joins/leaves a GitNexus group from the select (indexed repos only — before the first analyze
+   * the select is a pending choice applied by the Analyze button, not run here).
+   * Default → leave the current group. A group → switch group, then re-index + sync.
    */
   private async _selectGitnexusGroup(group: string): Promise<void> {
     const status = await this._readGitnexusStatus();
 
     if (group === 'default') {
       if (status.currentGroup && status.currentAlias) {
-        this._runGroupTerminal([`npx gitnexus group remove ${status.currentGroup} ${status.currentAlias}`]);
+        this._runGroupTerminal([`gitnexus group remove ${status.currentGroup} ${status.currentAlias}`]);
       }
       await this.refresh(false);
       return;
     }
 
-    // Joining a group needs a registry name, which only exists after the repo is analyzed.
-    if (!status.indexed || !status.registryName) {
-      vscode.window.showWarningMessage('AI StepFlow: analyze the repo first before adding it to a GitNexus group.');
-      await this.refresh(false); // revert the select to its real value
-      return;
-    }
     this._runGroupTerminal(this._joinGroupCmds(group, status));
   }
 
@@ -695,7 +705,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .gx-row { flex-direction: column; align-items: stretch; gap: 8px; }
     .gx-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
     .gx-ctl { display: flex; align-items: center; gap: 6px; }
-    .gx-ctl #gitnexus-group-select { flex: 1 1 auto; max-width: none; }
 
     /* ── section ── */
     .sec { margin-top: 8px; }
@@ -723,10 +732,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .lib-toggle-badge { display: inline-flex; align-items: center; height: 15px; padding: 0 5px; border-radius: 9px; font-size: 9px; font-weight: 700; color: var(--badge-fg); background: var(--success); flex: 0 0 auto; }
     .lib-toggle-badge:empty { display: none; }
     .lib-panel { margin-top: 2px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
-    .lib-tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 8px; background: var(--panel); gap: 0; }
-    .lib-tab { display: inline-flex; align-items: center; gap: 5px; padding: 6px 8px 5px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 11.5px; font-weight: 600; cursor: pointer; line-height: 1.4; white-space: nowrap; font-family: inherit; }
-    .lib-tab:hover { color: var(--fg); }
-    .lib-tab.active { color: var(--fg); border-bottom-color: var(--focus); }
+    .lib-filter { padding: 7px 8px 6px; border-bottom: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; gap: 5px; }
+    .lib-filter-row { display: flex; align-items: center; gap: 6px; }
+    .lib-filter-label { font-size: 10.5px; color: var(--muted); font-weight: 600; flex: 0 0 42px; }
+    .lib-chips { display: flex; flex-wrap: wrap; gap: 3px; flex: 1; }
+    .lib-chip { display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 8px; border: 1px solid var(--border); border-radius: 10px; background: transparent; color: var(--muted); font-size: 10.5px; font-weight: 600; cursor: pointer; font-family: inherit; transition: background .1s, color .1s, border-color .1s; white-space: nowrap; }
+    .lib-chip:hover { color: var(--fg); border-color: var(--muted); }
+    .lib-chip.on { background: var(--btn); border-color: var(--btn); color: var(--btn-fg); }
+    .lib-chip.status-on { background: var(--focus); border-color: var(--focus); color: #fff; }
+    .lib-filter-actions { display: flex; justify-content: flex-end; gap: 4px; margin-top: 1px; }
 
     /* ── box (bordered list container) ── */
     .box { border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
@@ -775,10 +789,20 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .menu-item.danger { color: var(--error); }
     .menu-item[disabled] { opacity: .4; cursor: default; pointer-events: none; }
 
+    /* ── select dropdowns ── */
+    .select-wrap { position: relative; display: inline-block; min-width: 90px; }
+    .select-wrap.sm { min-width: 80px; }
+    .gx-ctl .select-wrap { flex: 1 1 auto; min-width: 0; display: block; }
+    .select-wrap::after { content: ''; position: absolute; right: 9px; top: 50%; transform: translateY(-50%); width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid #aaa; pointer-events: none; }
+    .input { width: 100%; height: 22px; padding: 0 24px 0 8px; border: 1px solid var(--vscode-dropdown-border, var(--border)); border-radius: var(--r); background: var(--panel-2); color: var(--vscode-dropdown-foreground, var(--fg)); font-size: 12px; font-family: inherit; outline: none; appearance: none; -webkit-appearance: none; cursor: pointer; box-shadow: inset 0 1px 2px rgba(0,0,0,.2); }
+    .input.sm { font-size: 11px; }
+    .input:focus { border-color: var(--focus); outline: 1px solid var(--focus); }
+    .input:hover { border-color: var(--focus); }
+
     /* list footer */
     .list-more { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--muted); padding: 5px 8px 6px; border-top: 1px solid rgba(127,127,127,.08); }
-    /* Default Library tab bar: sticky so it stays visible while scrolling items */
-    .lib-panel .lib-tabs { position: sticky; top: 0; z-index: 1; background: var(--panel); }
+    /* Default Library filter bar: sticky so it stays visible while scrolling items */
+    .lib-panel .lib-filter { position: sticky; top: 0; z-index: 1; }
 
     /* ── states ── */
     .empty { display: block; color: var(--muted); font-size: 11.5px; padding: 8px; font-style: italic; }
@@ -880,10 +904,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             <div class="setting-label">AI Response Style</div>
             <div class="setting-desc">Controls verbosity of AI step output</div>
           </div>
-          <select id="ai-style-select" class="input sm">
+          <span class="select-wrap sm"><select id="ai-style-select" class="input sm">
             <option value="default">Default</option>
             <option value="concise">Concise</option>
-          </select>
+          </select></span>
         </div>
         <div class="setting-row gx-row" id="gitnexus-setting-row" style="display:none">
           <div class="gx-head">
@@ -897,7 +921,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             </details>
           </div>
           <div class="gx-ctl">
-            <select id="gitnexus-group-select" class="input sm" style="display:none"><option value="default">Default (no group)</option></select>
+            <span class="select-wrap" id="gitnexus-group-select-wrap" style="display:none"><select id="gitnexus-group-select" class="input"><option value="default">Default (no group)</option></select></span>
             <button id="gitnexus-analyze-btn" class="pill accent" type="button">Analyze</button>
           </div>
         </div>
@@ -913,7 +937,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           <span class="sec-count" id="runs-count"></span>
         </button>
       </div>
-      <div class="box" id="runs-panel"><div id="runs"><span class="empty">No runs yet</span></div></div>
+      <div class="box" id="runs-panel">
+        <div class="box-search">
+          <input class="search" id="runs-search" type="text" placeholder="Filter runs…" autocomplete="off" spellcheck="false">
+        </div>
+        <div id="runs"><span class="empty">No runs yet</span></div>
+      </div>
     </section>
 
   </div><!-- /.body -->
@@ -1041,6 +1070,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     renderMcp();
   });
 
+  // Runs search
+  let runsQuery = '';
+  document.getElementById('runs-search').addEventListener('input', e => {
+    runsQuery = e.target.value.trim().toLowerCase();
+    renderRuns(lastRunFiles, lastRunTotal);
+  });
+
   // ── render functions ──
 
   function renderStats(s) {
@@ -1060,13 +1096,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   let defaultLibraryOpen = false;
   let defaultItemsData = [];
-  let defaultLibTab = 'agents';
-  const LIB_TABS = [
-    { key: 'agents',     label: 'Agents' },
-    { key: 'skills',     label: 'Skills' },
-    { key: 'reviews',    label: 'Reviews' },
-    { key: 'validators', label: 'Validators' },
-  ];
+  const LIB_KINDS = ['agents', 'skills', 'reviews', 'validators'];
+  const LIB_KIND_LABEL = { agents: 'Agents', skills: 'Skills', reviews: 'Reviews', validators: 'Validators' };
+  // pending = what user is picking; applied = what drives the item list (set on Filter click)
+  let libPending  = { types: LIB_KINDS.slice(), status: 'all', text: '' };
+  let libApplied  = { types: LIB_KINDS.slice(), status: 'all', text: '' };
 
   function renderDefaults(items) {
     defaultItemsData = items || [];
@@ -1096,19 +1130,51 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     if (!defaultLibraryOpen) { panel.style.display = 'none'; return; }
     panel.style.display = '';
 
-    const tabsHtml = LIB_TABS.map(t => {
-      const count = defaultItemsData.filter(i => i.kind === t.key).length;
+    // ── filter panel ──────────────────────────────────────────────────────────
+    const typeChips = LIB_KINDS.map(k => {
+      const count = defaultItemsData.filter(i => i.kind === k).length;
       if (!count) return '';
-      return '<button class="lib-tab' + (defaultLibTab === t.key ? ' active' : '') + '" type="button" data-libtab="' + t.key + '">' + t.label + '<span class="sec-count">' + count + '</span></button>';
+      const on = libPending.types.includes(k);
+      return '<button class="lib-chip' + (on ? ' on' : '') + '" type="button" data-chip-type="' + k + '">' +
+        esc(LIB_KIND_LABEL[k]) + '<span class="sec-count">' + count + '</span></button>';
     }).join('');
 
-    const items = defaultItemsData.filter(i => i.kind === defaultLibTab);
+    const statuses = [
+      { key: 'all',       label: 'All' },
+      { key: 'installed', label: 'Installed' },
+      { key: 'updates',   label: 'Has update' },
+    ];
+    const statusChips = statuses.map(s =>
+      '<button class="lib-chip' + (libPending.status === s.key ? ' status-on' : '') + '" type="button" data-chip-status="' + s.key + '">' + s.label + '</button>'
+    ).join('');
+
+    const filterHtml =
+      '<div class="lib-filter">' +
+        '<div class="lib-filter-row"><span class="lib-filter-label">Type</span><span class="lib-chips" id="lib-chips-type">' + typeChips + '</span></div>' +
+        '<div class="lib-filter-row"><span class="lib-filter-label">Status</span><span class="lib-chips" id="lib-chips-status">' + statusChips + '</span></div>' +
+        '<div class="lib-filter-row"><input class="search" id="lib-search" type="text" placeholder="Search name or description…" autocomplete="off" spellcheck="false" value="' + esc(libPending.text) + '"></div>' +
+        '<div class="lib-filter-actions">' +
+          '<button class="pill" type="button" id="lib-filter-reset">Reset</button>' +
+          '<button class="pill accent" type="button" id="lib-filter-apply">Filter</button>' +
+        '</div>' +
+      '</div>';
+
+    // ── item list (driven by libApplied) ──────────────────────────────────────
+    const items = defaultItemsData.filter(i => {
+      if (!libApplied.types.includes(i.kind)) return false;
+      if (libApplied.status === 'installed' && !i.installed) return false;
+      if (libApplied.status === 'updates' && !i.hasUpdate) return false;
+      if (libApplied.text && !i.name.toLowerCase().includes(libApplied.text) && !(i.description || '').toLowerCase().includes(libApplied.text)) return false;
+      return true;
+    });
+
+    const noTypesSelected = libApplied.types.length === 0;
     const itemsHtml = items.length
       ? items.map(item =>
           '<div class="item">' +
           '<span class="item-dot" style="background:' + (item.installed ? 'var(--success)' : 'var(--badge)') + '"></span>' +
           '<span class="item-body">' +
-            '<span class="item-name" title="' + esc(item.name) + '">' + esc(fmtDefaultName(item.name)) + '</span>' +
+            '<span class="item-name" title="' + esc(item.filename) + '">' + esc(item.filename) + '</span>' +
             '<span class="item-sub" title="' + esc(item.description) + '">' + esc(item.description) + '</span>' +
           '</span>' +
           '<span class="item-acts">' +
@@ -1121,13 +1187,44 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           '</span>' +
           '</div>'
         ).join('')
-      : '<span class="empty">No items</span>';
+      : '<span class="empty">' + (noTypesSelected ? 'Select at least one type above.' : libApplied.text ? 'No items match "' + esc(libApplied.text) + '"' : 'No items') + '</span>';
 
-    panel.innerHTML = '<div class="lib-panel"><div class="lib-tabs" id="lib-tab-bar">' + tabsHtml + '</div>' + itemsHtml + '</div>';
+    panel.innerHTML = '<div class="lib-panel">' + filterHtml + itemsHtml + '</div>';
 
-    panel.querySelectorAll('[data-libtab]').forEach(t => {
-      t.onclick = () => { defaultLibTab = t.getAttribute('data-libtab'); renderDefaultsPanel(); };
+    // ── wire up filter controls (pending state — don't re-render until Filter clicked) ──
+    panel.querySelectorAll('[data-chip-type]').forEach(chip => {
+      chip.onclick = () => {
+        const k = chip.getAttribute('data-chip-type');
+        const idx = libPending.types.indexOf(k);
+        if (idx >= 0) libPending.types.splice(idx, 1); else libPending.types.push(k);
+        chip.classList.toggle('on', libPending.types.includes(k));
+      };
     });
+
+    panel.querySelectorAll('[data-chip-status]').forEach(chip => {
+      chip.onclick = () => {
+        libPending.status = chip.getAttribute('data-chip-status');
+        panel.querySelectorAll('[data-chip-status]').forEach(c =>
+          c.classList.toggle('status-on', c.getAttribute('data-chip-status') === libPending.status));
+      };
+    });
+
+    const searchEl = document.getElementById('lib-search');
+    if (searchEl) {
+      searchEl.addEventListener('input', e => { libPending.text = e.target.value.trim().toLowerCase(); });
+    }
+
+    document.getElementById('lib-filter-apply').onclick = () => {
+      libApplied = { types: libPending.types.slice(), status: libPending.status, text: libPending.text };
+      renderDefaultsPanel();
+    };
+
+    document.getElementById('lib-filter-reset').onclick = () => {
+      libPending  = { types: LIB_KINDS.slice(), status: 'all', text: '' };
+      libApplied  = { types: LIB_KINDS.slice(), status: 'all', text: '' };
+      renderDefaultsPanel();
+    };
+
     panel.querySelectorAll('button[data-act]').forEach(btn => {
       btn.onclick = () => {
         const act = btn.getAttribute('data-act');
@@ -1175,8 +1272,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const desc = document.getElementById('gitnexus-desc');
     const btn = document.getElementById('gitnexus-analyze-btn');
     const sel = document.getElementById('gitnexus-group-select');
+    const selWrap = document.getElementById('gitnexus-group-select-wrap');
     const menuPop = document.getElementById('gitnexus-menu-pop');
-    if (!row || !dot || !desc || !btn || !sel || !menuPop) return;
+    if (!row || !dot || !desc || !btn || !sel || !selWrap || !menuPop) return;
     row.style.display = gitnexusConnected ? '' : 'none';
     if (!gitnexusConnected) return;
 
@@ -1212,18 +1310,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       btn.style.display = 'none';
     }
 
-    // Group select shown once indexed (joining a group needs a registry entry).
-    if (indexed) {
-      sel.style.display = '';
-      const current = gitnexusStatus.currentGroup || 'default';
-      const groups = gitnexusStatus.groups || [];
-      sel.innerHTML = '<option value="default">Default (no group)</option>' +
-        groups.map(g => '<option value="' + esc(g) + '">' + esc(g) + '</option>').join('') +
-        '<option value="__create__">＋ Create new group…</option>';
-      sel.value = current;
-    } else {
-      sel.style.display = 'none';
-    }
+    // Group select is always shown — picking a group before the first analyze runs
+    // analyze + join in one flow, so the user chooses the group up front (no re-analyze).
+    selWrap.style.display = '';
+    const current = gitnexusStatus.currentGroup || 'default';
+    const groups = gitnexusStatus.groups || [];
+    sel.innerHTML = '<option value="default">Default (no group)</option>' +
+      groups.map(g => '<option value="' + esc(g) + '">' + esc(g) + '</option>').join('') +
+      '<option value="__create__">＋ Create new group…</option>';
+    sel.value = current;
 
     // ··· menu: Re-analyze appears here only when there's no inline button (up-to-date).
     const items = [];
@@ -1415,7 +1510,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    el.innerHTML = files.map(f => {
+    const filteredFiles = runsQuery
+      ? files.filter(f => (f.runName || f.flowName || '').toLowerCase().includes(runsQuery))
+      : files;
+
+    if (!filteredFiles.length) {
+      el.innerHTML = '<span class="empty">No runs match "' + esc(runsQuery) + '"</span>';
+      return;
+    }
+
+    el.innerHTML = filteredFiles.map(f => {
       const isActive = !!f.isActive;
       const isFinalized = !!f.isClosed;
       const isDone = f.completed === f.total && f.total > 0;
@@ -1487,9 +1591,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   });
 
   document.getElementById('gitnexus-analyze-btn').addEventListener('click', function() {
+    const sel = document.getElementById('gitnexus-group-select');
+    const group = sel ? sel.value : 'default'; // pre-index: apply the up-front group choice
     this.disabled = true;
     this.textContent = 'Analyzing…';
-    vscode.postMessage({ type: 'gitnexusAnalyze' });
+    vscode.postMessage({ type: 'gitnexusAnalyze', group });
   });
 
   document.getElementById('gitnexus-group-select').addEventListener('change', function() {
@@ -1499,6 +1605,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       vscode.postMessage({ type: 'gitnexusCreateGroup' });
       return;
     }
+    // Before the first analyze the select is just a pending choice — the Analyze button applies it.
+    if (!gitnexusStatus.indexed) return;
     if (this.value === current) return;
     vscode.postMessage({ type: 'gitnexusSelectGroup', group: this.value });
   });

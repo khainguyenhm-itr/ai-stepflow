@@ -23,7 +23,8 @@ import {
   AlertTriangle,
   Terminal,
   Lock,
-  Star
+  Star,
+  Search,
 } from 'lucide-react';
 
 /* Small native UI primitives styled after VS Code. */
@@ -105,5 +106,6 @@ export const Icon = {
   Alert: AlertTriangle,
   Terminal,
   Lock,
-  Star
+  Star,
+  Search,
 };
