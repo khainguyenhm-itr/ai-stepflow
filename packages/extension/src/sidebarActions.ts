@@ -140,7 +140,9 @@ export class SidebarActions {
     const { groups, currentGroup, currentAlias } = this.readGitnexusGroups(registryName);
     if (!entry) return { ...none, groups, currentGroup, currentAlias };
 
-    // Stale if HEAD moved past the indexed commit, or the working tree has uncommitted changes.
+    // Stale if HEAD moved past the indexed commit, or code files have uncommitted changes.
+    // Non-code files (docs, configs, etc.) are excluded to avoid constant false-positive stale signals.
+    const CODE_EXTS = /\.(ts|tsx|js|jsx|mjs|cjs|py|rb|go|rs|java|c|cpp|cc|h|hpp|cs|swift|kt|php|vue|svelte)$/i;
     let stale = false;
     try {
       const run = promisify(execFile);
@@ -148,7 +150,8 @@ export class SidebarActions {
         run('git', ['rev-parse', 'HEAD'], { cwd: projectPath }).then(r => r.stdout.trim()).catch(() => ''),
         run('git', ['status', '--porcelain'], { cwd: projectPath }).then(r => r.stdout.trim()).catch(() => '')
       ]);
-      stale = (!!entry.lastCommit && !!head && entry.lastCommit !== head) || dirty.length > 0;
+      const hasCodeChanges = dirty.split('\n').some(line => CODE_EXTS.test(line));
+      stale = (!!entry.lastCommit && !!head && entry.lastCommit !== head) || hasCodeChanges;
     } catch { /* not a git repo / git missing → leave stale=false */ }
 
     return { indexed: true, stale, files: entry.stats?.files ?? 0, indexedAt: entry.indexedAt ?? null, registryName, groups, currentGroup, currentAlias };
@@ -209,6 +212,7 @@ export class SidebarActions {
    * (Re)builds the GitNexus knowledge graph in a terminal. When `group` names a real group and
    * the repo isn't indexed yet, runs the combined analyze+join flow so the user's up-front group
    * choice is applied in one pass (no separate re-analyze). Otherwise a plain analyze.
+   * Refreshes the sidebar automatically when the terminal closes.
    */
   async runGitnexusAnalyze(group?: string): Promise<void> {
     if (group && group !== 'default' && group !== '__create__') {
@@ -223,8 +227,11 @@ export class SidebarActions {
     const terminal = vscode.window.createTerminal({ name: 'GitNexus Analyze', cwd: cwd || undefined });
     terminal.show();
     terminal.sendText('gitnexus analyze', true);
-    // The terminal runs detached; reset the sidebar button so it's clickable again.
     this.getView()?.webview.postMessage({ type: 'gitnexusAnalyzeStarted' });
+    // Refresh sidebar status when the terminal exits (analyze complete or aborted).
+    const d = vscode.window.onDidCloseTerminal(async t => {
+      if (t === terminal) { d.dispose(); await this.refresh(false); }
+    });
   }
 
   /** The registry name `gitnexus analyze` assigns to this repo — always `basename(projectPath)`. */
@@ -255,6 +262,9 @@ export class SidebarActions {
     const terminal = vscode.window.createTerminal({ name: 'GitNexus Group', cwd: cwd || undefined });
     terminal.show();
     terminal.sendText(cmds.join(' && '), true);
+    const d = vscode.window.onDidCloseTerminal(async t => {
+      if (t === terminal) { d.dispose(); await this.refresh(false); }
+    });
   }
 
   /**
@@ -283,18 +293,35 @@ export class SidebarActions {
    * Joins/leaves a GitNexus group from the select (indexed repos only — before the first analyze
    * the select is a pending choice applied by the Analyze button, not run here).
    * Default → leave the current group. A group → switch group, then re-index + sync.
+   * Posts `gitnexusStatus` back to reset the select when the user cancels.
    */
   async selectGitnexusGroup(group: string): Promise<void> {
     const status = await this.readGitnexusStatus();
 
     if (group === 'default') {
-      if (status.currentGroup && status.currentAlias) {
-        this.runGroupTerminal([`gitnexus group remove ${status.currentGroup} ${status.currentAlias}`]);
+      if (!status.currentGroup || !status.currentAlias) return;
+      const choice = await vscode.window.showWarningMessage(
+        `Leave group "${status.currentGroup}"?`,
+        { modal: true },
+        'Leave'
+      );
+      if (choice !== 'Leave') {
+        this.getView()?.webview.postMessage({ type: 'gitnexusStatus', status });
+        return;
       }
-      await this.refresh(false);
+      this.runGroupTerminal([`gitnexus group remove ${status.currentGroup} ${status.currentAlias}`]);
       return;
     }
 
+    const choice = await vscode.window.showInformationMessage(
+      `Switch to group "${group}"? This will re-analyze the repo (may take a moment).`,
+      { modal: true },
+      'Switch'
+    );
+    if (choice !== 'Switch') {
+      this.getView()?.webview.postMessage({ type: 'gitnexusStatus', status });
+      return;
+    }
     this.runGroupTerminal(this.joinGroupCmds(group, status));
   }
 

@@ -684,11 +684,11 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     // Status dot + description.
     if (!indexed) {
       dot.style.display = 'none';
-      desc.textContent = 'Not indexed — run Analyze';
+      desc.textContent = 'Not indexed — pick group (optional), then Analyze';
     } else if (stale) {
       dot.style.display = 'inline-block';
       dot.style.background = 'var(--vscode-charts-yellow, #d7a000)';
-      desc.textContent = 'Code changed since last analyze — re-index recommended';
+      desc.textContent = 'Out of date — re-analyze recommended';
     } else {
       dot.style.display = 'inline-block';
       dot.style.background = 'var(--success)';
@@ -698,15 +698,6 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
       if (t) parts.push('indexed ' + t);
       const grp = gitnexusStatus.currentGroup ? ' · group: ' + gitnexusStatus.currentGroup : '';
       desc.textContent = 'Up to date' + (parts.length ? ' · ' + parts.join(' · ') : '') + grp;
-    }
-
-    // Inline action button only when an action is recommended (not indexed → Analyze, stale → Re-analyze).
-    if (!indexed) {
-      btn.style.display = ''; btn.textContent = 'Analyze';
-    } else if (stale) {
-      btn.style.display = ''; btn.textContent = 'Re-analyze';
-    } else {
-      btn.style.display = 'none';
     }
 
     // Group select is always shown — picking a group before the first analyze runs
@@ -719,9 +710,22 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
       '<option value="__create__">＋ Create new group…</option>';
     sel.value = current;
 
-    // ··· menu: Re-analyze appears here only when there's no inline button (up-to-date).
+    // Inline action button: shown when not indexed or stale. Label reflects the pending group choice
+    // when not yet indexed, so the user sees exactly what clicking Analyze will do.
+    if (!indexed) {
+      btn.style.display = '';
+      const pendingGroup = sel.value;
+      btn.textContent = (pendingGroup && pendingGroup !== 'default' && pendingGroup !== '__create__')
+        ? 'Analyze into ' + pendingGroup : 'Analyze';
+    } else if (stale) {
+      btn.style.display = ''; btn.textContent = 'Re-analyze';
+    } else {
+      btn.style.display = 'none';
+    }
+
+    // ··· menu: Re-analyze always available when indexed (as button when stale, here always for discovery).
     const items = [];
-    if (indexed && !stale) items.push(menuItem('Re-analyze', 'data-act="analyze"'));
+    if (indexed) items.push(menuItem('Re-analyze', 'data-act="analyze"'));
     items.push(menuItem('Open registry file', 'data-act="openRegistry"'));
     if (indexed && gitnexusStatus.currentGroup) items.push(menuItem('Open group config', 'data-act="openGroup"'));
     menuPop.innerHTML = items.join('');
@@ -977,6 +981,9 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
         setPluginData(m.plugins, m.pluginsAvailable);
       } else if (m.type === 'gitnexusAnalyzeStarted') {
         updateGitnexusRow();
+      } else if (m.type === 'gitnexusStatus') {
+        // Lightweight status push — used to reset the select after a cancelled group switch.
+        if (m.status) { gitnexusStatus = m.status; updateGitnexusRow(); }
       }
     } catch (err) {
       console.error('AI StepFlow sidebar render failed', err);
@@ -1004,8 +1011,13 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
       vscode.postMessage({ type: 'gitnexusCreateGroup' });
       return;
     }
-    // Before the first analyze the select is just a pending choice — the Analyze button applies it.
-    if (!gitnexusStatus.indexed) return;
+    // Before the first analyze the select is a pending choice — update the button to reflect it.
+    if (!gitnexusStatus.indexed) {
+      const btn = document.getElementById('gitnexus-analyze-btn');
+      if (btn) btn.textContent = (this.value && this.value !== 'default')
+        ? 'Analyze into ' + this.value : 'Analyze';
+      return;
+    }
     if (this.value === current) return;
     vscode.postMessage({ type: 'gitnexusSelectGroup', group: this.value });
   });
