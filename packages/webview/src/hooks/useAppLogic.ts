@@ -126,6 +126,17 @@ export const useAppLogic = () => {
             agents: parseSortOrder(message.uiPrefs['sortOrder:agents']),
             skills: parseSortOrder(message.uiPrefs['sortOrder:skills']),
           });
+          const savedTab = message.uiPrefs['activeTab'];
+          if (savedTab === 'flows' || savedTab === 'agents' || savedTab === 'skills') {
+            libState.setActiveTab(savedTab);
+          }
+          try {
+            const rawBm = message.uiPrefs['bookmarks'];
+            if (rawBm) {
+              const bm = JSON.parse(rawBm);
+              if (bm && typeof bm === 'object' && !Array.isArray(bm)) libState.setBookmarks(bm);
+            }
+          } catch { /* corrupt prefs — keep empty */ }
         }
         break;
       case 'mcpServers':

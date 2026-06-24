@@ -232,10 +232,20 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     .lib-panel::-webkit-scrollbar { display: none; }
 
     footer { display: none; }
+
+    /* ── loading overlay ── */
+    .loading-overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: var(--panel); z-index: 100; }
+    .loading-overlay .spin-lg { width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--focus); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .loading-overlay .load-txt { color: var(--muted); font-size: 11px; }
   </style>
 </head>
 <body>
 <div class="shell">
+
+  <div id="loading-overlay" class="loading-overlay">
+    <div class="spin-lg"></div>
+    <span class="load-txt">Loading…</span>
+  </div>
 
   <!-- header: brand + version + refresh -->
   <div class="hdr">
@@ -364,6 +374,25 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
   const vscode = acquireVsCodeApi();
   document.getElementById('refresh').onclick = () => vscode.postMessage({ type: 'refresh' });
 
+  // ── Per-repo sidebar state persistence (via .ai-stepflow/ui-prefs.json) ──
+  function saveSidebarState() {
+    vscode.postMessage({ type: 'savePref', key: 'sidebar:state', value: JSON.stringify({
+      sectionOpen,
+      libActiveTab,
+      libActiveTags: [...libActiveTags]
+    }) });
+  }
+  function restoreSidebarState(uiPrefs) {
+    try {
+      const raw = uiPrefs && uiPrefs['sidebar:state'];
+      if (!raw) return;
+      const p = JSON.parse(raw);
+      if (p.sectionOpen && typeof p.sectionOpen === 'object') Object.assign(sectionOpen, p.sectionOpen);
+      if (p.libActiveTab) libActiveTab = p.libActiveTab;
+      if (Array.isArray(p.libActiveTags)) libActiveTags = new Set(p.libActiveTags);
+    } catch (_) {}
+  }
+
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const fmtTime = iso => { const d = new Date(iso); return !isNaN(d.getTime()) ? d.toLocaleString() : esc(iso); };
   const fmtDate = iso => { const d = new Date(iso); if (isNaN(d.getTime())) return esc(iso); return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }); };
@@ -460,6 +489,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
   function setSectionOpen(key, open) {
     if (open) Object.keys(sectionOpen).filter(k => k !== key).forEach(k => _applySection(k, false));
     _applySection(key, open);
+    saveSidebarState();
   }
 
   // lib toggle is rendered dynamically in renderDefaults — wired there
@@ -634,6 +664,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
         libActiveTab = tab.getAttribute('data-lib-tab');
         libQuery = '';
         libActiveTags = new Set(); // reset tags on tab switch
+        saveSidebarState();
         renderDefaultsPanel();
       };
     });
@@ -643,6 +674,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
         const tag = chip.getAttribute('data-tag');
         if (libActiveTags.has(tag)) libActiveTags.delete(tag);
         else libActiveTags.add(tag);
+        saveSidebarState();
         renderDefaultsPanel();
       };
     });
@@ -995,6 +1027,9 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     try {
       const m = e.data;
       if (m.type === 'data') {
+        restoreSidebarState(m.uiPrefs);
+        ['mcp', 'plugins', 'runs', 'settings'].forEach(k => _applySection(k, sectionOpen[k]));
+        document.getElementById('loading-overlay').style.display = 'none';
         renderStats(m.stats);
         renderDefaults(m.defaultItems || []);
         mcpReceived = true;

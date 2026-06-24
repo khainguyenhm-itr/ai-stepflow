@@ -1,29 +1,16 @@
 import { useState, useEffect } from 'react';
 import { Flow, Agent, Skill } from '@ai-stepflow/core/types';
+import { isVSCodeWebview, sendToVSCode } from '../../vscode';
 import { Tab, SaveScope, ScopeFilter, ViewFilter, SortOrder } from './types';
 
-const BOOKMARKS_STORAGE_KEY = 'ai-stepflow:resource-bookmarks';
-
 type ResourceBookmarks = Record<string, boolean>;
-
-const loadBookmarks = (): ResourceBookmarks => {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = window.localStorage.getItem(BOOKMARKS_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-};
 
 export const useLibraryState = () => {
   const [activeTab, setActiveTab] = useState<Tab>('flows');
   const [flows, setFlows] = useState<Flow[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
-  const [bookmarks, setBookmarks] = useState<ResourceBookmarks>(loadBookmarks);
+  const [bookmarks, setBookmarks] = useState<ResourceBookmarks>({});
   const [auditLogs, setAuditLogs] = useState<Record<string, any[]>>({});
   const [globalPath, setGlobalPath] = useState<string>('');
   const [projectPath, setProjectPath] = useState<string>('');
@@ -44,8 +31,13 @@ export const useLibraryState = () => {
   } | null>(null);
 
   useEffect(() => {
-    window.localStorage.setItem(BOOKMARKS_STORAGE_KEY, JSON.stringify(bookmarks));
-  }, [bookmarks]);
+    if (!projectPath) return; // wait until loadData sets projectPath before persisting
+    if (isVSCodeWebview()) {
+      sendToVSCode('savePref', { key: 'bookmarks', value: JSON.stringify(bookmarks) });
+    } else {
+      try { window.localStorage.setItem('ai-stepflow:resource-bookmarks', JSON.stringify(bookmarks)); } catch (_e) { /* ignore */ }
+    }
+  }, [bookmarks, projectPath]);
 
   const getItemScope = (sourcePath: string): SaveScope => {
     if (globalPath && sourcePath.startsWith(globalPath)) return 'global';

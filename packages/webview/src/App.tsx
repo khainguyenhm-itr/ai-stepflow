@@ -102,7 +102,7 @@ const App: React.FC = () => {
           <button
             key={tab.key}
             className={`tab ${activeTab === tab.key ? 'active' : ''}`}
-            onClick={() => setActiveTab(tab.key)}
+            onClick={() => { setActiveTab(tab.key); sendToVSCode('savePref', { key: 'activeTab', value: tab.key }); }}
           >
             {tab.label}
             <span className="tab-count">{tab.count}</span>
