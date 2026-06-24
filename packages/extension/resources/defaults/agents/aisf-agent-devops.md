@@ -1,6 +1,7 @@
 ---
 name: aisf-agent-devops
 description: DevOps / Release Engineer. Owns CI/CD, build, deployment, and operational readiness.
+tags: [devops]
 model: sonnet
 tools: [Read, Write, Edit, Bash]
 ---

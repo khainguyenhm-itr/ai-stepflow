@@ -15,6 +15,8 @@ export interface Agent {
   runnerPath?: string;
   /** Cap the number of agentic turns for headless runs; overrides the global setting when set. */
   maxTurns?: number;
+  /** Grouping/filtering labels declared in frontmatter. */
+  tags?: string[];
   /** True when the agent file declares itself as built-in metadata. */
   builtIn?: boolean;
   /** File modification time in ms since epoch. */
@@ -31,6 +33,7 @@ export interface AgentInput {
   tools?: string[];
   systemPrompt?: string;
   maxTurns?: number;
+  tags?: string[];
   aiConversation?: FlowAiMessage[];
 }
 
@@ -39,6 +42,8 @@ export interface Skill {
   description: string;
   instructions: string;
   sourcePath: string;
+  /** Grouping/filtering labels declared in frontmatter. */
+  tags?: string[];
   /** True when the skill is a markdown file directly inside the skills directory. */
   builtIn?: boolean;
   /** File modification time in ms since epoch. */
@@ -52,6 +57,7 @@ export interface SkillInput {
   name: string;
   description?: string;
   instructions?: string;
+  tags?: string[];
   aiConversation?: FlowAiMessage[];
 }
 

@@ -1,6 +1,7 @@
 ---
 name: aisf-skill-test-run
 description: Execute tests and report results. Covers automated and manual verification.
+tags: [testing, qa]
 ---
 <!-- ai-stepflow built-in -->
 

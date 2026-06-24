@@ -1,6 +1,7 @@
 ---
 name: aisf-skill-debug
 description: Diagnose a reported bug to root cause, then apply the smallest correct fix with a regression test.
+tags: [engineering, debugging]
 ---
 <!-- ai-stepflow built-in -->
 

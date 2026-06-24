@@ -1,6 +1,7 @@
 ---
 name: aisf-agent-ba
 description: Business Analyst / Product Owner. Focuses on requirements, user flows, and acceptance criteria.
+tags: [planning, docs]
 model: sonnet
 tools: [Read, Write, Bash]
 ---

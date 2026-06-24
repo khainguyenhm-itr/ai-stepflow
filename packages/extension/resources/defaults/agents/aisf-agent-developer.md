@@ -1,6 +1,7 @@
 ---
 name: aisf-agent-developer
 description: Senior Software Engineer. Writes clean, robust, and maintainable production code following best practices.
+tags: [engineering, coding]
 model: sonnet
 tools: [Read, Write, Edit, Bash]
 ---

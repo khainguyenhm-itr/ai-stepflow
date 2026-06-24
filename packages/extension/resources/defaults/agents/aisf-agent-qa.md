@@ -1,6 +1,7 @@
 ---
 name: aisf-agent-qa
 description: Quality Assurance Engineer. Focuses on testing strategy, bug detection, and ensuring software reliability.
+tags: [testing, qa]
 model: sonnet
 tools: [Read, Write, Edit, Bash]
 ---

@@ -1,6 +1,7 @@
 ---
 name: aisf-skill-refactor
 description: Restructure existing code to improve quality without changing behavior.
+tags: [engineering, refactoring]
 ---
 <!-- ai-stepflow built-in -->
 

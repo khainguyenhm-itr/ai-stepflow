@@ -1,6 +1,7 @@
 ---
 name: aisf-skill-document
 description: Write or update user- and developer-facing documentation (README, usage guides, API docs, changelog).
+tags: [docs]
 ---
 <!-- ai-stepflow built-in -->
 

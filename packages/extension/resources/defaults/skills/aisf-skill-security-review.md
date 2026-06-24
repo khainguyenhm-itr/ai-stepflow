@@ -1,6 +1,7 @@
 ---
 name: aisf-skill-security-review
 description: Threat-model a change and audit it for exploitable vulnerabilities, with prioritized remediation.
+tags: [security, review]
 ---
 <!-- ai-stepflow built-in -->
 

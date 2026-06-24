@@ -182,6 +182,12 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     .pill.accent:hover { background: var(--btn-h); border-color: var(--btn-h); }
     .pill.danger:hover { color: var(--error); border-color: var(--error); background: transparent; }
 
+    /* ── tag filter chips ── */
+    .tag-filters { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 8px 2px; }
+    .tag-chip { display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border: 1px solid var(--border); border-radius: 9px; background: transparent; color: var(--muted); font-size: 10px; font-weight: 600; cursor: pointer; white-space: nowrap; font-family: inherit; transition: background .1s, color .1s, border-color .1s; }
+    .tag-chip:hover { background: var(--hover); color: var(--fg); }
+    .tag-chip.active { background: var(--btn); border-color: var(--btn); color: var(--btn-fg); }
+
     /* ── context menu (details dropdown) ── */
     .menu { position: relative; }
     .menu > summary { list-style: none; }
@@ -522,6 +528,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
   let defaultItemsData = [];
   let libQuery = '';
   let libActiveTab = 'agents'; // 'agents' | 'skills' | 'reviews' | 'validators'
+  let libActiveTags = new Set(); // currently selected tag filters
   const libPendingOps = new Map(); // filename → 'installing' | 'updating' | 'removing'
   const LIB_TABS = [
     { key: 'agents',     label: 'Agents' },
@@ -560,9 +567,15 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     const tabItems = defaultItemsData
       .filter(i => i.kind === libActiveTab)
       .sort((a, b) => (Number(!!b.installed) - Number(!!a.installed)) || a.filename.localeCompare(b.filename));
-    const items = q
-      ? tabItems.filter(i => i.filename.toLowerCase().includes(q) || (i.description || '').toLowerCase().includes(q))
-      : tabItems;
+
+    // collect all unique tags from items in this tab, sorted alphabetically
+    const allTags = [...new Set(tabItems.flatMap(i => i.tags || []))].sort();
+
+    const items = tabItems.filter(i => {
+      const matchesQuery = !q || i.filename.toLowerCase().includes(q) || (i.description || '').toLowerCase().includes(q);
+      const matchesTags = libActiveTags.size === 0 || (i.tags || []).some(t => libActiveTags.has(t));
+      return matchesQuery && matchesTags;
+    });
 
     const tabsHtml = '<div class="box-tabs" id="lib-tabs">' +
       LIB_TABS.map(t => {
@@ -600,9 +613,18 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
         }).join('')
       : '<span class="empty">' + (q ? 'No items match "' + esc(q) + '"' : 'No items') + '</span>';
 
+    const tagFiltersHtml = allTags.length
+      ? '<div class="tag-filters">' +
+          allTags.map(t =>
+            '<button class="tag-chip' + (libActiveTags.has(t) ? ' active' : '') + '" type="button" data-tag="' + esc(t) + '">' + esc(t) + '</button>'
+          ).join('') +
+        '</div>'
+      : '';
+
     panel.innerHTML =
       '<div class="lib-panel">' +
         tabsHtml +
+        tagFiltersHtml +
         '<div class="box-search"><input class="search" id="lib-search" type="text" placeholder="Filter ' + libActiveTab + '…" autocomplete="off" spellcheck="false" value="' + esc(q) + '"></div>' +
         itemsHtml +
       '</div>';
@@ -611,6 +633,16 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
       tab.onclick = () => {
         libActiveTab = tab.getAttribute('data-lib-tab');
         libQuery = '';
+        libActiveTags = new Set(); // reset tags on tab switch
+        renderDefaultsPanel();
+      };
+    });
+
+    panel.querySelectorAll('[data-tag]').forEach(chip => {
+      chip.onclick = () => {
+        const tag = chip.getAttribute('data-tag');
+        if (libActiveTags.has(tag)) libActiveTags.delete(tag);
+        else libActiveTags.add(tag);
         renderDefaultsPanel();
       };
     });

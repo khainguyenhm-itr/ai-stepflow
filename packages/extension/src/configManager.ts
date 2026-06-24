@@ -98,9 +98,9 @@ export class ConfigManager {
   }
 
   /** Returns every bundled default item with name, description, installed status, and whether an update is available. */
-  public async listBundledDefaults(): Promise<Array<{ kind: BundledKind; filename: string; name: string; description: string; installed: boolean; hasUpdate: boolean }>> {
+  public async listBundledDefaults(): Promise<Array<{ kind: BundledKind; filename: string; name: string; description: string; tags?: string[]; installed: boolean; hasUpdate: boolean }>> {
     if (!this.extensionPath) return [];
-    const result: Array<{ kind: BundledKind; filename: string; name: string; description: string; installed: boolean; hasUpdate: boolean }> = [];
+    const result: Array<{ kind: BundledKind; filename: string; name: string; description: string; tags?: string[]; installed: boolean; hasUpdate: boolean }> = [];
     const KINDS: Array<{ kind: BundledKind; exts: string[] }> = [
       { kind: 'agents', exts: ['.md'] },
       { kind: 'skills', exts: ['.md'] },
@@ -120,17 +120,19 @@ export class ConfigManager {
           const installed = installedContent !== null;
           const hasUpdate = installed && installedContent !== content;
           let name: string, description: string;
+          let tags: string[] | undefined;
           if (filename.endsWith('.md')) {
             const leadingComments = content.match(/^(?:\s*<!--[\s\S]*?-->\s*)+(?=---(?:\r?\n|$))/);
             const parseableContent = leadingComments ? content.slice(leadingComments[0].length) : content;
             const m = matter(parseableContent);
             name = String(m.data.name || filename.replace('.md', ''));
             description = String(m.data.description || this._firstHeading(content) || '');
+            tags = Array.isArray(m.data.tags) ? m.data.tags : undefined;
           } else {
             name = filename.replace(/\.(mjs|js)$/, '');
             description = this._firstJsComment(content);
           }
-          result.push({ kind, filename, name, description, installed, hasUpdate });
+          result.push({ kind, filename, name, description, ...(tags ? { tags } : {}), installed, hasUpdate });
         } catch { /* skip */ }
       }
     }
@@ -553,6 +555,7 @@ export class ConfigManager {
       model: agent.model || 'sonnet',
       ...(agent.tools?.length ? { tools: agent.tools } : {}),
       ...(agent.maxTurns != null && agent.maxTurns >= 0 ? { maxTurns: agent.maxTurns } : {}),
+      ...(agent.tags?.length ? { tags: agent.tags } : {}),
       ...(agent.aiConversation?.length ? { aiConversation: agent.aiConversation } : {})
     });
 
@@ -568,6 +571,7 @@ export class ConfigManager {
     const frontmatter = matter.stringify(skill.instructions || '', {
       name: skill.name,
       description: skill.description || '',
+      ...(skill.tags?.length ? { tags: skill.tags } : {}),
       ...(skill.aiConversation?.length ? { aiConversation: skill.aiConversation } : {})
     });
 
@@ -598,11 +602,13 @@ export class ConfigManager {
         ? path.basename(path.dirname(filePath))
         : path.basename(filePath, '.md');
       const aiConversation = Array.isArray(data.aiConversation) ? data.aiConversation : undefined;
+      const tags = Array.isArray(data.tags) ? (data.tags as string[]) : undefined;
       return {
         name: data.name || fallbackName,
         description: data.description || '',
         instructions: body.trim(),
         sourcePath: filePath,
+        ...(tags ? { tags } : {}),
         builtIn: this.hasBuiltInMarker(content),
         ...(stat ? { modifiedAt: stat.mtimeMs } : {}),
         ...(aiConversation ? { aiConversation } : {})
@@ -770,6 +776,7 @@ export class ConfigManager {
       const stripped = content.replace(/^<!--[\s\S]*?-->\s*\n/, '');
       const { data, content: body } = matter(stripped);
       const aiConversation = Array.isArray(data.aiConversation) ? data.aiConversation : undefined;
+      const tags = Array.isArray(data.tags) ? (data.tags as string[]) : undefined;
       return {
         name: data.name || path.basename(filePath, '.md'),
         description: data.description || '',
@@ -777,6 +784,7 @@ export class ConfigManager {
         tools: data.tools,
         systemPrompt: body.trim(),
         sourcePath: filePath,
+        ...(tags ? { tags } : {}),
         builtIn: this.hasBuiltInMarker(content),
         ...(stat ? { modifiedAt: stat.mtimeMs } : {}),
         ...(typeof data.maxTurns === 'number' ? { maxTurns: data.maxTurns } : {}),
