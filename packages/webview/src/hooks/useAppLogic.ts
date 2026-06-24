@@ -1,4 +1,3 @@
-import { useEffect, useRef, useState } from 'react';
 import { Flow, FlowStep, FlowRunState, StepRunState, Agent, Skill } from '@ai-stepflow/core/types';
 import { isVSCodeWebview, sendToVSCode } from '../vscode';
 import {
@@ -9,144 +8,30 @@ import {
 } from '../flowUtils';
 import { previewFlow, previewAgents, previewSkills } from '../previewData';
 
-type Tab = 'flows' | 'agents' | 'skills';
-type SaveScope = 'project' | 'global';
-type FlowAiMessage = { role: 'user' | 'assistant'; content: string };
-type ScopeFilter = 'all' | 'project' | 'global';
-type ViewFilterItem = 'bookmarked' | 'built-in';
-type ViewFilter = ReadonlyArray<ViewFilterItem>; // [] = "all items"
-type SortOrder = 'asc' | 'desc';
+import { useLibraryState } from './appState/useLibraryState';
+import { useRunState } from './appState/useRunState';
+import { useBuilderState } from './appState/useBuilderState';
+import { useChatState } from './appState/useChatState';
+import { ScopeFilter, ViewFilter, ViewFilterItem, SortOrder, SaveScope } from './appState/types';
 
 const VALID_FILTERS: ScopeFilter[] = ['all', 'project', 'global'];
 const parseFilter = (v: string | undefined): ScopeFilter =>
   VALID_FILTERS.includes(v as ScopeFilter) ? (v as ScopeFilter) : 'all';
 
-const BOOKMARKS_STORAGE_KEY = 'ai-stepflow:resource-bookmarks';
-
-type ResourceBookmarks = Record<string, boolean>;
-
-const loadBookmarks = (): ResourceBookmarks => {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = window.localStorage.getItem(BOOKMARKS_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-};
-
 export const useAppLogic = () => {
-  const [activeTab, setActiveTab] = useState<Tab>('flows');
-  const [flows, setFlows] = useState<Flow[]>([]);
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [skills, setSkills] = useState<Skill[]>([]);
-  const [bookmarks, setBookmarks] = useState<ResourceBookmarks>(loadBookmarks);
-  /** Persistent local machine logs (non-repo). Keyed by flowId. */
-  const [auditLogs, setAuditLogs] = useState<Record<string, any[]>>({});
-  const [globalPath, setGlobalPath] = useState<string>('');
-  const [projectPath, setProjectPath] = useState<string>('');
-  const [connectedMcpServers, setConnectedMcpServers] = useState<string[]>([]);
-  const [runSummaries, setRunSummaries] = useState<{ flowId: string; runId: string; runName?: string; completedSteps: number; totalSteps: number; mtimeMs: number; isClosed: boolean }[]>([]);
-
-  const [activeFlow, setActiveFlow] = useState<Flow | null>(null);
-  const [runState, setRunState] = useState<FlowRunState | null>(null);
-  const [activeStepId, setActiveStepId] = useState<string | null>(null);
-  const [runnerVisible, setRunnerVisible] = useState(false);
-  const [commandCopied, setCommandCopied] = useState(false);
-
-  // Modals
-  const [standaloneRun, setStandaloneRun] = useState<{ type: 'agent'; agent: Agent } | { type: 'skill'; skill: Skill } | null>(null);
-  const [standaloneRunDescription, setStandaloneRunDescription] = useState('');
-
-  const [editingFlow, setEditingFlow] = useState<Flow | null>(null);
-  const [editingFlowScope, setEditingFlowScope] = useState<SaveScope>('project');
-  const [editingStep, setEditingStep] = useState<{ step: FlowStep, index: number } | null>(null);
-  const [stepEditFromBoard, setStepEditFromBoard] = useState(false);
-  const [stepIsNew, setStepIsNew] = useState(false);
-  const [stepError, setStepError] = useState<string | null>(null);
-  const [builderError, setBuilderError] = useState<string | null>(null);
-  const [newInputName, setNewInputName] = useState('');
-  const [flowAiPrompt, setFlowAiPrompt] = useState('');
-  const [flowAiMessages, setFlowAiMessages] = useState<FlowAiMessage[]>([]);
-  const [flowAiLoading, setFlowAiLoading] = useState(false);
-
-  const [runInputsTarget, setRunInputsTarget] = useState<Flow | null>(null);
-  const [runName, setRunName] = useState('');
-  const [runInputValues, setRunInputValues] = useState<Record<string, string>>({});
-  const [runInputsError, setRunInputsError] = useState<string | null>(null);
-
-  const [detailItem, setDetailItem] = useState<{
-    type: 'Flow' | 'Agent' | 'Skill';
-    title: string;
-    description: string;
-    sourcePath: string;
-    meta: Record<string, string | number>;
-    onDelete: () => void;
-  } | null>(null);
-
-  const [agentModalOpen, setAgentModalOpen] = useState(false);
-  const [skillModalOpen, setSkillModalOpen] = useState(false);
-  const [connectMcpModalOpen, setConnectMcpModalOpen] = useState(false);
-  const [editingSkillSource, setEditingSkillSource] = useState<string | null>(null);
-  const [editingAgentSource, setEditingAgentSource] = useState<string | null>(null);
-
-  const emptyAgentForm = { name: '', description: '', model: 'claude-sonnet-4-6', tools: [] as string[], systemPrompt: '', scope: 'project' as SaveScope, maxTurns: undefined as number | undefined };
-  const emptySkillForm = { name: '', description: '', instructions: '', scope: 'project' as SaveScope };
-  const [agentForm, setAgentForm] = useState(emptyAgentForm);
-  const [skillForm, setSkillForm] = useState(emptySkillForm);
-  const [agentFormError, setAgentFormError] = useState<string | null>(null);
-  const [skillFormError, setSkillFormError] = useState<string | null>(null);
-  const [draftLoading, setDraftLoading] = useState<'agent' | 'skill' | null>(null);
-  const [scopeFilters, setScopeFilters] = useState<{ flows: ScopeFilter; agents: ScopeFilter; skills: ScopeFilter }>({ flows: 'all', agents: 'all', skills: 'all' });
-  const [viewFilters, setViewFilters] = useState<{ flows: ViewFilter; agents: ViewFilter; skills: ViewFilter }>({ flows: [], agents: [], skills: [] });
-  const [sortOrders, setSortOrders] = useState<{ flows: SortOrder; agents: SortOrder; skills: SortOrder }>({ flows: 'asc', agents: 'asc', skills: 'asc' });
-  const [agentAiPrompt, setAgentAiPrompt] = useState('');
-  const [agentAiMessages, setAgentAiMessages] = useState<FlowAiMessage[]>([]);
-  const [skillAiPrompt, setSkillAiPrompt] = useState('');
-  const [skillAiMessages, setSkillAiMessages] = useState<FlowAiMessage[]>([]);
-
-  const outputEndRef = useRef<HTMLDivElement>(null);
-  const activeFlowRef = useRef<Flow | null>(null);
-  const shouldPersistRun = useRef(false);
-
-  useEffect(() => {
-    activeFlowRef.current = activeFlow;
-  }, [activeFlow]);
-
-  useEffect(() => {
-    window.localStorage.setItem(BOOKMARKS_STORAGE_KEY, JSON.stringify(bookmarks));
-  }, [bookmarks]);
-
-  const getItemScope = (sourcePath: string): SaveScope => {
-    if (globalPath && sourcePath.startsWith(globalPath)) return 'global';
-    return 'project';
-  };
-
-  const getFlowScope = (flow: Flow): SaveScope => getItemScope(flow.sourcePath);
-  const getAgentByName = (name: string) => agents.find(agent => agent.name === name);
-  const getSkillByName = (name: string) => skills.find(skill => skill.name === name);
-  const getBookmarkKey = (kind: 'agent' | 'skill' | 'flow', sourcePath: string) => `${kind}:${sourcePath}`;
-  const isBookmarked = (kind: 'agent' | 'skill' | 'flow', sourcePath: string) => !!bookmarks[getBookmarkKey(kind, sourcePath)];
-  const toggleBookmark = (kind: 'agent' | 'skill' | 'flow', sourcePath: string) => {
-    const key = getBookmarkKey(kind, sourcePath);
-    setBookmarks(prev => {
-      const next = { ...prev };
-      if (next[key]) delete next[key];
-      else next[key] = true;
-      return next;
-    });
-  };
+  const libState = useLibraryState();
+  const runState = useRunState();
+  const buildState = useBuilderState();
+  const chatState = useChatState();
 
   const updateRunState = (stepId: string, updates: Partial<StepRunState> | ((prev: StepRunState | undefined) => Partial<StepRunState>)) => {
-    shouldPersistRun.current = true;
-    setRunState(prev => {
+    runState.shouldPersistRun.current = true;
+    runState.setRunState(prev => {
       if (!prev) return null;
       const prevStep = prev.steps[stepId];
       const resolved = typeof updates === 'function' ? updates(prevStep) : updates;
       const steps = { ...prev.steps, [stepId]: { ...prevStep, ...resolved } };
-      const flow = activeFlowRef.current;
+      const flow = runState.activeFlowRef.current;
       return { ...prev, steps: flow ? applyDependencyLocks(flow, steps) : steps };
     });
   };
@@ -162,7 +47,7 @@ export const useAppLogic = () => {
       };
     });
 
-    shouldPersistRun.current = true;
+    runState.shouldPersistRun.current = true;
     const newRunState: FlowRunState = {
       flowId: flow.id,
       runId: new Date().toISOString(),
@@ -173,9 +58,9 @@ export const useAppLogic = () => {
       inputs,
       steps: applyDependencyLocks(flow, initialSteps)
     };
-    setRunState(newRunState);
-    setActiveStepId(flow.steps[0]?.id || null);
-    setRunSummaries(prev => [{
+    runState.setRunState(newRunState);
+    runState.setActiveStepId(flow.steps[0]?.id || null);
+    libState.setRunSummaries(prev => [{
       flowId: newRunState.flowId,
       runId: newRunState.runId,
       runName: newRunState.runName,
@@ -188,21 +73,21 @@ export const useAppLogic = () => {
   };
 
   const startFreshRun = (flow: Flow) => {
-    setActiveFlow(flow);
+    runState.setActiveFlow(flow);
     const inputNames = Object.keys(flow.inputs || {});
-    setRunInputValues(Object.fromEntries(inputNames.map(name => [name, ''])));
-    setRunName('');
-    setRunInputsError(null);
-    setRunInputsTarget(flow);
+    runState.setRunInputValues(Object.fromEntries(inputNames.map(name => [name, ''])));
+    runState.setRunName('');
+    runState.setRunInputsError(null);
+    runState.setRunInputsTarget(flow);
   };
 
   const startOrResumeRun = (flow: Flow) => {
-    if (activeFlow?.id === flow.id && runState) {
-      setRunnerVisible(true);
+    if (runState.activeFlow?.id === flow.id && runState.runState) {
+      runState.setRunnerVisible(true);
       return;
     }
     startFreshRun(flow);
-    setRunnerVisible(true);
+    runState.setRunnerVisible(true);
   };
 
   const handleHostMessage = (message: any) => {
@@ -210,16 +95,16 @@ export const useAppLogic = () => {
     switch (message.type) {
       case 'loadData':
         console.log('[AI StepFlow Webview] loading data:', message.flows.length, 'flows');
-        setFlows(message.flows);
-        setAgents(message.agents);
-        setSkills(message.skills);
-        setAuditLogs(message.auditLogs || {});
-        setRunSummaries(message.runSummaries || []);
-        setGlobalPath(message.globalPath);
-        setProjectPath(message.projectPath);
-        setConnectedMcpServers(message.connectedMcpServers || []);
+        libState.setFlows(message.flows);
+        libState.setAgents(message.agents);
+        libState.setSkills(message.skills);
+        libState.setAuditLogs(message.auditLogs || {});
+        libState.setRunSummaries(message.runSummaries || []);
+        libState.setGlobalPath(message.globalPath);
+        libState.setProjectPath(message.projectPath);
+        libState.setConnectedMcpServers(message.connectedMcpServers || []);
         if (message.uiPrefs) {
-          setScopeFilters({
+          libState.setScopeFilters({
             flows: parseFilter(message.uiPrefs['scopeFilter:flows']),
             agents: parseFilter(message.uiPrefs['scopeFilter:agents']),
             skills: parseFilter(message.uiPrefs['scopeFilter:skills']),
@@ -231,12 +116,12 @@ export const useAppLogic = () => {
           };
           const parseSortOrder = (v: string | undefined): SortOrder =>
             v === 'desc' ? 'desc' : 'asc';
-          setViewFilters({
+          libState.setViewFilters({
             flows: parseViewFilter(message.uiPrefs['viewFilter:flows']),
             agents: parseViewFilter(message.uiPrefs['viewFilter:agents']),
             skills: parseViewFilter(message.uiPrefs['viewFilter:skills']),
           });
-          setSortOrders({
+          libState.setSortOrders({
             flows: parseSortOrder(message.uiPrefs['sortOrder:flows']),
             agents: parseSortOrder(message.uiPrefs['sortOrder:agents']),
             skills: parseSortOrder(message.uiPrefs['sortOrder:skills']),
@@ -244,51 +129,51 @@ export const useAppLogic = () => {
         }
         break;
       case 'mcpServers':
-        setConnectedMcpServers(message.connectedMcpServers || []);
+        libState.setConnectedMcpServers(message.connectedMcpServers || []);
         break;
       case 'navigateToTab':
         if (message.tab === 'flows' || message.tab === 'agents' || message.tab === 'skills') {
-          setActiveTab(message.tab);
+          libState.setActiveTab(message.tab);
         }
         break;
       case 'restoreRun':
-        setActiveFlow(message.flow);
-        setRunState(message.runState);
-        setRunnerVisible(true);
-        setActiveStepId(getDefaultActiveStepId(message.flow, message.runState));
+        runState.setActiveFlow(message.flow);
+        runState.setRunState(message.runState);
+        runState.setRunnerVisible(true);
+        runState.setActiveStepId(getDefaultActiveStepId(message.flow, message.runState));
         break;
       case 'runDeleted': {
         const { flowId, runId } = message;
-        setRunSummaries(prev => prev.filter(s => !(s.flowId === flowId && s.runId === runId)));
-        setAuditLogs(prev => {
+        libState.setRunSummaries(prev => prev.filter(s => !(s.flowId === flowId && s.runId === runId)));
+        libState.setAuditLogs(prev => {
           if (!prev[flowId]) return prev;
           const filtered = prev[flowId].filter((e: any) => e.runId !== runId);
           return { ...prev, [flowId]: filtered };
         });
-        setRunState(null);
-        setActiveFlow(null);
-        setActiveStepId(null);
-        setRunnerVisible(false);
+        runState.setRunState(null);
+        runState.setActiveFlow(null);
+        runState.setActiveStepId(null);
+        runState.setRunnerVisible(false);
         break;
       }
       case 'runClosed':
         if (message.finalized && message.flowId && message.runId) {
-          setRunSummaries(prev => prev.map(s =>
+          libState.setRunSummaries(prev => prev.map(s =>
             s.flowId === message.flowId && s.runId === message.runId
               ? { ...s, isClosed: true }
               : s
           ));
         }
-        setRunState(null);
-        setActiveFlow(null);
-        setActiveStepId(null);
-        setRunnerVisible(false);
+        runState.setRunState(null);
+        runState.setActiveFlow(null);
+        runState.setActiveStepId(null);
+        runState.setRunnerVisible(false);
         break;
       case 'resetAuditLog':
-        setRunState(currentRun => {
+        runState.setRunState(currentRun => {
           if (currentRun) {
             const oldRunId = currentRun.runId;
-            setAuditLogs(prev => {
+            libState.setAuditLogs(prev => {
               const flowId = message.flowId;
               if (!prev[flowId]) return prev;
               return { ...prev, [flowId]: prev[flowId].filter(e => e.runId !== oldRunId) };
@@ -298,7 +183,7 @@ export const useAppLogic = () => {
         });
         break;
       case 'stepUpdate':
-        setRunState(prev => {
+        runState.setRunState(prev => {
           if (!prev) return prev;
           const ps = prev.steps[message.stepId];
           const output = message.append ? `${ps?.output || ''}${message.output || ''}` : (message.output || '');
@@ -306,7 +191,7 @@ export const useAppLogic = () => {
         });
         break;
       case 'aiReviewUpdate':
-        setRunState(prev => {
+        runState.setRunState(prev => {
           if (!prev) return prev;
           const ps = prev.steps[message.stepId];
           const aiReviewOutput = message.append ? `${ps?.aiReviewOutput || ''}${message.output || ''}` : (message.output || '');
@@ -314,230 +199,225 @@ export const useAppLogic = () => {
         });
         break;
       case 'runStateChanged':
-        setRunState(message.runState);
-        if (message.historyEvent && activeFlowRef.current) {
-          const flowId = activeFlowRef.current.id;
+        runState.setRunState(message.runState);
+        if (message.historyEvent && runState.activeFlowRef.current) {
+          const flowId = runState.activeFlowRef.current.id;
           const newEvent = { ...message.historyEvent, runId: message.runState.runId };
-          setAuditLogs(prev => ({ ...prev, [flowId]: [...(prev[flowId] || []), newEvent] }));
+          libState.setAuditLogs(prev => ({ ...prev, [flowId]: [...(prev[flowId] || []), newEvent] }));
         }
-        if (activeFlowRef.current) {
-          setActiveStepId(curr => curr ?? getDefaultActiveStepId(activeFlowRef.current!, message.runState));
+        if (runState.activeFlowRef.current) {
+          runState.setActiveStepId(curr => curr ?? getDefaultActiveStepId(runState.activeFlowRef.current!, message.runState));
         }
         break;
       case 'fileImported':
         if (message.kind === 'agent') {
-          setAgentForm(prev => ({ ...prev, ...message.item, scope: 'project' }));
-          setAgentFormError(null);
-          setEditingAgentSource(null);
-          setAgentModalOpen(true);
-          setActiveTab('agents');
+          buildState.setAgentForm(prev => ({ ...prev, ...message.item, scope: 'project' }));
+          buildState.setAgentFormError(null);
+          buildState.setEditingAgentSource(null);
+          buildState.setAgentModalOpen(true);
+          libState.setActiveTab('agents');
         } else {
-          setSkillForm(prev => ({ ...prev, ...message.item, scope: 'project' }));
-          setSkillFormError(null);
-          setEditingSkillSource(null);
-          setSkillModalOpen(true);
-          setActiveTab('skills');
+          buildState.setSkillForm(prev => ({ ...prev, ...message.item, scope: 'project' }));
+          buildState.setSkillFormError(null);
+          buildState.setEditingSkillSource(null);
+          buildState.setSkillModalOpen(true);
+          libState.setActiveTab('skills');
         }
         break;
       case 'draftGenerated':
-        setDraftLoading(null);
+        buildState.setDraftLoading(null);
         if (message.error) {
-          if (message.kind === 'agent') setAgentFormError(`Draft failed: ${message.error}`);
-          else setSkillFormError(`Draft failed: ${message.error}`);
+          if (message.kind === 'agent') buildState.setAgentFormError(`Draft failed: ${message.error}`);
+          else buildState.setSkillFormError(`Draft failed: ${message.error}`);
           break;
         }
         if (message.kind === 'agent') {
-          setAgentForm(prev => ({
+          buildState.setAgentForm(prev => ({
             ...prev,
             ...(message.name ? { name: message.name } : {}),
             ...(message.description ? { description: message.description } : {}),
             ...(message.content ? { systemPrompt: message.content } : {}),
             ...(typeof message.maxTurns === 'number' ? { maxTurns: message.maxTurns } : {})
           }));
-          setAgentAiMessages(prev => [...prev, { role: 'assistant', content: message.reply || 'Agent generated — see below.' }]);
-          setAgentFormError(null);
+          chatState.setAgentAiMessages(prev => [...prev, { role: 'assistant', content: message.reply || 'Agent generated — see below.' }]);
+          buildState.setAgentFormError(null);
         } else {
-          setSkillForm(prev => ({
+          buildState.setSkillForm(prev => ({
             ...prev,
             ...(message.name ? { name: message.name } : {}),
             ...(message.description ? { description: message.description } : {}),
             ...(message.content ? { instructions: message.content } : {})
           }));
-          setSkillAiMessages(prev => [...prev, { role: 'assistant', content: message.reply || 'Skill generated — see below.' }]);
-          setSkillFormError(null);
+          chatState.setSkillAiMessages(prev => [...prev, { role: 'assistant', content: message.reply || 'Skill generated — see below.' }]);
+          buildState.setSkillFormError(null);
         }
         break;
       case 'flowGenerated':
-        setFlowAiLoading(false);
+        chatState.setFlowAiLoading(false);
         if (message.error) {
-          setBuilderError(`Flow generation failed: ${message.error}`);
+          buildState.setBuilderError(`Flow generation failed: ${message.error}`);
           break;
         }
         if (message.flow) {
-          setEditingFlow(message.flow);
-          setBuilderError(null);
+          buildState.setEditingFlow(message.flow);
+          buildState.setBuilderError(null);
         }
         if (message.reply) {
-          setFlowAiMessages(prev => [...prev, { role: 'assistant', content: message.reply }]);
+          chatState.setFlowAiMessages(prev => [...prev, { role: 'assistant', content: message.reply }]);
         }
         break;
     }
   };
 
   const submitAgentModal = () => {
-    if (!agentForm.name.trim()) {
-      setAgentFormError('Agent name is required.');
+    if (!buildState.agentForm.name.trim()) {
+      buildState.setAgentFormError('Agent name is required.');
       return;
     }
-    setAgentFormError(null);
+    buildState.setAgentFormError(null);
     if (!isVSCodeWebview()) {
       const agent: Agent = {
-        name: agentForm.name.trim(),
-        description: agentForm.description || '',
-        model: agentForm.model || 'claude-sonnet-4-6',
-        tools: agentForm.tools,
-        systemPrompt: agentForm.systemPrompt || 'You are a helpful AI agent.',
-        sourcePath: `/preview/.claude/agents/${agentForm.name.trim()}.md`,
-        ...(agentForm.maxTurns != null ? { maxTurns: agentForm.maxTurns } : {})
+        name: buildState.agentForm.name.trim(),
+        description: buildState.agentForm.description || '',
+        model: buildState.agentForm.model || 'claude-sonnet-4-6',
+        tools: buildState.agentForm.tools,
+        systemPrompt: buildState.agentForm.systemPrompt || 'You are a helpful AI agent.',
+        sourcePath: `/preview/.claude/agents/${buildState.agentForm.name.trim()}.md`,
+        ...(buildState.agentForm.maxTurns != null ? { maxTurns: buildState.agentForm.maxTurns } : {})
       };
-      setAgents(prev => [
-        ...prev.filter(item => item.name !== agent.name && item.sourcePath !== editingAgentSource),
+      libState.setAgents(prev => [
+        ...prev.filter(item => item.name !== agent.name && item.sourcePath !== buildState.editingAgentSource),
         agent
       ]);
-      setAgentModalOpen(false);
-      setEditingAgentSource(null);
-      setAgentForm(emptyAgentForm);
+      buildState.setAgentModalOpen(false);
+      buildState.setEditingAgentSource(null);
+      buildState.setAgentForm(buildState.emptyAgentForm);
       return;
     }
-    sendToVSCode(editingAgentSource ? 'updateAgent' : 'createAgent', {
+    sendToVSCode(buildState.editingAgentSource ? 'updateAgent' : 'createAgent', {
       agent: {
-        name: agentForm.name.trim(),
-        description: agentForm.description || '',
-        model: agentForm.model || 'claude-sonnet-4-6',
-        tools: agentForm.tools,
-        systemPrompt: agentForm.systemPrompt || '',
-        ...(agentForm.maxTurns != null ? { maxTurns: agentForm.maxTurns } : {}),
-        ...(agentAiMessages.length ? { aiConversation: agentAiMessages } : {})
+        name: buildState.agentForm.name.trim(),
+        description: buildState.agentForm.description || '',
+        model: buildState.agentForm.model || 'claude-sonnet-4-6',
+        tools: buildState.agentForm.tools,
+        systemPrompt: buildState.agentForm.systemPrompt || '',
+        ...(buildState.agentForm.maxTurns != null ? { maxTurns: buildState.agentForm.maxTurns } : {}),
+        ...(chatState.agentAiMessages.length ? { aiConversation: chatState.agentAiMessages } : {})
       },
-      originalSourcePath: editingAgentSource,
-      isGlobal: agentForm.scope === 'global'
+      originalSourcePath: buildState.editingAgentSource,
+      isGlobal: buildState.agentForm.scope === 'global'
     });
-    setAgentModalOpen(false);
-    setEditingAgentSource(null);
-    setAgentForm(emptyAgentForm);
+    buildState.setAgentModalOpen(false);
+    buildState.setEditingAgentSource(null);
+    buildState.setAgentForm(buildState.emptyAgentForm);
   };
 
   const openAgentEditor = (agent?: Agent) => {
     if (agent) {
-      setAgentForm({
+      buildState.setAgentForm({
         name: agent.name,
         description: agent.description,
         model: agent.model,
         tools: agent.tools || [],
         systemPrompt: agent.systemPrompt,
-        scope: getItemScope(agent.sourcePath),
+        scope: libState.getItemScope(agent.sourcePath),
         maxTurns: agent.maxTurns
       });
-      setEditingAgentSource(agent.sourcePath);
+      buildState.setEditingAgentSource(agent.sourcePath);
     } else {
-      setAgentForm(emptyAgentForm);
-      setEditingAgentSource(null);
+      buildState.setAgentForm(buildState.emptyAgentForm);
+      buildState.setEditingAgentSource(null);
     }
-    setAgentFormError(null);
-    setAgentAiPrompt('');
-    setAgentAiMessages(agent?.aiConversation || []);
-    setAgentModalOpen(true);
+    buildState.setAgentFormError(null);
+    chatState.setAgentAiPrompt('');
+    chatState.setAgentAiMessages(agent?.aiConversation || []);
+    buildState.setAgentModalOpen(true);
   };
 
   const submitSkillModal = () => {
-    if (!skillForm.name.trim()) {
-      setSkillFormError('Skill name is required.');
+    if (!buildState.skillForm.name.trim()) {
+      buildState.setSkillFormError('Skill name is required.');
       return;
     }
-    setSkillFormError(null);
+    buildState.setSkillFormError(null);
     if (!isVSCodeWebview()) {
       const skill: Skill = {
-        name: skillForm.name.trim(),
-        description: skillForm.description || '',
-        instructions: skillForm.instructions || '',
-        sourcePath: `/preview/.claude/skills/${skillForm.name.trim()}`
+        name: buildState.skillForm.name.trim(),
+        description: buildState.skillForm.description || '',
+        instructions: buildState.skillForm.instructions || '',
+        sourcePath: `/preview/.claude/skills/${buildState.skillForm.name.trim()}`
       };
-      setSkills(prev => [
-        ...prev.filter(item => item.name !== skill.name && item.sourcePath !== editingSkillSource),
+      libState.setSkills(prev => [
+        ...prev.filter(item => item.name !== skill.name && item.sourcePath !== buildState.editingSkillSource),
         skill
       ]);
-      setSkillModalOpen(false);
-      setEditingSkillSource(null);
-      setSkillForm(emptySkillForm);
+      buildState.setSkillModalOpen(false);
+      buildState.setEditingSkillSource(null);
+      buildState.setSkillForm(buildState.emptySkillForm);
       return;
     }
-    sendToVSCode(editingSkillSource ? 'updateSkill' : 'createSkill', {
+    sendToVSCode(buildState.editingSkillSource ? 'updateSkill' : 'createSkill', {
       skill: {
-        name: skillForm.name.trim(),
-        description: skillForm.description || '',
-        instructions: skillForm.instructions || '',
-        ...(skillAiMessages.length ? { aiConversation: skillAiMessages } : {})
+        name: buildState.skillForm.name.trim(),
+        description: buildState.skillForm.description || '',
+        instructions: buildState.skillForm.instructions || '',
+        ...(chatState.skillAiMessages.length ? { aiConversation: chatState.skillAiMessages } : {})
       },
-      originalSourcePath: editingSkillSource,
-      isGlobal: skillForm.scope === 'global'
+      originalSourcePath: buildState.editingSkillSource,
+      isGlobal: buildState.skillForm.scope === 'global'
     });
-    setSkillModalOpen(false);
-    setEditingSkillSource(null);
-    setSkillForm(emptySkillForm);
+    buildState.setSkillModalOpen(false);
+    buildState.setEditingSkillSource(null);
+    buildState.setSkillForm(buildState.emptySkillForm);
   };
 
   const openSkillEditor = (skill?: Skill, newScope: SaveScope = 'project') => {
     if (skill) {
-      setSkillForm({
+      buildState.setSkillForm({
         name: skill.name,
         description: skill.description,
         instructions: skill.instructions,
-        scope: getItemScope(skill.sourcePath)
+        scope: libState.getItemScope(skill.sourcePath)
       });
-      setEditingSkillSource(skill.sourcePath);
+      buildState.setEditingSkillSource(skill.sourcePath);
     } else {
-      setSkillForm({ ...emptySkillForm, scope: newScope });
-      setEditingSkillSource(null);
+      buildState.setSkillForm({ ...buildState.emptySkillForm, scope: newScope });
+      buildState.setEditingSkillSource(null);
     }
-    setSkillFormError(null);
-    setSkillAiPrompt('');
-    setSkillAiMessages(skill?.aiConversation || []);
-    setSkillModalOpen(true);
+    buildState.setSkillFormError(null);
+    chatState.setSkillAiPrompt('');
+    chatState.setSkillAiMessages(skill?.aiConversation || []);
+    buildState.setSkillModalOpen(true);
   };
 
   const submitConnectMcp = (config: { name: string; scope: 'global' | 'local'; command: string; args: string[]; env?: Record<string, string> }) => {
     sendToVSCode('connectMcpServer', { config });
-    setConnectMcpModalOpen(false);
+    buildState.setConnectMcpModalOpen(false);
   };
 
   const submitRunInputs = () => {
-    if (!runInputsTarget) return;
-    initRunState(runInputsTarget, runName.trim() || undefined, runInputValues);
-    setRunInputsTarget(null);
-    setRunnerVisible(true);
+    if (!runState.runInputsTarget) return;
+    initRunState(runState.runInputsTarget, runState.runName.trim() || undefined, runState.runInputValues);
+    runState.setRunInputsTarget(null);
+    runState.setRunnerVisible(true);
   };
 
   const runActiveStep = (stepId: string, description?: string) => {
-    if (!activeFlow) return;
+    if (!runState.activeFlow) return;
     const historyEvent = { timestamp: new Date().toISOString(), status: 'running', message: 'Started run' };
     if (!isVSCodeWebview()) {
       seedPreviewRun(stepId, description);
       return;
     }
-    sendToVSCode('runStep', { flow: activeFlow, runState, stepId, description, historyEvent });
+    sendToVSCode('runStep', { flow: runState.activeFlow, runState: runState.runState, stepId, description, historyEvent });
   };
 
-  const completedSteps = runState ? Object.values(runState.steps).filter(s => s.completionStatus === 'done').length : 0;
-  const activeProgress = runState && activeFlow?.steps.length
-    ? Math.round((completedSteps / activeFlow.steps.length) * 100)
-    : 0;
-
   const seedPreview = () => {
-    setFlows([previewFlow]);
-    setAgents(previewAgents);
-    setSkills(previewSkills);
-    setGlobalPath('/preview/global');
-    setProjectPath('/preview/project');
+    libState.setFlows([previewFlow]);
+    libState.setAgents(previewAgents);
+    libState.setSkills(previewSkills);
+    libState.setGlobalPath('/preview/global');
+    libState.setProjectPath('/preview/project');
   };
 
   const seedPreviewRun = (stepId: string, runDescription?: string) => {
@@ -547,7 +427,7 @@ export const useAppLogic = () => {
     });
     window.setTimeout(() => {
       updateRunState(stepId, () => {
-        const step = activeFlowRef.current?.steps.find(s => s.id === stepId);
+        const step = runState.activeFlowRef.current?.steps.find(s => s.id === stepId);
         const updates: Partial<StepRunState> = {
           executionStatus: 'completed',
           output: 'Preview mode: simulated step completed successfully.\n\nInstall the VSIX or run the extension host to execute Claude for real.'
@@ -570,11 +450,11 @@ export const useAppLogic = () => {
       if (!step.id) return 'Every step needs an id.';
       if (ids.has(step.id)) return `Duplicate step id '${step.id}'.`;
       ids.add(step.id);
-      if (!step.agent || !getAgentByName(step.agent)) return `Step '${label}': agent '${step.agent || '(none)'}' does not exist.`;
+      if (!step.agent || !libState.getAgentByName(step.agent)) return `Step '${label}': agent '${step.agent || '(none)'}' does not exist.`;
       const stepSkills = getStepSkills(step);
       if (stepSkills.length === 0) return `Step '${label}': select at least one skill.`;
       for (const skillName of stepSkills) {
-        if (!getSkillByName(skillName)) return `Step '${label}': skill '${skillName}' does not exist.`;
+        if (!libState.getSkillByName(skillName)) return `Step '${label}': skill '${skillName}' does not exist.`;
       }
     }
     for (const step of flow.steps) {
@@ -588,27 +468,27 @@ export const useAppLogic = () => {
   };
 
   const saveEditingFlow = () => {
-    if (!editingFlow) return;
-    const error = validateFlow(editingFlow);
+    if (!buildState.editingFlow) return;
+    const error = validateFlow(buildState.editingFlow);
     if (error) {
-      setBuilderError(error);
+      buildState.setBuilderError(error);
       return;
     }
     sendToVSCode('saveFlow', {
-      flow: { ...editingFlow, aiConversation: flowAiMessages },
-      isGlobal: editingFlowScope === 'global'
+      flow: { ...buildState.editingFlow, aiConversation: chatState.flowAiMessages },
+      isGlobal: buildState.editingFlowScope === 'global'
     });
-    setEditingFlow(null);
-    setEditingStep(null);
-    setBuilderError(null);
+    buildState.setEditingFlow(null);
+    buildState.setEditingStep(null);
+    buildState.setBuilderError(null);
   };
 
   const saveStepEdit = () => {
-    if (!editingStep || !editingFlow) return;
-    const newSteps = [...editingFlow.steps];
-    const step = editingStep.step;
+    if (!buildState.editingStep || !buildState.editingFlow) return;
+    const newSteps = [...buildState.editingFlow.steps];
+    const step = buildState.editingStep.step;
     const reviewType = step.review.type === 'ai' ? 'ai' : 'human';
-    newSteps[editingStep.index] = {
+    newSteps[buildState.editingStep.index] = {
       ...step,
       review: {
         ...step.review,
@@ -618,84 +498,41 @@ export const useAppLogic = () => {
       },
       completion: { requireMarkDone: reviewType === 'human' }
     };
-    const newFlow = { ...editingFlow, steps: newSteps };
+    const newFlow = { ...buildState.editingFlow, steps: newSteps };
 
-    if (stepEditFromBoard) {
+    if (buildState.stepEditFromBoard) {
       const error = validateFlow(newFlow);
       if (error) {
-        setStepError(error);
+        buildState.setStepError(error);
         return;
       }
-      sendToVSCode('saveFlow', { flow: newFlow, isGlobal: editingFlowScope === 'global' });
-      setEditingStep(null);
-      setStepError(null);
-      setStepEditFromBoard(false);
-      setStepIsNew(false);
-      setEditingFlow(null);
+      sendToVSCode('saveFlow', { flow: newFlow, isGlobal: buildState.editingFlowScope === 'global' });
+      buildState.setEditingStep(null);
+      buildState.setStepError(null);
+      buildState.setStepEditFromBoard(false);
+      buildState.setStepIsNew(false);
+      buildState.setEditingFlow(null);
       return;
     }
 
-    setEditingFlow(newFlow);
-    setEditingStep(null);
+    buildState.setEditingFlow(newFlow);
+    buildState.setEditingStep(null);
   };
 
+  const completedSteps = runState.runState ? Object.values(runState.runState.steps).filter(s => s.completionStatus === 'done').length : 0;
+  const activeProgress = runState.runState && runState.activeFlow?.steps.length
+    ? Math.round((completedSteps / runState.activeFlow.steps.length) * 100)
+    : 0;
+
   return {
-    activeTab, setActiveTab,
-    flows, setFlows,
-    agents, setAgents,
-    skills, setSkills,
-    bookmarks,
-    auditLogs, setAuditLogs,
-    runSummaries, setRunSummaries,
-    globalPath, projectPath, connectedMcpServers,
-    activeFlow, setActiveFlow,
-    runState, setRunState,
-    activeStepId, setActiveStepId,
-    runnerVisible, setRunnerVisible,
-    commandCopied, setCommandCopied,
-    standaloneRun, setStandaloneRun,
-    standaloneRunDescription, setStandaloneRunDescription,
-    editingFlow, setEditingFlow,
-    editingFlowScope, setEditingFlowScope,
-    editingStep, setEditingStep,
-    stepEditFromBoard, setStepEditFromBoard,
-    stepIsNew, setStepIsNew,
-    stepError, setStepError,
-    builderError, setBuilderError,
-    newInputName, setNewInputName,
-    flowAiPrompt, setFlowAiPrompt,
-    flowAiMessages, setFlowAiMessages,
-    flowAiLoading, setFlowAiLoading,
-    runInputsTarget, setRunInputsTarget,
-    runName, setRunName,
-    runInputValues, setRunInputValues,
-    runInputsError, setRunInputsError,
-    detailItem, setDetailItem,
-    agentModalOpen, setAgentModalOpen,
-    skillModalOpen, setSkillModalOpen,
-    connectMcpModalOpen, setConnectMcpModalOpen,
-    editingSkillSource, setEditingSkillSource,
-    editingAgentSource, setEditingAgentSource,
-    agentForm, setAgentForm,
-    skillForm, setSkillForm,
-    scopeFilters,
-    viewFilters,
-    sortOrders,
-    agentFormError, setAgentFormError,
-    skillFormError, setSkillFormError,
-    draftLoading, setDraftLoading,
-    agentAiPrompt, setAgentAiPrompt,
-    agentAiMessages, setAgentAiMessages,
-    skillAiPrompt, setSkillAiPrompt,
-    skillAiMessages, setSkillAiMessages,
-    outputEndRef,
+    ...libState,
+    ...runState,
+    ...buildState,
+    ...chatState,
     completedSteps, activeProgress,
     handleHostMessage, seedPreview,
-    getItemScope, getFlowScope, getAgentByName, getSkillByName,
-    isBookmarked, toggleBookmark,
     startOrResumeRun,
     startFreshRun,
-    emptyAgentForm, emptySkillForm,
     submitAgentModal, openAgentEditor, submitSkillModal, openSkillEditor,
     submitConnectMcp,
     submitRunInputs, runActiveStep, saveEditingFlow, saveStepEdit

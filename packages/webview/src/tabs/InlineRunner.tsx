@@ -460,7 +460,16 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
                     <td className={!state?.modelUsed && hasRun && !isHeadless ? 'muted' : ''}>{modelLabel}</td>
                     <td>{tokensUsed > 0 ? tokensUsed.toLocaleString() : isRunning ? '…' : '—'}</td>
                     <td>{costUsd > 0 ? `$${costUsd.toFixed(4)}` : isRunning ? '…' : '—'}</td>
-                    <td>{costUsd > 0 ? `${share.toFixed(1)}%` : '—'}</td>
+                    <td style={{ minWidth: '100px' }}>
+                      {costUsd > 0 ? (
+                        <div className="cost-bar-wrapper" title={`${share.toFixed(1)}%`}>
+                          <div className="cost-bar-track">
+                            <div className="cost-bar-fill" style={{ width: `${share}%` }} />
+                          </div>
+                          <span className="cost-bar-label">{share.toFixed(1)}%</span>
+                        </div>
+                      ) : '—'}
+                    </td>
                   </tr>
                 );
               })}
