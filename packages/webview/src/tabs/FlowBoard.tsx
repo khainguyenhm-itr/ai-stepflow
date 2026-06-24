@@ -5,6 +5,7 @@ import { EmptyState } from '../components/ResourceCard';
 import { getFlowColumns } from '../flowUtils';
 import { sendToVSCode } from '../vscode';
 import { InlineRunner } from './InlineRunner';
+import { FlowGraphCanvas } from '../components/FlowGraphCanvas';
 
 interface FlowBoardProps {
   flow: Flow;
@@ -132,8 +133,9 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
       </div>
 
       {/* Step flow canvas — always visible */}
-      <div className="flow-canvas">
-          <div className="flow-track">
+      <div className="flow-canvas" style={{ position: 'relative' }}>
+          <FlowGraphCanvas steps={flow.steps} containerRef={containerRef} isExpanded={isExpanded} />
+          <div className="flow-track" style={{ position: 'relative', zIndex: 1 }}>
             {columns.map((column, columnIndex) => (
               <React.Fragment key={`${flow.id}-${columnIndex}`}>
                 <div className="flow-stage">
@@ -146,6 +148,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
                     return (
                       <div
                         key={step.id}
+                        id={`step-node-${step.id}`}
                         className="flow-step-card editable"
                         role="button"
                         tabIndex={0}
@@ -186,7 +189,6 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
                     );
                   })}
                 </div>
-                {columnIndex < columns.length - 1 && <div className="flow-connector" />}
               </React.Fragment>
             ))}
             <button type="button" className="flow-add-node" onClick={() => onBoardStepAdder(flow)} aria-label="Add workflow step"><Icon.Plus size={14} /></button>

@@ -1,0 +1,88 @@
+import React, { useEffect, useState, useRef } from 'react';
+import { FlowStep } from '@ai-stepflow/core/types';
+
+interface FlowGraphCanvasProps {
+  steps: FlowStep[];
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  isExpanded: boolean;
+}
+
+export const FlowGraphCanvas: React.FC<FlowGraphCanvasProps> = ({ steps, containerRef, isExpanded }) => {
+  const [paths, setPaths] = useState<{ id: string; d: string }[]>([]);
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  useEffect(() => {
+    const draw = () => {
+      if (!containerRef.current || !svgRef.current) return;
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const newPaths: { id: string; d: string }[] = [];
+
+      steps.forEach(step => {
+        const targetEl = document.getElementById(`step-node-${step.id}`);
+        if (!targetEl) return;
+        const targetRect = targetEl.getBoundingClientRect();
+        
+        // Target anchor (Left center of the card)
+        const targetX = targetRect.left - containerRect.left;
+        const targetY = targetRect.top - containerRect.top + targetRect.height / 2;
+
+        (step.dependsOn || []).forEach(depId => {
+          const sourceEl = document.getElementById(`step-node-${depId}`);
+          if (!sourceEl) return;
+          const sourceRect = sourceEl.getBoundingClientRect();
+          
+          // Source anchor (Right center of the card)
+          const sourceX = sourceRect.right - containerRect.left;
+          const sourceY = sourceRect.top - containerRect.top + sourceRect.height / 2;
+
+          // Bezier curve control points
+          const cpX1 = sourceX + (targetX - sourceX) / 2;
+          const cpX2 = targetX - (targetX - sourceX) / 2;
+
+          const d = `M ${sourceX} ${sourceY} C ${cpX1} ${sourceY}, ${cpX2} ${targetY}, ${targetX} ${targetY}`;
+          newPaths.push({ id: `${depId}->${step.id}`, d });
+        });
+      });
+
+      setPaths(newPaths);
+    };
+
+    // Draw initially and on window resize
+    draw();
+    window.addEventListener('resize', draw);
+    // Observe DOM changes in container for dynamic updates
+    const observer = new MutationObserver(draw);
+    if (containerRef.current) {
+      observer.observe(containerRef.current, { childList: true, subtree: true, attributes: true });
+    }
+
+    return () => {
+      window.removeEventListener('resize', draw);
+      observer.disconnect();
+    };
+  }, [steps, isExpanded, containerRef]);
+
+  return (
+    <svg 
+      ref={svgRef}
+      style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 0 }}
+    >
+      <defs>
+        <marker id="arrowhead" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+          <polygon points="0 0, 6 3, 0 6" fill="var(--vscode-focusBorder)" opacity="0.6" />
+        </marker>
+      </defs>
+      {paths.map(p => (
+        <path
+          key={p.id}
+          d={p.d}
+          fill="none"
+          stroke="var(--vscode-focusBorder)"
+          strokeWidth="1.5"
+          opacity="0.4"
+          markerEnd="url(#arrowhead)"
+        />
+      ))}
+    </svg>
+  );
+};

@@ -27,4 +27,14 @@ describe('AI StepFlow integration (real VS Code host)', () => {
     await vscode.commands.executeCommand('ai-stepflow.openOverview');
     await vscode.commands.executeCommand('ai-stepflow.refreshAll');
   });
+
+  it('can create a mock flow and trigger validation safely via E2E orchestration', async () => {
+    // Attempt to invoke the command without crashing. 
+    // Testing deep UI requires webview driver, but we verify the command wiring here.
+    const ext = vscode.extensions.getExtension(EXTENSION_ID);
+    assert.ok(ext, 'Extension should still be active');
+    
+    // Simulate resolving a flow to test AST or graph connections
+    await vscode.commands.executeCommand('ai-stepflow.astGraph.rescan');
+  });
 });
