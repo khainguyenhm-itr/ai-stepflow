@@ -21,6 +21,19 @@ test('composeSystemPrompt injects Mandatory Input Files from requires', () => {
   assert.match(out, /- out\/notes\.md/);
 });
 
+test('composeSystemPrompt injects Required Content from producesContains', () => {
+  const out = composeSystemPrompt(agent, [], [], ['out/report.md'], {}, [], ['## Summary', 'verdict PASS/FAIL']);
+  assert.match(out, /## Required Content/);
+  assert.match(out, /- ## Summary/);
+  assert.match(out, /- verdict PASS\/FAIL/);
+  assert.match(out, /verbatim/);
+});
+
+test('composeSystemPrompt omits Required Content when producesContains is empty or absent', () => {
+  assert.doesNotMatch(composeSystemPrompt(agent, [], [], ['out.md'], {}, [], []), /Required Content/);
+  assert.doesNotMatch(composeSystemPrompt(agent, [], [], ['out.md']), /Required Content/);
+});
+
 test('composeSystemPrompt omits the input section when requires is empty or absent', () => {
   assert.doesNotMatch(composeSystemPrompt(agent, [], [], [], {}, []), /Mandatory Input Files/);
   assert.doesNotMatch(composeSystemPrompt(agent, [], []), /Mandatory Input Files/);

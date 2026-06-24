@@ -13,7 +13,7 @@ import {
   Flow, FlowRunState, FlowStep, Skill,
   runClaudeStreaming, ClaudeStreamingRunOptions, ClaudeStreamingRunResult,
   composeSystemPromptParts,
-  validateProduces, validateRequires,
+  validateProducesFiles, verifyProducesContent, validateRequires,
   renderRunReport,
   runValidator,
   renderVerifyReportMarkdown, verifyRun,
@@ -235,6 +235,12 @@ export class RunOrchestrator {
           vscode.window.showErrorMessage(`Cannot approve '${step.title || step.id}': ${prod.message}`);
           return;
         }
+        const content = await this._verifyProducesContent(step);
+        if (!content.ok) {
+          this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[cannot approve — ${content.message}]\n` });
+          vscode.window.showErrorMessage(`Cannot approve '${step.title || step.id}': ${content.message}`);
+          return;
+        }
       }
 
       if (isRunning) {
@@ -286,6 +292,12 @@ export class RunOrchestrator {
     if (!prod.ok) {
       this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[cannot mark done — produces check failed: ${prod.message}]\n` });
       vscode.window.showErrorMessage(`Step '${step.title || step.id}' cannot be marked done: ${prod.message}`);
+      return;
+    }
+    const content = await this._verifyProducesContent(step);
+    if (!content.ok) {
+      this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[cannot mark done — ${content.message}]\n` });
+      vscode.window.showErrorMessage(`Step '${step.title || step.id}' cannot be marked done: ${content.message}`);
       return;
     }
 
@@ -645,9 +657,24 @@ export class RunOrchestrator {
     return validateRequires(step, this.configManager.getProjectPath() || '', this._runState?.inputs || {}, this._currentFlow?.name || '');
   }
 
-  /** Xác minh các tệp `produces` đã khai báo của một bước có tồn tại và chứa bất kỳ marker cần thiết nào không. */
+  /** Deterministic gate: the step's declared `produces`/review files must exist on disk. */
   private _validateProduces(step: FlowStep): { ok: boolean; message?: string } {
-    return validateProduces(step, this.configManager.getProjectPath() || '', this._runState?.inputs || {}, this._currentFlow?.name || '');
+    return validateProducesFiles(step, this.configManager.getProjectPath() || '', this._runState?.inputs || {}, this._currentFlow?.name || '');
+  }
+
+  /**
+   * Semantic gate: the produced files must satisfy the step's `producesContains` requirements.
+   * Markers present verbatim pass for free; the rest are judged by an LLM (meaning, not exact
+   * wording), so a draft need not echo the requirement text. Lenient on judge failure.
+   */
+  private _verifyProducesContent(step: FlowStep): Promise<{ ok: boolean; message?: string }> {
+    return verifyProducesContent(
+      step,
+      this.configManager.getProjectPath() || '',
+      this._runState?.inputs || {},
+      this._currentFlow?.name || '',
+      opts => this._spawnClaudeStreaming({ ...opts, maxTurns: 1 })
+    );
   }
 
   /** Đúng khi một bước chạy không đầu (review AI), vì vậy nó không có giao diện người dùng chia sẻ và có thể chạy đồng thời. */

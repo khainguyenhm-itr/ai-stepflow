@@ -26,6 +26,7 @@ export interface ComposedSystemPromptParts {
  * @param produces   Paths the step must create (run-input placeholders already resolved).
  * @param inputs     Run-level input values (feature name, etc.).
  * @param requires   Paths the step must read before starting.
+ * @param producesContains Required content markers the produced file(s) must contain verbatim.
  */
 export function composeSystemPromptParts(
   agent: Agent | undefined,
@@ -33,7 +34,8 @@ export function composeSystemPromptParts(
   skills: Skill[],
   produces?: string[],
   inputs: Record<string, string> = {},
-  requires?: string[]
+  requires?: string[],
+  producesContains?: string[]
 ): ComposedSystemPromptParts {
   // --- Static (cacheable) section: agent prompt + skills body ---
   const staticParts: string[] = [];
@@ -70,6 +72,14 @@ export function composeSystemPromptParts(
     );
   }
 
+  if (producesContains && producesContains.length > 0) {
+    dynamicParts.push(
+      `## Required Content\nThe output file(s) above MUST contain each of the following markers verbatim — include each one as a literal heading, label, or sentence so it appears word-for-word in the document:\n` +
+      producesContains.map(m => `- ${m}`).join('\n') +
+      `\n\nThe system checks for these exact strings before the task can be marked complete; if any is missing the step cannot proceed.`
+    );
+  }
+
   return {
     static: staticParts.join('\n\n'),
     dynamic: dynamicParts.join('\n\n'),
@@ -87,8 +97,9 @@ export function composeSystemPrompt(
   skills: Skill[],
   produces?: string[],
   inputs: Record<string, string> = {},
-  requires?: string[]
+  requires?: string[],
+  producesContains?: string[]
 ): string {
-  const { static: s, dynamic: d } = composeSystemPromptParts(agent, skillNames, skills, produces, inputs, requires);
+  const { static: s, dynamic: d } = composeSystemPromptParts(agent, skillNames, skills, produces, inputs, requires, producesContains);
   return [s, d].filter(Boolean).join('\n\n');
 }

@@ -82,7 +82,7 @@ export async function runHeadlessStep(ctx: StepRunContext): Promise<void> {
 
   // Split into stable (cacheable) + dynamic (per-run) system prompt parts.
   const promptParts = composeSystemPromptParts(
-    agent, stepSkillNames, skills, resolvedProduces, runInputs, resolvedRequires
+    agent, stepSkillNames, skills, resolvedProduces, runInputs, resolvedRequires, step.producesContains
   );
   const userMessage = resolveTemplate(
     description?.trim() || step.input?.prompt?.trim() || `Run step: ${step.title || step.id}`,
