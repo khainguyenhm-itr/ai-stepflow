@@ -207,7 +207,7 @@ async function runFlow(projectPath: string, flowRef: string, inputs: Record<stri
   
   const orch = new machine.FlowOrchestrator(flow, runState);
 
-  while (true) {
+  for (;;) {
     const actions = orch.getAutoAdvanceActions();
     const action = actions.find(a => a.type === 'launch_headless' || a.type === 'launch_interactive');
     if (!action) break;

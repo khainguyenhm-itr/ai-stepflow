@@ -140,7 +140,7 @@ const App: React.FC = () => {
             title: flow.name,
             description: flow.description,
             sourcePath: flow.sourcePath,
-            meta: { Scope: getScope(flow.sourcePath), Steps: flow.steps.length, Inputs: Object.keys(flow.inputs || {}).length },
+            meta: { Scope: getScope(flow.sourcePath), Steps: flow.steps.length, Inputs: Object.keys(flow.inputs || {}).length, Trust: flow.trustLevel || 'trusted' },
             onDelete: () => sendToVSCode('deleteFlow', { flow })
           })}
           onNew={(flow, scope) => {

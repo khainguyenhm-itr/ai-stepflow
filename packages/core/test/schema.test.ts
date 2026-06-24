@@ -130,3 +130,25 @@ test('parseFlow throws a readable error when steps is not a list', () => {
     }
   );
 });
+
+test('parseFlow preserves trustLevel when set to sandboxed', () => {
+  const flow = parseFlow({ id: 'f', trustLevel: 'sandboxed', steps: [] }, 'f', '/x/f.yaml');
+  assert.equal(flow.trustLevel, 'sandboxed');
+});
+
+test('parseFlow preserves trustLevel when set to trusted', () => {
+  const flow = parseFlow({ id: 'f', trustLevel: 'trusted', steps: [] }, 'f', '/x/f.yaml');
+  assert.equal(flow.trustLevel, 'trusted');
+});
+
+test('parseFlow defaults trustLevel to undefined when absent', () => {
+  const flow = parseFlow({ id: 'f', steps: [] }, 'f', '/x/f.yaml');
+  assert.equal(flow.trustLevel, undefined);
+});
+
+test('parseFlow degrades unknown trustLevel to undefined instead of failing', () => {
+  // An unrecognised trust level must never crash the parser (old flow files should still load).
+  const flow = parseFlow({ id: 'f', trustLevel: 'super-trusted', steps: [] }, 'f', '/x/f.yaml');
+  assert.equal(flow.trustLevel, undefined);
+});
+

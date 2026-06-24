@@ -7,22 +7,27 @@ import { randomUUID } from 'crypto';
 import { ConfigManager } from './configManager.js';
 import { StateManager } from './stateManager.js';
 import { TerminalManager } from './terminalManager.js';
-import { HostMessage, HumanReview, HistoryEvent } from './messages.js';
+import { HostMessage, HistoryEvent } from './messages.js';
 import { readInteractiveSessionStats } from './sessionStats.js';
 import {
   Flow, FlowRunState, FlowStep, Skill,
   runClaudeStreaming, ClaudeStreamingRunOptions, ClaudeStreamingRunResult,
-  composeSystemPrompt, composeSystemPromptParts,
+  composeSystemPromptParts,
   validateProduces, validateRequires,
   renderRunReport,
-  pickAutoAdvanceSteps,
-  seedStartedSteps,
   runValidator,
   renderVerifyReportMarkdown, verifyRun,
-  resolveTemplate, resolveTemplates, resolveFlowPath, resolveFlowRelativePath, flowOutputDir,
+  resolveTemplate, resolveTemplates, resolveFlowRelativePath,
   StepRunState
 } from '@ai-stepflow/core';
 import * as machine from '@ai-stepflow/core';
+import {
+  StepRunContext,
+  runHeadlessStep,
+  runInteractiveStep,
+  checkStepGuards,
+  isHeadlessStep,
+} from './stepRunner.js';
 
 /**
  * Owns the run state machine and every transition that drives it: launching a step (headless or
@@ -166,36 +171,13 @@ export class RunOrchestrator {
 
     this._resetBookkeepingIfNewRun();
 
-    const lockedSteps = machine.applyDependencyLocks(flow, this._runState.steps);
-    if (!machine.lockStatesEqual(lockedSteps, this._runState.steps)) {
-      await this._setRunState({ ...this._runState, steps: lockedSteps });
-    }
-    const stepState = lockedSteps[stepId];
-    if (stepState?.executionStatus === 'locked') {
-      const message = 'complete the dependency steps first';
-      this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[step blocked — ${message}]\n` });
-      vscode.window.showErrorMessage(`Step '${step.title || step.id}' is locked: ${message}.`);
-      return;
-    }
-
-    // Never start a step before the steps it depends on are done — the backend is the
-    // authority, so auto-advanced and hand-clicked runs share one guard against the run state.
-    const deps = step.dependsOn ?? [];
-    const done = machine.doneStepIds(this._runState);
-    const missingDeps = deps.filter(d => !done.has(d));
-    if (missingDeps.length) {
-      const message = `dependency step(s) not done: ${missingDeps.join(', ')}`;
-      this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[step blocked — ${message}]\n` });
-      vscode.window.showErrorMessage(`Step '${step.title || step.id}' is blocked: ${message}.`);
-      return;
-    }
-
-    const req = this._validateRequires(step);
-    if (!req.ok) {
-      this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[step blocked — ${req.message}]\n` });
-      vscode.window.showErrorMessage(`Step '${step.title || step.id}' is blocked: ${req.message}`);
-      return;
-    }
+    const cleared = await checkStepGuards(
+      stepId, step, flow, this._runState,
+      (next, audit) => this._setRunState(next, audit),
+      msg => this.post(msg),
+      step => this._validateRequires(step)
+    );
+    if (!cleared) return;
 
     const agents = await this.configManager.loadAgents();
     const agent = agents.find(a => a.name === step.agent);
@@ -205,90 +187,36 @@ export class RunOrchestrator {
     this._startedStepIds.add(stepId);
     const projectPath = this.configManager.getProjectPath() || '';
 
-    const isHeadless = this._isHeadlessStep(step);
+    // Build the shared context object injected into runner functions.
+    const ctx: StepRunContext = {
+      flow,
+      runState: this._runState,
+      step,
+      stepId,
+      agent,
+      stepSkillNames,
+      skills: await this._getSkillsForRun(),
+      projectPath,
+      description,
+      spawnClaudeStreaming: (opts, sid) => this._spawnClaudeStreaming(opts, sid),
+      bufferOutput: (sid, chunk) => this._bufferOutput(sid, chunk),
+      flushOutputBuffer: () => this._flushOutputBuffer(),
+      setRunState: (next, audit) => this._setRunState(next, audit),
+      patchStepState: (sid, patch) => this._patchStepState(sid, patch),
+      consumeCancelledStep: sid => this._cancelledStepIds.delete(sid),
+      post: msg => this.post(msg),
+      advanceReadySteps: () => this._advanceReadySteps(),
+      runAiReview: (s, sid, pp) => this._runAiReview(s, sid, pp),
+      validateProduces: s => this._validateProduces(s),
+      runMaxTurns: a => this._runMaxTurns(a),
+      setStepStartTime: (sid, t) => this._stepStartTimes.set(sid, t),
+    };
 
-    // AI-reviewed steps run HEADLESS so the run completion is observable: khi claude thoát, chúng tôi
-    // thu thập output, sau đó tự động chạy review hai lớp và tự động chuyển bước khi đạt yêu cầu
-    // — không Enter, không nhấn "Mark step done".
-    if (isHeadless) {
-      const skills = await this._getSkillsForRun();
-      const runInputs = this._runState?.inputs || {};
-      // Relative paths for agent prompt (cleaner than full system paths)
-      const resolvedProduces = resolveTemplates(step.produces, runInputs)
-        .map(p => resolveFlowRelativePath(p, flow.name));
-      const resolvedRequires = resolveTemplates(step.requires, runInputs)
-        .map(p => resolveFlowRelativePath(p, flow.name));
-
-      // Split into static (cacheable prefix: agent + skills body) and dynamic (per-run context).
-      // The static part is passed via --system-prompt so Claude's prompt-prefix cache can reuse it
-      // across steps sharing the same agent; the dynamic part is appended via --append-system-prompt.
-      const promptParts = composeSystemPromptParts(agent, stepSkillNames, skills, resolvedProduces, runInputs, resolvedRequires);
-      const userMessage = resolveTemplate(description?.trim() || step.input?.prompt?.trim() || `Run step: ${step.title || step.id}`, runInputs);
-      await this._setRunState(s => machine.markRunning(s, flow, stepId), { stepId, status: 'running', message: 'Run started (headless)' });
-
-      let output = '';
-      const result = await this._spawnClaudeStreaming({
-        systemPrompt: promptParts.static,
-        dynamicSystemPrompt: promptParts.dynamic,
-        userMessage, model: agent.model, projectPath,
-        maxTurns: this._runMaxTurns(agent),
-        onText: chunk => {
-          output += chunk;
-          this._bufferOutput(stepId, chunk);
-          void this._patchStepState(stepId, { output });
-        }
-      }, stepId);
-      this._flushOutputBuffer(); // Flush any remaining buffered chunks immediately on run end.
-      // The user cancelled this run: cancelStep already moved the step to 'cancelled',
-      // so don't also record a failure for the kill that cancel triggered.
-      if (this._cancelledStepIds.delete(stepId)) return;
-      const metrics: machine.StepMetrics = { modelUsed: result.model, tokensUsed: result.tokensUsed, costUsd: result.costUsd, output };
-      if (!result.success) {
-        const why = result.timedOut ? 'run timed out' : `claude exited ${result.exitCode}`;
-        await this._setRunState(s => machine.markFailed(s, flow, stepId, { ...metrics, error: why, output: output + `\n[step failed: ${why}]\n` }), { stepId, status: 'failed', message: result.timedOut ? 'Run timed out' : 'Run failed' });
-        return;
-      }
-      const prod = this._validateProduces(step);
-      if (!prod.ok) {
-        await this._setRunState(s => machine.markFailed(s, flow, stepId, { ...metrics, error: `produces check failed: ${prod.message}`, output: output + `\n[produces check failed: ${prod.message}]\n` }), { stepId, status: 'failed', message: `Produces check failed: ${prod.message}` });
-        return;
-      }
-
-      const reviewMsg = step.review?.required ? 'Run completed — reviewing' : 'Run completed';
-      await this._setRunState(s => machine.markCompleted(s, flow, stepId, { ...metrics, output }), { stepId, status: 'completed', message: reviewMsg });
-
-      if (step.review?.required) {
-        await this._runAiReview(step, stepId, projectPath);
-      } else {
-        this._advanceReadySteps();
-      }
-      return;
+    if (isHeadlessStep(step)) {
+      await runHeadlessStep(ctx);
+    } else {
+      await runInteractiveStep(ctx, this.terminals);
     }
-
-    // Human / no-review steps run INTERACTIVELY: mở Claude với `--agent --model`, điền trước
-    // chat box với kỹ năng + mô tả của bước mà không gửi — người dùng nhấn Enter để chạy.
-    const runInputs = this._runState?.inputs || {};
-    const resolvedProduces = resolveTemplates(step.produces, runInputs)
-      .map(p => resolveFlowRelativePath(p, flow.name));
-    const resolvedRequires = resolveTemplates(step.requires, runInputs)
-      .map(p => resolveFlowRelativePath(p, flow.name));
-    const primarySkill = stepSkillNames[0];
-    const desc = resolveTemplate(description?.trim() || step.input?.prompt?.trim() || `Run step: ${step.title || step.id}`, runInputs);
-    let message = primarySkill ? `/${primarySkill} ${desc}` : desc;
-    if (resolvedRequires.length > 0) {
-      message += `\n\nMandatory input files (relative to workspace root, read these first):\n${resolvedRequires.map(p => `- ${p}`).join('\n')}`;
-    }
-    if (resolvedProduces.length > 0) {
-      message += `\n\nMandatory output files (relative to workspace root, you MUST create these):\n${resolvedProduces.map(p => `- ${p}`).join('\n')}`;
-    }
-
-    this._stepStartTimes.set(stepId, new Date());
-    // Pin a fresh session id so metrics/output read exactly this run's .jsonl, not a time-window guess.
-    const sessionId = randomUUID();
-    await this._setRunState(s => machine.markRunning(s, flow, stepId), { stepId, status: 'running', message: 'Opened in Claude — press Enter to run' });
-    await this._patchStepState(stepId, { sessionId });
-    this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[opened in the Claude terminal — review the pre-filled message, press Enter to run]\n` });
-    await this.terminals.runInTerminal(message, projectPath, agent, false, stepId, sessionId);
   }
 
   /** Duyệt/từ chối một bước từ các nút human-review của webview. */
@@ -724,7 +652,7 @@ export class RunOrchestrator {
 
   /** Đúng khi một bước chạy không đầu (review AI), vì vậy nó không có giao diện người dùng chia sẻ và có thể chạy đồng thời. */
   private _isHeadlessStep(step: FlowStep): boolean {
-    return !!step.review?.required && (step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai'));
+    return isHeadlessStep(step);
   }
 
   /**

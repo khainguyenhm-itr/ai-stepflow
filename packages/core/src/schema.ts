@@ -73,6 +73,8 @@ const flowSchema = z.object({
   description: z.coerce.string().optional(),
   inputs: z.record(z.string(), inputSchema).default({}),
   steps: z.array(stepSchema).default([]),
+  // Unknown values degrade to undefined so old flow files still parse without error.
+  trustLevel: z.enum(['trusted', 'sandboxed']).optional().catch(undefined),
   aiConversation: z.array(flowAiMessageSchema).optional()
 });
 
@@ -85,6 +87,7 @@ export function parseFlow(data: unknown, fallbackId: string, sourcePath: string)
     description: parsed.description || '',
     inputs: parsed.inputs as Flow['inputs'],
     steps: parsed.steps as FlowStep[],
+    trustLevel: parsed.trustLevel,
     aiConversation: parsed.aiConversation,
     sourcePath
   };

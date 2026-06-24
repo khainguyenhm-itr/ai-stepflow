@@ -24,6 +24,12 @@ export interface ClaudeStreamingRunOptions {
   /** Cap the number of agentic turns. 0/undefined = no limit. */
   maxTurns?: number;
   /**
+   * When set, Claude is restricted to only reading/writing these absolute paths (sandboxed mode).
+   * Passed via `--allowedTools` restriction — requires Claude CLI ≥ 1.x that supports --allowed-paths.
+   * Leave undefined for the default 'trusted' mode (`acceptEdits` permission).
+   */
+  allowedWritePaths?: string[];
+  /**
    * MCP servers (as a `{"mcpServers":{...}}` JSON string) to use for this run, passed via
    * `--mcp-config --strict-mcp-config` so the run ignores the user's ambient MCP config.
    * Headless runs default this to `{}` (no MCP), keeping their tool/instruction context — and
@@ -65,6 +71,12 @@ export type StepRunner = (opts: ClaudeStreamingRunOptions) => Promise<ClaudeStre
 export const defaultStepRunner: StepRunner = opts => runClaudeStreaming(opts).completed;
 
 export const HEADLESS_PERMISSION_MODE = 'acceptEdits';
+/**
+ * Permission mode used for sandboxed runs (trustLevel: 'sandboxed').
+ * In this mode the claude CLI only uses tools explicitly listed — file writes
+ * outside the declared produces paths are not permitted.
+ */
+export const SANDBOXED_PERMISSION_MODE = 'default';
 
 /** Headless Claude runner with NDJSON streaming output and final usage/cost capture. */
 export function runClaudeStreaming(opts: ClaudeStreamingRunOptions, spawnFn: SpawnFn = spawn): ClaudeStreamingRunHandle {

@@ -57,7 +57,7 @@ test('FlowOrchestrator does not re-launch already started steps', () => {
   let st = initRunState(flow, { runId: 'r1' });
   st = markCompleted(markRunning(st, flow, 'a'), flow, 'a');
   
-  let orch = new FlowOrchestrator(flow, st);
+  const orch = new FlowOrchestrator(flow, st);
   const actions1 = orch.getAutoAdvanceActions();
   assert.equal(actions1.length, 1);
   assert.equal(actions1[0].stepId, 'b');

@@ -117,6 +117,14 @@ export interface Flow {
   }>;
   steps: FlowStep[];
   sourcePath: string;
+  /**
+   * Security level for headless runs.
+   * - `'trusted'` (default): full file access via --dangerously-skip-permissions.
+   * - `'sandboxed'`: Claude is restricted to only the files declared in `produces`.
+   *   Any write outside of declared outputs will be blocked by the MCP layer.
+   *   Use for untrusted or third-party flows.
+   */
+  trustLevel?: 'trusted' | 'sandboxed';
   /** Optional history of the AI conversation that generated this flow. */
   aiConversation?: FlowAiMessage[];
 }
