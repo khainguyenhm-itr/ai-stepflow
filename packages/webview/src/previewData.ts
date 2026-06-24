@@ -22,6 +22,7 @@ export const previewFlow: Flow = {
       title: 'Write Docs',
       agent: 'aidlc-docs-writer',
       skill: 'create-plan',
+      dependsOn: ['collect-context'],
       review: { required: true },
       completion: { requireMarkDone: true }
     }

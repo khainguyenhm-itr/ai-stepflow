@@ -338,7 +338,7 @@ export class CockpitPanel {
       `- ${contentField}: detailed ${kind === 'agent' ? 'system prompt and operating rules' : 'reusable skill instructions'} in markdown`,
       '- reply: short confirmation for the user (1-2 sentences)',
       ...(kind === 'agent' ? [
-        '- maxTurns: integer or null. Set null to use the global default (10). Set a higher number (15-30) only for agents clearly doing heavy multi-file work (large refactors, full test suites, complex implementations). Set a lower number (3-5) for agents with narrow, single-step tasks (review-only, one-file edits).'
+        '- maxTurns: integer or null. Set null to use the global default (6). Set a higher number (15-30) only for agents clearly doing heavy multi-file work (large refactors, full test suites, complex implementations). Set a lower number (3-5) for agents with narrow, single-step tasks (review-only, one-file edits).'
       ] : [])
     ].filter(Boolean).join('\n');
 
@@ -512,14 +512,12 @@ export class CockpitPanel {
 
   private async _sendAllData() {
     try {
-      console.log('AI StepFlow: fetching data from ConfigManager...');
       const [flows, agents, skills, runSummaries] = await Promise.all([
         this.configManager.loadFlows().catch(e => { console.error('AI StepFlow: loadFlows failed', e); return []; }),
         this.configManager.loadAgents().catch(e => { console.error('AI StepFlow: loadAgents failed', e); return []; }),
         this.configManager.loadSkills().catch(e => { console.error('AI StepFlow: loadSkills failed', e); return []; }),
         this.stateManager.listRunFiles().catch(e => { console.error('AI StepFlow: listRunFiles failed', e); return []; })
       ]);
-      console.log(`AI StepFlow: loaded ${flows.length} flows, ${agents.length} agents, ${skills.length} skills, ${runSummaries.length} runs.`);
 
       const auditLogs: Record<string, any[]> = {};
       await Promise.all(flows.map(async flow => {
@@ -534,7 +532,6 @@ export class CockpitPanel {
       const globalPath = this.configManager.getGlobalPath() || '';
       const uiPrefs = await this.configManager.loadUiPrefs().catch(() => ({} as Record<string, string>));
 
-      console.log('AI StepFlow: posting loadData message to webview...');
       this.postMessage({
         type: 'loadData',
         flows, agents, skills,

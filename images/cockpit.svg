@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="340" viewBox="0 0 1000 340" font-family="-apple-system,Segoe UI,Roboto,sans-serif">
+  <!-- backdrop -->
+  <rect width="1000" height="340" rx="8" fill="#1e1e1e"/>
+
+  <!-- tab bar -->
+  <g transform="translate(0,0)">
+    <rect x="0" y="0" width="1000" height="40" fill="#252526"/>
+    <text x="24" y="25" fill="#ffffff" font-size="13" font-weight="600">Workflows</text>
+    <rect x="98" y="13" width="16" height="15" rx="7.5" fill="#3c3c3c"/>
+    <text x="106" y="24" fill="#cccccc" font-size="10" text-anchor="middle">1</text>
+    <rect x="24" y="38" width="90" height="2" fill="#2f9bff"/>
+
+    <text x="134" y="25" fill="#9a9a9a" font-size="13">Agents</text>
+    <rect x="186" y="13" width="16" height="15" rx="7.5" fill="#3c3c3c"/>
+    <text x="194" y="24" fill="#cccccc" font-size="10" text-anchor="middle">2</text>
+
+    <text x="216" y="25" fill="#9a9a9a" font-size="13">Skills</text>
+    <rect x="258" y="13" width="16" height="15" rx="7.5" fill="#3c3c3c"/>
+    <text x="266" y="24" fill="#cccccc" font-size="10" text-anchor="middle">2</text>
+  </g>
+
+  <!-- header row -->
+  <text x="24" y="74" fill="#ffffff" font-size="16" font-weight="700">Workflows</text>
+  <!-- search box -->
+  <rect x="612" y="58" width="200" height="26" rx="4" fill="#3c3c3c"/>
+  <circle cx="626" cy="71" r="4.5" fill="none" stroke="#9a9a9a" stroke-width="1.4"/>
+  <line x1="629" y1="74" x2="633" y2="78" stroke="#9a9a9a" stroke-width="1.4"/>
+  <text x="640" y="75" fill="#8a8a8a" font-size="12">Search workflows…</text>
+  <!-- filters -->
+  <rect x="820" y="58" width="74" height="26" rx="4" fill="#333333" stroke="#454545"/>
+  <text x="838" y="75" fill="#dddddd" font-size="12">Filters ⌄</text>
+  <!-- new flow -->
+  <rect x="902" y="58" width="86" height="26" rx="4" fill="#1f8ad2"/>
+  <text x="945" y="75" fill="#ffffff" font-size="12" font-weight="600" text-anchor="middle">+ New Flow</text>
+
+  <!-- flow card -->
+  <rect x="24" y="100" width="952" height="210" rx="6" fill="#232323" stroke="#3c3c3c"/>
+  <!-- flow header -->
+  <text x="44" y="130" fill="#ffffff" font-size="13" font-weight="600">Preview Documentation Flow</text>
+  <text x="232" y="130" fill="#8a8a8a" font-size="12">2 steps</text>
+  <g stroke="#7a7a7a" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- bookmark --><path d="M894 120 h10 v12 l-5 -3 -5 3 z"/>
+    <!-- chevron --><path d="M916 124 l5 5 5 -5"/>
+    <!-- pencil --><path d="M939 132 l9 -9 3 3 -9 9 -4 1 1 -4 z"/>
+    <!-- info --><circle cx="965" cy="126" r="6.5"/><line x1="965" y1="124" x2="965" y2="129"/><circle cx="965" cy="121.6" r="0.7" fill="#7a7a7a"/>
+  </g>
+
+  <!-- step 1 -->
+  <rect x="48" y="158" width="200" height="92" rx="6" fill="#2a2a2a" stroke="#3c3c3c"/>
+  <rect x="62" y="172" width="22" height="20" rx="4" fill="#3c3c3c"/>
+  <text x="73" y="186" fill="#dddddd" font-size="12" text-anchor="middle">1</text>
+  <text x="94" y="187" fill="#ffffff" font-size="13" font-weight="600">Collect Context</text>
+  <text x="62" y="222" fill="#8fb9e0" font-size="11.5" font-family="ui-monospace,Menlo,monospace">agent:aidlc-developer</text>
+
+  <!-- connector -->
+  <line x1="248" y1="204" x2="280" y2="204" stroke="#4a4a4a" stroke-width="2"/>
+
+  <!-- step 2 -->
+  <rect x="280" y="158" width="200" height="92" rx="6" fill="#2a2a2a" stroke="#3c3c3c"/>
+  <rect x="294" y="172" width="22" height="20" rx="4" fill="#3c3c3c"/>
+  <text x="305" y="186" fill="#dddddd" font-size="12" text-anchor="middle">2</text>
+  <text x="326" y="187" fill="#ffffff" font-size="13" font-weight="600">Write Docs</text>
+  <text x="294" y="216" fill="#8fb9e0" font-size="11.5" font-family="ui-monospace,Menlo,monospace">agent:aidlc-docs-writer</text>
+  <rect x="294" y="226" width="98" height="18" rx="4" fill="#d8a72e"/>
+  <text x="343" y="239" fill="#3a2c00" font-size="11" font-weight="600" text-anchor="middle">⚑ human review</text>
+
+  <!-- add node -->
+  <circle cx="512" cy="204" r="14" fill="none" stroke="#4a4a4a" stroke-width="1.5"/>
+  <line x1="512" y1="197" x2="512" y2="211" stroke="#7a7a7a" stroke-width="1.6"/>
+  <line x1="505" y1="204" x2="519" y2="204" stroke="#7a7a7a" stroke-width="1.6"/>
+</svg>

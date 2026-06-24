@@ -7,7 +7,6 @@
  */
 
 const args = process.argv.slice(2);
-const isVerbose = args.includes('--verbose');
 
 console.log('🤖 Fake Claude initialized...');
 console.log('Thinking about the problem...');

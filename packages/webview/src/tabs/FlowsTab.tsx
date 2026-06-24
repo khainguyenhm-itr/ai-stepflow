@@ -47,8 +47,6 @@ interface FlowsTabProps {
 
 export const FlowsTab: React.FC<FlowsTabProps> = ({
   flows,
-  agents,
-  skills,
   auditLogs,
   runSummaries,
   activeFlow,

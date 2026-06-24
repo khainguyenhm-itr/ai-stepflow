@@ -187,7 +187,7 @@ export const AgentModal: React.FC<AgentModalProps> = ({
               onChange({ maxTurns: raw === '' ? undefined : Math.max(0, parseInt(raw, 10) || 0) });
             }}
           />
-          <span className="max-turns-help">Để trống: mặc định (10) · Nhập <code>0</code>: không giới hạn</span>
+          <span className="max-turns-help">Leave empty: default (6) · Enter <code>0</code>: no limit</span>
         </div>
       </Field>
       <Field label="System Prompt">

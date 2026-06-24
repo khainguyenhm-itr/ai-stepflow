@@ -42,8 +42,6 @@ export const FlowBuilderModal: React.FC<FlowBuilderModalProps> = ({
   flow,
   scope,
   error,
-  agents,
-  skills,
   newInputName,
   aiPrompt,
   aiMessages,
@@ -177,7 +175,8 @@ export const FlowBuilderModal: React.FC<FlowBuilderModalProps> = ({
                   className="icon-btn danger"
                   title="Remove input"
                   onClick={() => {
-                    const { [name]: _removed, ...rest } = flow.inputs || {};
+                    const rest = { ...(flow.inputs || {}) };
+                    delete rest[name];
                     onChange({ inputs: rest });
                   }}
                 >

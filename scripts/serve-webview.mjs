@@ -19,7 +19,7 @@ const contentTypes = new Map([
 // ---------------------------------------------------------------------------
 function buildSidebarHtml() {
   const src = readFileSync(
-    join(process.cwd(), 'packages', 'extension', 'src', 'sidebarProvider.ts'),
+    join(process.cwd(), 'packages', 'extension', 'src', 'sidebarHtml.ts'),
     'utf8'
   );
   const lines = src.split('\n');
@@ -39,7 +39,7 @@ function buildSidebarHtml() {
   html = html.replace('content="${csp}"', 'content="default-src * \'unsafe-inline\'"');
   // Replace version interpolation
   html = html.replace(
-    '${this.version ? `<span class="ver">v${this.version}</span>` : \'\'}',
+    '${version ? `<span class="ver">v${version}</span>` : \'\'}',
     '<span class="ver">preview</span>'
   );
   // Remove nonce attribute

@@ -11,6 +11,17 @@ export type OrchestratorAction =
   | { type: 'park_interactive'; stepId: string };
 
 /**
+ * True when a step runs headless (an AI review gates it), so it has no shared UI surface and
+ * can run concurrently with other headless steps. A step with no review, or a human-only
+ * review, is interactive. Single source of truth shared by {@link FlowOrchestrator}, the
+ * extension's step runner, and the CLI.
+ */
+export function isHeadlessStep(step: FlowStep): boolean {
+  if (!step.review?.required) return false;
+  return step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai');
+}
+
+/**
  * Pure orchestration logic that decides which steps to run next.
  * It does not perform any side effects (like spawning processes or showing UI).
  */
@@ -63,8 +74,7 @@ export class FlowOrchestrator {
    * can run concurrently.
    */
   isHeadlessStep(step: FlowStep): boolean {
-    if (!step.review?.required) return false;
-    return step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai');
+    return isHeadlessStep(step);
   }
 
   /**

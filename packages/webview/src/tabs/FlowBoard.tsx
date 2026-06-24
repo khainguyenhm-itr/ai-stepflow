@@ -46,8 +46,6 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
   completedSteps,
   activeProgress,
   commandCopied,
-  globalPath,
-  projectPath,
   onRun,
   onEdit,
   onDetail,
@@ -66,15 +64,15 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
   const runnerOpen = activeFlow?.id === flow.id && !!runState && runnerVisible;
   const [isExpanded, setIsExpanded] = useState(runnerOpen);
   const [confirmRemoveIndex, setConfirmRemoveIndex] = useState<number | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
 
   // Auto-expand and scroll into view when runner becomes open for this flow
   useEffect(() => {
     if (runnerOpen) {
       setIsExpanded(true);
-      // Use setTimeout to allow the expansion to render before scrolling
       setTimeout(() => {
-        containerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 50);
     }
   }, [runnerOpen, runState?.runId]);
@@ -95,7 +93,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
   };
 
   return (
-    <div className="panel" ref={containerRef}>
+    <div className="panel" ref={panelRef}>
       {/* Panel header — always visible */}
       <div className="panel-head">
         <div className="panel-head-info">
@@ -133,8 +131,8 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
       </div>
 
       {/* Step flow canvas — always visible */}
-      <div className="flow-canvas" style={{ position: 'relative' }}>
-          <FlowGraphCanvas steps={flow.steps} containerRef={containerRef} isExpanded={isExpanded} />
+      <div className="flow-canvas" style={{ position: 'relative' }} ref={canvasRef}>
+          <FlowGraphCanvas steps={flow.steps} containerRef={canvasRef} isExpanded={isExpanded} />
           <div className="flow-track" style={{ position: 'relative', zIndex: 1 }}>
             {columns.map((column, columnIndex) => (
               <React.Fragment key={`${flow.id}-${columnIndex}`}>

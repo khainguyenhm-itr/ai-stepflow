@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Agent, Skill } from '@ai-stepflow/core/types';
+import { Agent } from '@ai-stepflow/core/types';
 import { Icon } from '../components/primitives';
 import { ResourceCard, EmptyState } from '../components/ResourceCard';
 import { ScopeFilter, SaveScope, ViewFilter, SortOrder, UnifiedFilterPanel } from '../components/ScopeControls';
@@ -29,7 +29,6 @@ interface AgentsTabProps {
 export const AgentsTab: React.FC<AgentsTabProps> = ({
   agents,
   globalPath,
-  projectPath,
   onOpenEditor,
   onRun,
   onDetail,

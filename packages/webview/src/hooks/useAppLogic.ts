@@ -1,4 +1,4 @@
-import { Flow, FlowStep, FlowRunState, StepRunState, Agent, Skill } from '@ai-stepflow/core/types';
+import { Flow, FlowRunState, StepRunState, Agent, Skill } from '@ai-stepflow/core/types';
 import { isVSCodeWebview, sendToVSCode } from '../vscode';
 import {
   getStepSkills,
@@ -91,10 +91,8 @@ export const useAppLogic = () => {
   };
 
   const handleHostMessage = (message: any) => {
-    console.log('[AI StepFlow Webview] received message:', message.type, message);
     switch (message.type) {
       case 'loadData':
-        console.log('[AI StepFlow Webview] loading data:', message.flows.length, 'flows');
         libState.setFlows(message.flows);
         libState.setAgents(message.agents);
         libState.setSkills(message.skills);

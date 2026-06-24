@@ -15,6 +15,7 @@ import type { FlowRunState, Flow, FlowStep, Agent, Skill } from '@ai-stepflow/co
 import {
   composeSystemPromptParts,
   resolveTemplate, resolveTemplates, resolveFlowRelativePath,
+  composeInteractiveMessage,
   ClaudeStreamingRunOptions, ClaudeStreamingRunResult,
 } from '@ai-stepflow/core';
 import * as machine from '@ai-stepflow/core';
@@ -199,13 +200,7 @@ export async function runInteractiveStep(
     runInputs
   );
 
-  let message = primarySkill ? `/${primarySkill} ${desc}` : desc;
-  if (resolvedRequires.length > 0) {
-    message += `\n\nMandatory input files (relative to workspace root, read these first):\n${resolvedRequires.map(p => `- ${p}`).join('\n')}`;
-  }
-  if (resolvedProduces.length > 0) {
-    message += `\n\nMandatory output files (relative to workspace root, you MUST create these):\n${resolvedProduces.map(p => `- ${p}`).join('\n')}`;
-  }
+  const message = composeInteractiveMessage(primarySkill, desc, resolvedRequires, resolvedProduces);
 
   ctx.setStepStartTime(stepId, new Date());
   const sessionId = randomUUID();
@@ -274,15 +269,6 @@ export async function checkStepGuards(
   }
 
   return true;
-}
-
-/**
- * True when a step runs headless (AI-reviewed) — it has no shared UI and
- * can execute concurrently with other headless steps.
- */
-export function isHeadlessStep(step: FlowStep): boolean {
-  return !!step.review?.required &&
-    (step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai'));
 }
 
 export { ConfigManager };

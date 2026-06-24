@@ -29,7 +29,6 @@ interface SkillsTabProps {
 export const SkillsTab: React.FC<SkillsTabProps> = ({
   skills,
   globalPath,
-  projectPath,
   onOpenEditor,
   onRun,
   onDetail,

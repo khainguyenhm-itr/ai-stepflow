@@ -99,7 +99,7 @@ test('verifyProducesContent: judge approves non-verbatim content semantically', 
     const filePath = path.join(dir, 'out', 'plan.md');
     mkdirSync(path.dirname(filePath), { recursive: true });
     writeFileSync(filePath, '1. AC-001 ...\n2. AC-002 ...', 'utf8');
-    const step = makeStep({ produces: ['out/plan.md'], producesContains: ['danh sách AC được đánh số'] });
+    const step = makeStep({ produces: ['out/plan.md'], producesContains: ['numbered AC list'] });
     const runner = stubRunner('{"unmet":[]}');
     const res = await verifyProducesContent(step, dir, {}, "", runner.fn);
     assert.equal(res.ok, true);
@@ -115,11 +115,11 @@ test('verifyProducesContent: judge rejects unmet requirements', async () => {
     const filePath = path.join(dir, 'out', 'plan.md');
     mkdirSync(path.dirname(filePath), { recursive: true });
     writeFileSync(filePath, 'some unrelated prose', 'utf8');
-    const step = makeStep({ produces: ['out/plan.md'], producesContains: ['danh sách AC được đánh số'] });
-    const runner = stubRunner('{"unmet":["danh sách AC được đánh số"]}');
+    const step = makeStep({ produces: ['out/plan.md'], producesContains: ['numbered AC list'] });
+    const runner = stubRunner('{"unmet":["numbered AC list"]}');
     const res = await verifyProducesContent(step, dir, {}, "", runner.fn);
     assert.equal(res.ok, false);
-    assert.match(res.message || '', /danh sách AC/);
+    assert.match(res.message || '', /numbered AC/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

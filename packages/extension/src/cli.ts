@@ -10,7 +10,7 @@ import {
   reviewStepArtifacts,
   resolveStepRunner,
   renderVerifyReportMarkdown, verifyRun,
-  resolveTemplates
+  resolveTemplates, resolveMaxTurns
 } from '@ai-stepflow/core';
 import * as machine from '@ai-stepflow/core';
 
@@ -253,7 +253,7 @@ async function runFlow(projectPath: string, flowRef: string, inputs: Record<stri
       systemPrompt: composeSystemPrompt(agent, stepSkillNames, skills, resolveTemplates(next.produces, runState.inputs), runState.inputs, resolveTemplates(next.requires, runState.inputs), next.producesContains),
       userMessage: next.input?.prompt?.trim() || `Run step: ${next.title || next.id}`,
       model: agent.model,
-      maxTurns: agent.maxTurns ?? 10,
+      maxTurns: resolveMaxTurns(agent.maxTurns, 6),
       projectPath,
       onText: chunk => { output += chunk; process.stdout.write(chunk); }
     });

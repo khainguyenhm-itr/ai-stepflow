@@ -25,7 +25,6 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   auditLogs,
   activeStepId,
   completedSteps,
-  activeProgress,
   commandCopied,
   onSetActiveStep,
   onRunStep,
@@ -48,7 +47,6 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   const totalCostUsd = stepCosts.reduce((sum, item) => sum + item.costUsd, 0);
   const totalTokens = stepCosts.reduce((sum, item) => sum + item.tokensUsed, 0);
   const hasAnyHeadlessStep = stepCosts.some(item => item.isHeadless);
-  const isLocked = activeStepState?.executionStatus === 'locked';
   const reviewStatus = activeStepState?.reviewStatus;
   const reviewRequired = !!activeStep?.review.required;
   const aiReviewing = reviewStatus === 'ai_review_running';
@@ -57,7 +55,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   const isHeadless = !!activeStep?.review?.required && (activeStep?.review.type === 'ai' || !!activeStep?.review.reviewers?.some(r => r.type === 'ai'));
 
   const stepActions = (() => {
-    let actions = {
+    const actions = {
       showRun: false,
       showRerun: false,
       showReview: false,
@@ -69,7 +67,6 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
     if (!activeStepState) return actions;
 
     const { executionStatus, reviewStatus, completionStatus, history } = activeStepState;
-    const isInteractiveRunning = !isHeadless && executionStatus === 'running';
     const hasRunBefore = (history?.length ?? 0) > 0;
 
     if (executionStatus === 'locked') {
@@ -161,10 +158,6 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   const isFlowDone = completionStatuses.every(s => s === 'done');
   const isFinalized = !!runState.isClosed;
   
-  // A flow is terminal if all steps are done, or if any step has failed or been cancelled.
-  const statuses = Object.values(runState.steps).map(s => s.executionStatus);
-  const isFlowTerminal = isFlowDone || statuses.includes('failed') || statuses.includes('cancelled');
-
   // Reset is available once any step has moved past its initial ready/locked state.
   const canResetRun = !isFinalized && Object.values(runState.steps).some(
     s => s.executionStatus !== 'ready' && s.executionStatus !== 'locked'
