@@ -8,7 +8,6 @@
  */
 import * as vscode from 'vscode';
 import { randomUUID } from 'crypto';
-import * as path from 'path';
 import type { ConfigManager } from './configManager.js';
 import type { TerminalManager } from './terminalManager.js';
 import type { HostMessage } from './messages.js';
@@ -90,11 +89,10 @@ export async function runHeadlessStep(ctx: StepRunContext): Promise<void> {
   );
 
   // Security: sandboxed flows restrict Claude to only the declared produces paths.
+  // Pass the workspace-relative produces paths (the run cwd is projectPath, which is how
+  // Claude's permission matcher resolves the Write/Edit allow-rules).
   const isSandboxed = flow.trustLevel === 'sandboxed';
-  const allowedWritePaths = isSandboxed
-    ? resolveTemplates(step.produces, runInputs)
-        .map(p => path.isAbsolute(p) ? p : path.join(projectPath, p))
-    : undefined;
+  const allowedWritePaths = isSandboxed ? resolvedProduces : undefined;
 
   if (isSandboxed) {
     ctx.post({ type: 'stepUpdate', stepId, append: true, output: `\n[sandboxed run — writes restricted to declared produces]\n` });

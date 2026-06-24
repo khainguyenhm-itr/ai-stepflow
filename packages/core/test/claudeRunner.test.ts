@@ -17,6 +17,50 @@ class FakeChild extends EventEmitter {
 
 const spawnReturning = (child: FakeChild) => ((() => child) as unknown) as Parameters<typeof runClaudeStreaming>[1];
 
+/** Capture the argv passed to `claude` while returning a fake child. */
+function spawnCapturing(child: FakeChild): { spawn: Parameters<typeof runClaudeStreaming>[1]; args: () => string[] } {
+  let captured: string[] = [];
+  const spawn = (((_cmd: string, a: string[]) => { captured = a; return child; }) as unknown) as Parameters<typeof runClaudeStreaming>[1];
+  return { spawn, args: () => captured };
+}
+
+test('trusted run uses acceptEdits and adds no sandbox flags', () => {
+  const cap = spawnCapturing(new FakeChild());
+  runClaudeStreaming({ systemPrompt: 's', userMessage: 'x', projectPath: '/p', onText: () => {} }, cap.spawn);
+  const args = cap.args();
+  assert.equal(args[args.indexOf('--permission-mode') + 1], 'acceptEdits');
+  assert.equal(args.includes('--allowedTools'), false);
+  assert.equal(args.includes('--settings'), false);
+});
+
+test('sandboxed run drops to default mode, denies exec/network, and whitelists the declared write paths only', () => {
+  const cap = spawnCapturing(new FakeChild());
+  runClaudeStreaming(
+    { systemPrompt: 's', userMessage: 'x', projectPath: '/p', onText: () => {}, allowedWritePaths: ['docs/a.md', 'docs/b.md'] },
+    cap.spawn
+  );
+  const args = cap.args();
+  assert.equal(args[args.indexOf('--permission-mode') + 1], 'default');
+  // Deny settings neutralise an ambient allow of Bash/WebFetch/WebSearch (deny beats allow).
+  const deny = JSON.parse(args[args.indexOf('--settings') + 1]);
+  assert.deepEqual(deny.permissions.deny, ['Bash', 'WebFetch', 'WebSearch']);
+  const i = args.indexOf('--allowedTools');
+  assert.ok(i >= 0);
+  const rules = args.slice(i + 1, i + 7);
+  assert.deepEqual(rules, ['Write(docs/a.md)', 'Edit(docs/a.md)', 'MultiEdit(docs/a.md)', 'Write(docs/b.md)', 'Edit(docs/b.md)', 'MultiEdit(docs/b.md)']);
+});
+
+test('a sandboxed run with no declared produces is fail-closed (default mode, deny settings, no write allowed)', () => {
+  // allowedWritePaths: [] means "sandboxed but nothing to write" — must deny all writes,
+  // NOT fall back to the trusted acceptEdits mode.
+  const cap = spawnCapturing(new FakeChild());
+  runClaudeStreaming({ systemPrompt: 's', userMessage: 'x', projectPath: '/p', onText: () => {}, allowedWritePaths: [] }, cap.spawn);
+  const args = cap.args();
+  assert.equal(args[args.indexOf('--permission-mode') + 1], 'default');
+  assert.equal(args.includes('--settings'), true);
+  assert.equal(args.includes('--allowedTools'), false);
+});
+
 test('runClaudeStreaming parses NDJSON assistant text + result usage', async () => {
   const child = new FakeChild();
   const chunks: string[] = [];

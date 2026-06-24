@@ -24,9 +24,13 @@ export interface ClaudeStreamingRunOptions {
   /** Cap the number of agentic turns. 0/undefined = no limit. */
   maxTurns?: number;
   /**
-   * When set, Claude is restricted to only reading/writing these absolute paths (sandboxed mode).
-   * Passed via `--allowedTools` restriction — requires Claude CLI ≥ 1.x that supports --allowed-paths.
-   * Leave undefined for the default 'trusted' mode (`acceptEdits` permission).
+   * When set (sandboxed mode), Claude may only write the listed paths. Each path becomes an
+   * explicit `Write`/`Edit`/`MultiEdit` allow-rule via `--allowedTools`, and the run drops to
+   * {@link SANDBOXED_PERMISSION_MODE} (`default`) instead of auto-accepting every edit. In
+   * headless `--print` mode a write to any other path has no prompt to satisfy, so it is denied.
+   * Paths should be relative to {@link ClaudeStreamingRunOptions.projectPath} (the run cwd), which
+   * is how Claude's permission matcher resolves them. Leave undefined for the default 'trusted'
+   * mode (`acceptEdits` permission).
    */
   allowedWritePaths?: string[];
   /**
@@ -78,9 +82,34 @@ export const HEADLESS_PERMISSION_MODE = 'acceptEdits';
  */
 export const SANDBOXED_PERMISSION_MODE = 'default';
 
+/**
+ * Extra settings injected for sandboxed runs to neutralise the user's ambient `.claude/settings.json`.
+ * The headless runner does not pass `--settings` for trusted runs, so an ambient `allow: ["Bash"]`
+ * (etc.) would otherwise widen a sandboxed run back open. `deny` always wins over `allow`, so denying
+ * the execution/network tools here closes that hole without conflicting with the `Write(produces)`
+ * allow-rules added via `--allowedTools`. Note: an ambient unscoped `allow: ["Write"]`/`["Edit"]`
+ * cannot be revoked additively (denying Write globally would also block the declared produces), so a
+ * blanket file-write allow in the user's settings remains a documented limitation of sandboxed mode.
+ */
+export const SANDBOXED_DENY_SETTINGS = JSON.stringify({ permissions: { deny: ['Bash', 'WebFetch', 'WebSearch'] } });
+
 /** Headless Claude runner with NDJSON streaming output and final usage/cost capture. */
 export function runClaudeStreaming(opts: ClaudeStreamingRunOptions, spawnFn: SpawnFn = spawn): ClaudeStreamingRunHandle {
-  const args = ['--print', '--output-format', 'stream-json', '--verbose', '--permission-mode', HEADLESS_PERMISSION_MODE];
+  // Sandboxed runs drop the auto-accept permission mode and whitelist writes to the declared
+  // paths only; trusted runs keep acceptEdits so a headless run never stalls on a prompt.
+  // `allowedWritePaths` present (even as []) means sandboxed: an empty list is fail-closed
+  // (default mode + no write allow-rule → every write is denied). `undefined` means trusted.
+  const sandboxed = opts.allowedWritePaths !== undefined;
+  const permissionMode = sandboxed ? SANDBOXED_PERMISSION_MODE : HEADLESS_PERMISSION_MODE;
+  const args = ['--print', '--output-format', 'stream-json', '--verbose', '--permission-mode', permissionMode];
+  if (sandboxed) {
+    // Deny exec/network tools regardless of the user's ambient settings (deny beats allow).
+    args.push('--settings', SANDBOXED_DENY_SETTINGS);
+    if (opts.allowedWritePaths!.length > 0) {
+      const rules = opts.allowedWritePaths!.flatMap(p => [`Write(${p})`, `Edit(${p})`, `MultiEdit(${p})`]);
+      args.push('--allowedTools', ...rules);
+    }
+  }
   if (opts.model) args.push('--model', opts.model);
   if (opts.mcpConfig !== undefined) args.push('--mcp-config', opts.mcpConfig, '--strict-mcp-config');
   if (opts.maxTurns && opts.maxTurns > 0) args.push('--max-turns', String(opts.maxTurns));
