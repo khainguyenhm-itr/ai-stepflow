@@ -281,7 +281,8 @@ async function runFlow(projectPath: string, flowRef: string, inputs: Record<stri
       continue;
     }
 
-    if (!orch.isHeadlessStep(next) && !next.review.validatorPath) {
+    const hasAiReview = next.review.type === 'ai' || !!next.review.reviewers?.some(r => r.type === 'ai');
+    if (!hasAiReview && !next.review.validatorPath) {
       await saveRun(projectPath, runState);
       process.stderr.write(`Step '${next.title || next.id}' requires human review and cannot finish in headless mode.\n`);
       return 3;

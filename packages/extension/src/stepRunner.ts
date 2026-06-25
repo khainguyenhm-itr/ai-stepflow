@@ -184,7 +184,8 @@ export async function runHeadlessStep(ctx: StepRunContext): Promise<void> {
  */
 export async function runInteractiveStep(
   ctx: StepRunContext,
-  terminals: TerminalManager
+  terminals: TerminalManager,
+  autoEnter: boolean = false
 ): Promise<void> {
   const { flow, step, stepId, agent, stepSkillNames, projectPath, description } = ctx;
   const runInputs = ctx.runState.inputs || {};
@@ -207,17 +208,18 @@ export async function runInteractiveStep(
 
   await ctx.setRunState(
     s => machine.markRunning(s, flow, stepId),
-    { stepId, status: 'running', message: 'Opened in Claude — press Enter to run' }
+    { stepId, status: 'running', message: autoEnter ? 'Running in Claude terminal' : 'Opened in Claude — press Enter to run' }
   );
   await ctx.patchStepState(stepId, { sessionId });
   ctx.post({
     type: 'stepUpdate',
     stepId,
-    append: true,
-    output: '\n[opened in the Claude terminal — review the pre-filled message, press Enter to run]\n',
+    output: autoEnter 
+      ? '\n[running in the Claude terminal — see terminal pane for progress]\n' 
+      : '\n[opened in the Claude terminal — review the pre-filled message, press Enter to run]\n',
   });
 
-  await terminals.runInTerminal(message, projectPath, agent, false, stepId, sessionId);
+  await terminals.runInTerminal(message, projectPath, agent, autoEnter, stepId, sessionId);
 }
 
 // ---------------------------------------------------------------------------

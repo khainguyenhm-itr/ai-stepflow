@@ -461,7 +461,6 @@ export const useAppLogic = () => {
       ids.add(step.id);
       if (!step.agent || !libState.getAgentByName(step.agent)) return `Step '${label}': agent '${step.agent || '(none)'}' does not exist.`;
       const stepSkills = getStepSkills(step);
-      if (stepSkills.length === 0) return `Step '${label}': select at least one skill.`;
       for (const skillName of stepSkills) {
         if (!libState.getSkillByName(skillName)) return `Step '${label}': skill '${skillName}' does not exist.`;
       }

@@ -35,7 +35,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   const activeStep = flow.steps.find(step => step.id === activeStepId);
   const activeStepState = activeStepId ? runState.steps[activeStepId] : null;
   const stepCosts = flow.steps.map(step => {
-    const isHeadless = !!step.review?.required && (step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai'));
+    const isHeadless = false; // All steps run interactively now
     return {
       step,
       state: runState.steps[step.id],
@@ -46,13 +46,13 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   });
   const totalCostUsd = stepCosts.reduce((sum, item) => sum + item.costUsd, 0);
   const totalTokens = stepCosts.reduce((sum, item) => sum + item.tokensUsed, 0);
-  const hasAnyHeadlessStep = stepCosts.some(item => item.isHeadless);
+  const hasAnyHeadlessStep = false; // All steps run interactively now
   const reviewStatus = activeStepState?.reviewStatus;
   const reviewRequired = !!activeStep?.review.required;
   const aiReviewing = reviewStatus === 'ai_review_running';
   // AI-reviewed steps run headless (a tracked `claude` child), so their in-flight run can be
   // cancelled; interactive steps (no-review or human-review) run in the terminal.
-  const isHeadless = !!activeStep?.review?.required && (activeStep?.review.type === 'ai' || !!activeStep?.review.reviewers?.some(r => r.type === 'ai'));
+  const isHeadless = false; // All steps run interactively now
 
   const stepActions = (() => {
     const actions = {
@@ -75,10 +75,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
       // Once fully done, only re-run is allowed
       actions.showRerun = true;
     } else if (executionStatus === 'running') {
-      if (isHeadless) {
-        // Headless (AI-run) step in flight — only cancel is available
-        actions.showCancel = true;
-      } else if (reviewRequired) {
+      if (reviewRequired) {
         // Human review: show Approve/Reject while terminal is running.
         // The orchestrator handles the isRunning case (kills terminal + marks done) correctly.
         actions.showReview = true;
@@ -313,12 +310,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
             )}
           </div>
         </div>
-        {isHeadless && (
-          <div className="warning-banner">
-            <Icon.Alert size={13} />
-            Runs headless — Claude may create or edit files automatically without confirmation (acceptEdits).
-          </div>
-        )}
+
         <div className="runner-meta">
           <div className="meta-group">
             <span className="muted small">agent</span>

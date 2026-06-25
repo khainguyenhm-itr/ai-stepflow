@@ -4,7 +4,7 @@ A **Claude flow cockpit for VS Code**. Keep your Claude agents, skills, and
 multi-step workflows in one place — then run each step through the Claude CLI
 without leaving the editor.
 
-![AI StepFlow cockpit — the Workflows board with an example two-step flow](images/cockpit.png)
+![AI StepFlow cockpit — the Workflows board with an example two-step flow](https://raw.githubusercontent.com/khainguyenhm-itr/ai-stepflow/main/images/cockpit.png)
 
 ## What it does
 

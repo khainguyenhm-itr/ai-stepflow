@@ -209,11 +209,10 @@ export class RunOrchestrator {
       setStepStartTime: (sid, t) => this._stepStartTimes.set(sid, t),
     };
 
-    if (isHeadlessStep(step)) {
-      await runHeadlessStep(ctx);
-    } else {
-      await runInteractiveStep(ctx, this.terminals);
-    }
+    // All steps run in the interactive terminal. AI-reviewed steps auto-enter so they run 
+    // without clicking, and are auto-verified in onDidEndRunningStep.
+    const hasAiReview = !!step.review?.required && (step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai'));
+    await runInteractiveStep(ctx, this.terminals, hasAiReview);
   }
 
   /** Approve/reject a step from the webview's human-review buttons. */
@@ -687,14 +686,21 @@ export class RunOrchestrator {
     this._startedStepIds = orch.getStartedStepIds();
 
     for (const action of actions) {
-      if (action.type === 'launch_headless') {
-        void this._run(action.stepId);
-      } else if (action.type === 'launch_interactive' || action.type === 'park_interactive') {
-        // Interactive (human-review) steps are never auto-launched: the user must click "Run Step".
-        // We just notify once that the step is ready and waiting.
+      if (action.type === 'launch_interactive') {
+        const step = this._currentFlow?.steps.find(s => s.id === action.stepId);
+        const hasAiReview = !!step?.review?.required && (step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai'));
+        
+        if (hasAiReview) {
+          void this._run(action.stepId);
+        } else {
+          if (this._parkedStepIds.has(action.stepId)) continue;
+          this._parkedStepIds.add(action.stepId);
+          this.post({ type: 'stepUpdate', stepId: action.stepId, append: true, output: '\n[step ready — click "Run Step" to start]\n' });
+        }
+      } else if (action.type === 'park_interactive') {
         if (this._parkedStepIds.has(action.stepId)) continue;
         this._parkedStepIds.add(action.stepId);
-        this.post({ type: 'stepUpdate', stepId: action.stepId, append: true, output: '\n[step ready — click "Run Step" to start]\n' });
+        this.post({ type: 'stepUpdate', stepId: action.stepId, append: true, output: '\n[step ready — waiting for terminal slot...]\n' });
       }
     }
   }
