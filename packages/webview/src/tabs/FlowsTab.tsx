@@ -142,7 +142,22 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
         </div>
       </div>
       {visibleFlows.length === 0 ? (
-        <EmptyState title="No workflows found" text={q ? `No workflows match "${search}"` : 'Create a new multi-step flow to automate your tasks.'} icon={<Icon.GitBranch size={24} />} />
+        <EmptyState
+          title="No workflows found"
+          text={q ? `No workflows match "${search}"` : 'Create a new multi-step flow to automate your tasks.'}
+          icon={<Icon.GitBranch size={24} />}
+          action={!q ? (
+            <button
+              className="btn primary"
+              onClick={() => onNew(
+                { id: `flow-${Date.now()}`, name: '', description: '', inputs: {}, steps: [], sourcePath: '' },
+                filter === 'global' ? 'global' : 'project'
+              )}
+            >
+              <span className="btn-glyph plus"><Icon.Plus size={14} /></span>New Flow
+            </button>
+          ) : undefined}
+        />
       ) : (
         <div className="stack">
           {visibleFlows.map(flow => (

@@ -262,6 +262,10 @@ textarea.input::-webkit-scrollbar-thumb:hover,
   line-height: 1.5;
 }
 
+.empty-action {
+  margin-top: 14px;
+}
+
 .stack {
   display: flex;
   flex-direction: column;

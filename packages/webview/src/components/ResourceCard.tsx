@@ -61,10 +61,11 @@ export const ResourceCard: React.FC<ResourceCardProps> = ({
   </div>
 );
 
-export const EmptyState: React.FC<{ title: string; text?: string; icon: React.ReactNode }> = ({ title, text, icon }) => (
+export const EmptyState: React.FC<{ title: string; text?: string; icon: React.ReactNode; action?: React.ReactNode }> = ({ title, text, icon, action }) => (
   <div className="empty">
     <div className="empty-icon">{icon}</div>
     <div className="empty-title">{title}</div>
     {text && <div className="empty-text">{text}</div>}
+    {action && <div className="empty-action">{action}</div>}
   </div>
 );
