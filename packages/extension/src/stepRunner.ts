@@ -1,10 +1,9 @@
 /**
- * stepRunner.ts — Headless and interactive step execution helpers.
+ * stepRunner.ts — Interactive step execution helper.
  *
- * These functions contain the core execution logic for both headless
- * (AI-reviewed, spawned as `claude -p`) and interactive (terminal) steps.
- * They are extracted from RunOrchestrator to keep that class focused on
- * state management and public API surface only.
+ * Holds the core execution logic for interactive (terminal) steps, extracted
+ * from RunOrchestrator to keep that class focused on state management and
+ * public API surface only.
  */
 import * as vscode from 'vscode';
 import { randomUUID } from 'crypto';
@@ -13,7 +12,6 @@ import type { TerminalManager } from './terminalManager.js';
 import type { HostMessage } from './messages.js';
 import type { FlowRunState, Flow, FlowStep, Agent, Skill } from '@ai-stepflow/core';
 import {
-  composeSystemPromptParts,
   resolveTemplate, resolveTemplates, resolveFlowRelativePath,
   composeInteractiveMessage,
   ClaudeStreamingRunOptions, ClaudeStreamingRunResult,
@@ -58,118 +56,6 @@ export interface StepRunContext {
   runMaxTurns(agent: Agent): number;
   /** Record that this interactive step started at the given time. */
   setStepStartTime(stepId: string, time: Date): void;
-}
-
-// ---------------------------------------------------------------------------
-// Headless step runner
-// ---------------------------------------------------------------------------
-
-/**
- * Launch a headless `claude -p` run for a step that has AI review enabled.
- * The process is observable (exits when done), so we collect its output,
- * run the two-layer review, and advance the DAG automatically — no human
- * interaction required.
- */
-export async function runHeadlessStep(ctx: StepRunContext): Promise<void> {
-  const { flow, step, stepId, agent, stepSkillNames, skills, projectPath, description } = ctx;
-  const runInputs = ctx.runState.inputs || {};
-
-  // Relative paths for the agent prompt (cleaner than full system paths).
-  const resolvedProduces = resolveTemplates(step.produces, runInputs)
-    .map(p => resolveFlowRelativePath(p, flow.name));
-  const resolvedRequires = resolveTemplates(step.requires, runInputs)
-    .map(p => resolveFlowRelativePath(p, flow.name));
-
-  // Split into stable (cacheable) + dynamic (per-run) system prompt parts.
-  const promptParts = composeSystemPromptParts(
-    agent, stepSkillNames, skills, resolvedProduces, runInputs, resolvedRequires, step.producesContains
-  );
-  const userMessage = resolveTemplate(
-    description?.trim() || step.input?.prompt?.trim() || `Run step: ${step.title || step.id}`,
-    runInputs
-  );
-
-  // Security: sandboxed flows restrict Claude to only the declared produces paths.
-  // Pass the workspace-relative produces paths (the run cwd is projectPath, which is how
-  // Claude's permission matcher resolves the Write/Edit allow-rules).
-  const isSandboxed = flow.trustLevel === 'sandboxed';
-  const allowedWritePaths = isSandboxed ? resolvedProduces : undefined;
-
-  if (isSandboxed) {
-    ctx.post({ type: 'stepUpdate', stepId, append: true, output: `\n[sandboxed run — writes restricted to declared produces]\n` });
-  }
-
-  await ctx.setRunState(
-    s => machine.markRunning(s, flow, stepId),
-    { stepId, status: 'running', message: 'Run started (headless)' }
-  );
-
-  let output = '';
-  const result = await ctx.spawnClaudeStreaming({
-    systemPrompt: promptParts.static,
-    dynamicSystemPrompt: promptParts.dynamic,
-    userMessage,
-    model: agent.model,
-    projectPath,
-    maxTurns: ctx.runMaxTurns(agent),
-    allowedWritePaths,
-    onText: chunk => {
-      output += chunk;
-      ctx.bufferOutput(stepId, chunk);
-      void ctx.patchStepState(stepId, { output });
-    },
-  }, stepId);
-
-  // Flush any remaining buffered chunks immediately on run end.
-  ctx.flushOutputBuffer();
-
-  // User cancelled: cancelStep already moved the step to 'cancelled', skip failure.
-  if (ctx.consumeCancelledStep(stepId)) return;
-
-  const metrics: machine.StepMetrics = {
-    modelUsed: result.model,
-    tokensUsed: result.tokensUsed,
-    costUsd: result.costUsd,
-    output,
-  };
-
-  if (!result.success) {
-    const why = result.timedOut ? 'run timed out' : `claude exited ${result.exitCode}`;
-    await ctx.setRunState(
-      s => machine.markFailed(s, flow, stepId, {
-        ...metrics,
-        error: why,
-        output: output + `\n[step failed: ${why}]\n`,
-      }),
-      { stepId, status: 'failed', message: result.timedOut ? 'Run timed out' : 'Run failed' }
-    );
-    return;
-  }
-
-  const prod = ctx.validateProduces(step);
-  if (!prod.ok) {
-    await ctx.setRunState(
-      s => machine.markFailed(s, flow, stepId, {
-        ...metrics,
-        error: `produces check failed: ${prod.message}`,
-        output: output + `\n[produces check failed: ${prod.message}]\n`,
-      }),
-      { stepId, status: 'failed', message: `Produces check failed: ${prod.message}` }
-    );
-    return;
-  }
-
-  const reviewMsg = step.review?.required ? 'Run completed — reviewing' : 'Run completed';
-  await ctx.setRunState(
-    s => machine.markCompleted(s, flow, stepId, { ...metrics, output }),
-    { stepId, status: 'completed', message: reviewMsg }
-  );
-
-  if (step.review?.required) {
-    await ctx.runAiReview(step, stepId, projectPath);
-  } else {
-    ctx.advanceReadySteps();
-  }
 }
 
 // ---------------------------------------------------------------------------

@@ -5,15 +5,7 @@ import {
   resolveTimeoutMs,
   buildHeadlessMcpConfig,
   composeInteractiveMessage,
-  isHeadlessStep,
 } from '@ai-stepflow/core';
-import type { FlowStep } from '@ai-stepflow/core';
-
-const step = (review: Partial<FlowStep['review']>): FlowStep => ({
-  id: 's', title: 'S', agent: 'a', skill: 'k',
-  review: { required: false, ...review } as FlowStep['review'],
-  completion: { requireMarkDone: false },
-});
 
 test('resolveMaxTurns: agent override wins when set (including 0 = no limit)', () => {
   assert.equal(resolveMaxTurns(12, 6), 12);
@@ -54,9 +46,3 @@ test('composeInteractiveMessage: appends mandatory input/output file lists when 
   assert.match(msg, /Mandatory output files[^\n]*\n- out\/a\.md\n- out\/b\.md/);
 });
 
-test('isHeadlessStep: true only when an AI review gates the step', () => {
-  assert.equal(isHeadlessStep(step({ required: true, type: 'ai' })), true);
-  assert.equal(isHeadlessStep(step({ required: true, reviewers: [{ type: 'ai' }] })), true);
-  assert.equal(isHeadlessStep(step({ required: true, type: 'human' })), false);
-  assert.equal(isHeadlessStep(step({ required: false })), false);
-});

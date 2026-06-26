@@ -6,13 +6,12 @@ is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Changed
-- **Step runner rewritten for real orchestration.** Each skill in a step now runs
-  as its own headless `claude -p` process, in order. Output streams into the
-  cockpit console, every skill reports its own exit code, and a step completes
-  only when all of its skills exit `0` — replacing the previous interactive-terminal
-  approach whose completion state depended on the user quitting Claude.
-- Ad-hoc **Run agent** / **Run skill** actions continue to open an interactive
-  Claude session in the integrated terminal.
+- **Step runner driven by a DAG orchestrator.** Each step opens an interactive
+  Claude terminal session with its agent + primary skill pre-filled; output streams
+  into the cockpit console, and a step completes once its `produces`/review gates
+  pass. Steps run one at a time (the rest are parked) to avoid terminal clutter.
+- Ad-hoc **Run agent** / **Run skill** actions also open an interactive Claude
+  session in the integrated terminal.
 - Flows now keep hand-written YAML comments and top-level key order when saved,
   instead of being flattened on the first edit.
 - AI review no longer auto-approves when review infrastructure is incomplete.
@@ -22,10 +21,9 @@ is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   locked steps show an explicit blocked message if a run is attempted.
 - `review.filePath` is treated as the post-run artifact it documents: it must
   exist before completion/review can pass, and AI review reads it directly.
-- When a finished step unlocks several dependents at once, every headless
-  (AI-reviewed) branch now auto-starts in parallel; interactive steps share one
-  terminal, so the first opens and the rest wait with a notice (previously a
-  fan-out stalled silently and required a manual click).
+- When a finished step unlocks several dependents at once, the first opens in the
+  shared Claude terminal and the rest wait with a notice (previously a fan-out
+  stalled silently and required a manual click).
 - Run orchestration moved out of the cockpit panel into a dedicated
   `RunOrchestrator`, and host→webview messages are now a typed contract.
 

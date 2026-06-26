@@ -26,6 +26,9 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Coverage (core, gated)
+        run: npm run test:coverage
+
   integration:
     runs-on: ubuntu-latest
     steps:

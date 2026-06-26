@@ -1,0 +1,10 @@
+{
+  "all": true,
+  "include": ["packages/core/out/**/*.js"],
+  "exclude": ["packages/core/out/test/**"],
+  "reporter": ["text-summary"],
+  "check-coverage": true,
+  "lines": 85,
+  "branches": 70,
+  "functions": 70
+}

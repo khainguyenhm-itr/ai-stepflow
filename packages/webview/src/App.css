@@ -1117,7 +1117,6 @@ textarea.input {
 }
 
 .flow-step-card.editable {
-  cursor: pointer;
   transition: border-color 0.12s ease, background 0.12s ease;
 }
 

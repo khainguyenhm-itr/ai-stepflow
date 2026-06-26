@@ -148,11 +148,6 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
                         key={step.id}
                         id={`step-node-${step.id}`}
                         className="flow-step-card editable"
-                        role="button"
-                        tabIndex={0}
-                        title="Edit step"
-                        onClick={() => onBoardStepEditor(flow, stepIndex)}
-                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onBoardStepEditor(flow, stepIndex); } }}
                       >
                         <div className="flow-step-heading">
                           <span className="flow-step-number">{stepNumber}</span>

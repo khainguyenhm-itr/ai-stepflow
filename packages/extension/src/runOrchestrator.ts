@@ -15,13 +15,12 @@ import {
   renderRunReport,
   runValidator,
   renderVerifyReportMarkdown, verifyRun,
-  isHeadlessStep, resolveMaxTurns, resolveTimeoutMs, buildHeadlessMcpConfig,
+  resolveMaxTurns, resolveTimeoutMs, buildHeadlessMcpConfig,
   StepRunState
 } from '@ai-stepflow/core';
 import * as machine from '@ai-stepflow/core';
 import {
   StepRunContext,
-  runHeadlessStep,
   runInteractiveStep,
   checkStepGuards,
 } from './stepRunner.js';
@@ -666,11 +665,6 @@ export class RunOrchestrator {
       this._currentFlow?.name || '',
       opts => this._spawnClaudeStreaming({ ...opts, maxTurns: 1 })
     );
-  }
-
-  /** True when a step runs headless (AI review), so it has no shared UI and can run concurrently. */
-  private _isHeadlessStep(step: FlowStep): boolean {
-    return isHeadlessStep(step);
   }
 
   /**

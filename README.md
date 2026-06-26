@@ -12,8 +12,8 @@ without leaving the editor.
   skills, and flows side by side, filter by scope or tag.
 - **Visual flow builder** — build multi-step flows: assign an agent + skills per
   step, declare inputs, set dependencies, drag to reorder.
-- **Step runner** — each step runs as one headless `claude -p` process and streams
-  its output into the console.
+- **Step runner** — each step opens an interactive Claude terminal session (its
+  agent + skills pre-filled); output streams into the console.
 - **Review gates** — gate a step on a human approve/reject or an automated AI
   review (deterministic validator + optional LLM pass).
 - **Artifact gates** — `requires` / `produces` / `producesContains` checks block a
@@ -42,7 +42,7 @@ npm install -g @anthropic-ai/claude-code
 
 ```mermaid
 flowchart LR
-  A[Ready] --> B["Run claude -p<br/>(agent + skills)"]
+  A[Ready] --> B["Run in Claude terminal<br/>(agent + skills)"]
   B --> C{"produces<br/>check"}
   C -- missing --> F[Failed]
   C -- ok --> D{review?}
@@ -54,18 +54,24 @@ flowchart LR
   V -- rejected --> A
 ```
 
-A step runs as a single `claude -p` process: its agent prompt and **all** of its
-skills are composed into one system prompt, and the step description is the user
-message. A step starts only when every `dependsOn` id is `done` and every
-`requires` file exists; it finishes only when every `produces` file (and each
-`producesContains` marker) is present and the review gate passes.
+A step opens an interactive Claude terminal session: its agent and primary skill
+are pre-filled as a `/skill` message together with the step description and the
+mandatory `requires`/`produces` file lists, and you press Enter to run it. A step
+starts only when every `dependsOn` id is `done` and every `requires` file exists;
+it finishes only when every `produces` file (and each `producesContains` marker)
+is present and the review gate passes.
 
-**Permissions.** Trusted flows run in `acceptEdits` mode, so a headless step can
-create or modify files **without asking** — run flows you trust and review the
-diff. A flow marked `trustLevel: sandboxed` runs in the restricted `default` mode:
-writes are limited to the step's declared `produces` paths, and `Bash`/network
-tools are denied. A hung run is killed after `ai-stepflow.run.timeoutSeconds`
-(default 600s) and can be stopped with **Cancel**.
+**Permissions.** Interactive steps launch Claude in your terminal, so file writes
+follow Claude's normal interactive permission prompts — run flows you trust and
+review the diff. A step can be stopped with **Cancel**; the
+`ai-stepflow.run.timeoutSeconds` cap (default 600s) bounds headless AI-review runs.
+
+> **Known limitation.** `trustLevel: sandboxed` is **not currently enforced** on
+> the interactive run path. The restriction it implies — writes limited to the
+> declared `produces` paths, with `Bash`/network denied — is implemented in the
+> headless runner (`core/src/claudeRunner.ts`) but has no caller since every step
+> moved to the interactive terminal. Treat `sandboxed` flows as unrestricted until
+> this is rewired.
 
 ## CLI
 

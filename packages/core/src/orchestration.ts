@@ -1,4 +1,4 @@
-import { Flow, FlowRunState, FlowStep } from './types.js';
+import { Flow, FlowRunState } from './types.js';
 import * as machine from './runStateMachine.js';
 import { pickAutoAdvanceSteps, seedStartedSteps } from './runUtils.js';
 
@@ -9,16 +9,6 @@ export type OrchestratorAction =
   | { type: 'launch_headless'; stepId: string }
   | { type: 'launch_interactive'; stepId: string }
   | { type: 'park_interactive'; stepId: string };
-
-/**
- * Whether a step runs as a headless `claude -p` process. Returns `false` for all
- * steps — every step now runs via the interactive terminal. AI-reviewed steps are
- * distinguished only by their post-run auto-verify behaviour, not by their execution
- * mode.
- */
-export function isHeadlessStep(_step: FlowStep): boolean {
-  return false;
-}
 
 /**
  * Pure orchestration logic that decides which steps to run next.
@@ -60,13 +50,6 @@ export class FlowOrchestrator {
       }
     }
     return actions;
-  }
-
-  /**
-   * Whether a step runs headless. Always false — all steps run interactively.
-   */
-  isHeadlessStep(step: FlowStep): boolean {
-    return isHeadlessStep(step);
   }
 
   /**

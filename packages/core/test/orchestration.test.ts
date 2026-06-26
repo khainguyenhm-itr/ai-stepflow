@@ -20,9 +20,9 @@ test('FlowOrchestrator identifies ready steps and respects interactive limits', 
     id: 'f', name: 'f', description: '', inputs: {}, sourcePath: '/f.yaml',
     steps: [
       step('a'),
-      step('b', { dependsOn: ['a'], review: { required: true, type: 'ai' } }), // headless
-      step('c', { dependsOn: ['a'] }), // interactive
-      step('d', { dependsOn: ['a'] })  // interactive (will be parked)
+      step('b', { dependsOn: ['a'], review: { required: true, type: 'ai' } }), // AI review, still interactive
+      step('c', { dependsOn: ['a'] }),
+      step('d', { dependsOn: ['a'] })
     ]
   };
 
@@ -36,13 +36,13 @@ test('FlowOrchestrator identifies ready steps and respects interactive limits', 
   st = markCompleted(markRunning(st, flow, 'a'), flow, 'a');
   orch = new FlowOrchestrator(flow, st);
 
+  // Every step runs interactively (AI review only changes post-run verify, not launch mode).
+  // Of the three ready steps, exactly one launches and the rest are parked.
   const actions = orch.getAutoAdvanceActions();
   assert.equal(actions.length, 3);
-  assert.deepEqual(actions.find(a => a.stepId === 'b'), { type: 'launch_headless', stepId: 'b' });
-  // 'c' and 'd' are interactive (no review). One launches, one parks.
-  const interactive = actions.filter(a => a.stepId === 'c' || a.stepId === 'd');
-  assert.ok(interactive.some(a => a.type === 'launch_interactive'));
-  assert.ok(interactive.some(a => a.type === 'park_interactive'));
+  assert.equal(actions.filter(a => a.type === 'launch_interactive').length, 1);
+  assert.equal(actions.filter(a => a.type === 'park_interactive').length, 2);
+  assert.ok(!actions.some(a => a.type === 'launch_headless'));
 });
 
 test('FlowOrchestrator does not re-launch already started steps', () => {
