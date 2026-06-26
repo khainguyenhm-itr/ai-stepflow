@@ -140,7 +140,7 @@ export class SidebarActions {
     const { groups, currentGroup, currentAlias } = this.readGitnexusGroups(registryName);
     if (!entry) return { ...none, groups, currentGroup, currentAlias };
 
-    // Stale if HEAD moved past the indexed commit, or code files have uncommitted changes.
+    // Stale if commits since indexing touched code files, or code files have uncommitted changes.
     // Non-code files (docs, configs, etc.) are excluded to avoid constant false-positive stale signals.
     const CODE_EXTS = /\.(ts|tsx|js|jsx|mjs|cjs|py|rb|go|rs|java|c|cpp|cc|h|hpp|cs|swift|kt|php|vue|svelte)$/i;
     let stale = false;
@@ -151,7 +151,17 @@ export class SidebarActions {
         run('git', ['status', '--porcelain'], { cwd: projectPath }).then(r => r.stdout.trim()).catch(() => '')
       ]);
       const hasCodeChanges = dirty.split('\n').some(line => CODE_EXTS.test(line));
-      stale = (!!entry.lastCommit && !!head && entry.lastCommit !== head) || hasCodeChanges;
+      // A moved HEAD only marks the index stale if the commits since indexing touched code
+      // files — a docs/config-only commit shouldn't trigger a re-analyze prompt. If the diff
+      // can't be computed (rebased/unreachable commit), fall back to treating it as stale.
+      let hasCommittedCode = false;
+      if (entry.lastCommit && head && entry.lastCommit !== head) {
+        const diff = await run('git', ['diff', '--name-only', entry.lastCommit, head], { cwd: projectPath })
+          .then(r => ({ ok: true, out: r.stdout.trim() }))
+          .catch(() => ({ ok: false, out: '' }));
+        hasCommittedCode = diff.ok ? diff.out.split('\n').some(line => CODE_EXTS.test(line)) : true;
+      }
+      stale = hasCommittedCode || hasCodeChanges;
     } catch { /* not a git repo / git missing → leave stale=false */ }
 
     return { indexed: true, stale, files: entry.stats?.files ?? 0, indexedAt: entry.indexedAt ?? null, registryName, groups, currentGroup, currentAlias };
@@ -229,6 +239,25 @@ export class SidebarActions {
     terminal.sendText('gitnexus analyze', true);
     this.getView()?.webview.postMessage({ type: 'gitnexusAnalyzeStarted' });
     // Refresh sidebar status when the terminal exits (analyze complete or aborted).
+    const d = vscode.window.onDidCloseTerminal(async t => {
+      if (t === terminal) { d.dispose(); await this.refresh(false); }
+    });
+  }
+
+  /**
+   * Deletes the GitNexus index for the current repo (`gitnexus clean --force`) after a confirm
+   * prompt. Refreshes the sidebar when the terminal closes so the row flips back to "Analyze".
+   */
+  async runGitnexusClean(): Promise<void> {
+    const ok = await vscode.window.showWarningMessage(
+      'Remove the GitNexus index for this repo? You can re-analyze at any time.',
+      { modal: true }, 'Remove'
+    );
+    if (ok !== 'Remove') return;
+    const cwd = this.configManager.getProjectPath();
+    const terminal = vscode.window.createTerminal({ name: 'GitNexus Clean', cwd: cwd || undefined });
+    terminal.show();
+    terminal.sendText('gitnexus clean --force', true);
     const d = vscode.window.onDidCloseTerminal(async t => {
       if (t === terminal) { d.dispose(); await this.refresh(false); }
     });

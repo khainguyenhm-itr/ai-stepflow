@@ -59,7 +59,7 @@
         {
           "id": "ai-stepflow",
           "title": "AI StepFlow",
-          "icon": "resources/activity-icon.svg"
+          "icon": "resources/icon.svg"
         }
       ]
     },

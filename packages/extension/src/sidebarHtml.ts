@@ -792,6 +792,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     if (indexed) items.push(menuItem('Re-analyze', 'data-act="analyze"'));
     items.push(menuItem('Open registry file', 'data-act="openRegistry"'));
     if (indexed && gitnexusStatus.currentGroup) items.push(menuItem('Open group config', 'data-act="openGroup"'));
+    if (indexed) items.push(menuItem('Remove analyze', 'data-act="clean"'));
     menuPop.innerHTML = items.join('');
   }
 
@@ -1098,6 +1099,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     if (act === 'analyze') vscode.postMessage({ type: 'gitnexusAnalyze' });
     else if (act === 'openRegistry') vscode.postMessage({ type: 'gitnexusOpenRegistry' });
     else if (act === 'openGroup') vscode.postMessage({ type: 'gitnexusOpenGroup' });
+    else if (act === 'clean') vscode.postMessage({ type: 'gitnexusClean' });
   });
 </script>
 </body>

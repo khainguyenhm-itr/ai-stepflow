@@ -159,6 +159,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             case 'gitnexusAnalyze':
               await this._actions.runGitnexusAnalyze(message.group);
               return;
+            case 'gitnexusClean':
+              await this._actions.runGitnexusClean();
+              return;
             case 'gitnexusCreateGroup':
               await this._actions.createGitnexusGroup();
               return;
