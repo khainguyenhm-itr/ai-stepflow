@@ -29,6 +29,22 @@ export const REVIEW_ARTIFACT_CHAR_CAP = 3000;
 /** Cap the combined review payload across all produced files. */
 export const REVIEW_TOTAL_CHAR_CAP = 12000;
 
+/**
+ * Truncate `content` to `maxChars` while preserving both the head and the tail of the
+ * file. A naive `slice(0, max)` discards the end — often the most informative part
+ * (function return values, test assertions, exports). This variant keeps 60 % from the
+ * head (imports, type declarations) and 40 % from the tail (results, exports), joined
+ * by a clear ellipsis marker so the reviewer knows content was omitted.
+ */
+export function smartTruncate(content: string, maxChars: number): string {
+  if (content.length <= maxChars) return content;
+  const headSize = Math.floor(maxChars * 0.6);
+  const tailSize = maxChars - headSize - 20; // 20 chars for the ellipsis line
+  const head = content.slice(0, headSize);
+  const tail = content.slice(-tailSize);
+  return `${head}\n…[middle truncated]…\n${tail}`;
+}
+
 export interface ReviewResult {
   status: 'approved' | 'rejected' | 'waiting_human';
   note: string;
@@ -59,8 +75,8 @@ export function readProducedArtifacts(
     let content: string;
     try { content = readFileSync(filePath, 'utf8'); } catch { continue; }
     const room = Math.min(REVIEW_ARTIFACT_CHAR_CAP, REVIEW_TOTAL_CHAR_CAP - total);
-    const slice = content.slice(0, room);
-    const truncated = slice.length < content.length ? '\n…[truncated]' : '';
+    const slice = smartTruncate(content, room);
+    const truncated = slice.length < content.length && !slice.includes('…[middle truncated]…') ? '\n…[truncated]' : '';
     parts.push(`=== ${filePath} ===\n${slice}${truncated}`);
     total += slice.length;
   }

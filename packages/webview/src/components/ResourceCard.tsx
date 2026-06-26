@@ -3,6 +3,7 @@ import { Icon } from './primitives';
 
 interface ResourceCardProps {
   title: string;
+  subtitle?: string;
   description: string;
   badge?: React.ReactNode;
   scopeBadge?: React.ReactNode;
@@ -16,6 +17,7 @@ interface ResourceCardProps {
 
 export const ResourceCard: React.FC<ResourceCardProps> = ({
   title,
+  subtitle,
   description,
   badge,
   scopeBadge,
@@ -27,21 +29,28 @@ export const ResourceCard: React.FC<ResourceCardProps> = ({
   onToggleBookmark
 }) => (
   <div className={`card ${bookmarked ? 'bookmarked' : ''}`}>
-    {onToggleBookmark && (
-      <button
-        className={`icon-btn bookmark ${bookmarked ? 'active' : ''}`}
-        title={bookmarked ? 'Remove bookmark' : 'Bookmark'}
-        aria-pressed={bookmarked}
-        onClick={onToggleBookmark}
-      >
-        <Icon.Bookmark size={15} fill={bookmarked ? 'currentColor' : 'none'} />
-      </button>
-    )}
     <div className="card-head">
-      <span className="card-title" title={title}>{title}</span>
-      {scopeBadge}
-      {badge}
-      {onEdit && <button className="icon-btn pencil" title="Edit" onClick={onEdit}><Icon.Pencil size={14} /></button>}
+      <div className="card-head-main">
+        <div className="card-title-group">
+          <span className="card-title" title={title}>{title}</span>
+          {subtitle && <span className="card-subtitle" title={subtitle}>{subtitle}</span>}
+        </div>
+        {scopeBadge}
+        {badge}
+      </div>
+      <div className="card-head-actions">
+        {onToggleBookmark && (
+          <button
+            className={`icon-btn bookmark ${bookmarked ? 'active' : ''}`}
+            title={bookmarked ? 'Remove bookmark' : 'Bookmark'}
+            aria-pressed={bookmarked}
+            onClick={onToggleBookmark}
+          >
+            <Icon.Bookmark size={14} fill={bookmarked ? 'currentColor' : 'none'} />
+          </button>
+        )}
+        {onEdit && <button className="icon-btn pencil" title="Edit" onClick={onEdit}><Icon.Pencil size={14} /></button>}
+      </div>
     </div>
     <p className="card-description">{description || 'No description.'}</p>
     {meta && <div className="card-meta">{meta}</div>}
@@ -52,10 +61,11 @@ export const ResourceCard: React.FC<ResourceCardProps> = ({
   </div>
 );
 
-export const EmptyState: React.FC<{ title: string; text?: string; icon: React.ReactNode }> = ({ title, text, icon }) => (
+export const EmptyState: React.FC<{ title: string; text?: string; icon: React.ReactNode; action?: React.ReactNode }> = ({ title, text, icon, action }) => (
   <div className="empty">
     <div className="empty-icon">{icon}</div>
     <div className="empty-title">{title}</div>
     {text && <div className="empty-text">{text}</div>}
+    {action && <div className="empty-action">{action}</div>}
   </div>
 );

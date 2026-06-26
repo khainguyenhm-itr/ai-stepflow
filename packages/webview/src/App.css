@@ -262,6 +262,10 @@ textarea.input::-webkit-scrollbar-thumb:hover,
   line-height: 1.5;
 }
 
+.empty-action {
+  margin-top: 14px;
+}
+
 .stack {
   display: flex;
   flex-direction: column;
@@ -451,6 +455,39 @@ textarea.input {
   resize: vertical;
   font-family: inherit;
 }
+
+/* ── Unified filter panel ─────────────────────────────────────────────────── */
+.fp-wrap { position: relative; }
+.fp-btn { display: inline-flex; align-items: center; gap: 5px; }
+.fp-btn.active { background: var(--active-sel); border-color: var(--focus); }
+.fp-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--focus); color: #fff; font-size: 10px; font-weight: 700; line-height: 1; }
+
+.fp-panel { position: absolute; right: 0; top: calc(100% + 6px); z-index: 200; width: 300px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 8px 28px rgba(0,0,0,.45); overflow: hidden; }
+.fp-section { padding: 10px 14px; }
+.fp-section + .fp-section { border-top: 1px solid var(--border); }
+.fp-section-title { font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+.fp-options { display: flex; flex-wrap: wrap; gap: 2px 0; }
+.fp-option { display: inline-flex; align-items: center; gap: 7px; padding: 4px 8px; border: 0; border-radius: 4px; background: transparent; color: var(--fg); font-size: 12px; font-family: inherit; cursor: pointer; transition: background .1s; white-space: nowrap; }
+.fp-option:hover { background: var(--hover); }
+
+/* radio indicator */
+.fp-radio { flex-shrink: 0; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; transition: border-color .1s; }
+.fp-radio.on { border-color: var(--focus); }
+.fp-radio.on::after { content: ''; display: block; width: 6px; height: 6px; border-radius: 50%; background: var(--focus); }
+
+/* checkbox indicator */
+.fp-check { flex-shrink: 0; width: 14px; height: 14px; border-radius: 3px; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; transition: border-color .1s, background .1s; }
+.fp-check.on { border-color: var(--focus); background: var(--focus); }
+.fp-check.on::after { content: ''; display: block; width: 8px; height: 4px; border-left: 2px solid #fff; border-bottom: 2px solid #fff; transform: rotate(-45deg) translate(1px, -1px); }
+
+.fp-footer { display: flex; justify-content: flex-end; gap: 6px; padding: 9px 14px; border-top: 1px solid var(--border); background: var(--panel); }
+
+/* ── Tab search bar (inline in page-head-actions) ────────────────────────── */
+.page-search { position: relative; display: flex; align-items: center; }
+.page-search-icon { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; display: flex; }
+.page-search-input { width: 200px; padding: 4px 8px 4px 28px; border: 1px solid var(--border); border-radius: 2px; background: var(--input-bg); color: var(--input-fg); font-family: inherit; font-size: inherit; line-height: 1.4; outline: none; transition: border-color .15s; }
+.page-search-input:focus { border-color: var(--focus); }
+.page-search-input::placeholder { color: var(--muted); }
 
 /* AI-draft icon overlaid in the top-right corner of a textarea. */
 .textarea-wrap {
@@ -768,6 +805,36 @@ textarea.input {
   font-size: 12px;
 }
 
+.info-note {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.max-turns-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.max-turns-row > .input {
+  flex: 0 0 140px;
+  width: 140px;
+}
+
+.max-turns-help {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
 .warning-banner {
   display: flex;
   align-items: center;
@@ -801,6 +868,11 @@ textarea.input {
   font-size: 14px;
   font-weight: 600;
   color: var(--fg);
+}
+
+.runner-run-name {
+  font-weight: 400;
+  color: var(--muted);
 }
 
 .runner-head-progress {
@@ -857,7 +929,6 @@ textarea.input {
   gap: 10px;
   min-height: 180px;
   padding: 14px;
-  padding-right: 42px;
   border: 1px solid var(--border);
   border-radius: 3px;
   background: var(--panel);
@@ -869,8 +940,30 @@ textarea.input {
   gap: 6px;
 }
 
-.card-title {
+.card-head-main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.card-head-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.card-title-group {
   flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.card-title {
   min-width: 0;
   overflow: hidden;
   font-weight: 600;
@@ -878,29 +971,30 @@ textarea.input {
   white-space: nowrap;
 }
 
+.card-subtitle {
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 1px;
+}
+
 /* Keep the scope badge tight to the title; push the edit button to the right edge. */
 .card-head .badge {
   flex: 0 0 auto;
 }
 
-.card-head .icon-btn {
-  margin-left: auto;
-}
-
-.card > .icon-btn.bookmark {
-  position: absolute;
-  top: 8px;
-  right: 8px;
+.card-head-actions .icon-btn.bookmark,
+.panel-head-actions .icon-btn.bookmark {
   color: var(--muted);
 }
 
-.card > .icon-btn.bookmark:hover,
-.card > .icon-btn.bookmark.active {
+.card-head-actions .icon-btn.bookmark:hover,
+.card-head-actions .icon-btn.bookmark.active,
+.panel-head-actions .icon-btn.bookmark:hover,
+.panel-head-actions .icon-btn.bookmark.active {
   color: var(--bookmark);
-}
-
-.card-head .icon-btn.pencil {
-  margin-left: auto;
 }
 
 .card-description {
@@ -963,6 +1057,16 @@ textarea.input {
   flex: 0 0 auto;
 }
 
+/* --------------------------- flow run controls (below canvas) --- */
+
+.flow-run-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+}
+
 /* --------------------------- flow canvas -------------------------- */
 
 .flow-canvas {
@@ -975,6 +1079,7 @@ textarea.input {
   display: flex;
   align-items: center;
   min-width: max-content;
+  gap: 56px;
 }
 
 .flow-stage {
@@ -1016,7 +1121,6 @@ textarea.input {
 }
 
 .flow-step-card.editable {
-  cursor: pointer;
   transition: border-color 0.12s ease, background 0.12s ease;
 }
 
@@ -1634,4 +1738,29 @@ textarea.input {
   .card-grid {
     grid-template-columns: 1fr;
   }
+}
+
+.cost-bar-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cost-bar-track {
+  flex-grow: 1;
+  height: 6px;
+  background: var(--vscode-editor-inactiveSelectionBackground);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.cost-bar-fill {
+  height: 100%;
+  background: var(--vscode-charts-blue);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+.cost-bar-label {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  min-width: 32px;
+  text-align: right;
 }

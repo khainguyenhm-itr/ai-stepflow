@@ -13,8 +13,16 @@ export interface Agent {
   sourcePath: string;
   /** Optional custom runner module (relative to the project or absolute) overriding how this agent invokes Claude. */
   runnerPath?: string;
+  /** Cap the number of agentic turns for headless runs; overrides the global setting when set. */
+  maxTurns?: number;
+  /** Grouping/filtering labels declared in frontmatter. */
+  tags?: string[];
   /** True when the agent file declares itself as built-in metadata. */
   builtIn?: boolean;
+  /** File modification time in ms since epoch. */
+  modifiedAt?: number;
+  /** History of the AI conversation that generated/refined this agent. */
+  aiConversation?: FlowAiMessage[];
 }
 
 /** Fields the create/update forms send for an agent (a subset of Agent). */
@@ -24,6 +32,9 @@ export interface AgentInput {
   model?: string;
   tools?: string[];
   systemPrompt?: string;
+  maxTurns?: number;
+  tags?: string[];
+  aiConversation?: FlowAiMessage[];
 }
 
 export interface Skill {
@@ -31,8 +42,14 @@ export interface Skill {
   description: string;
   instructions: string;
   sourcePath: string;
+  /** Grouping/filtering labels declared in frontmatter. */
+  tags?: string[];
   /** True when the skill is a markdown file directly inside the skills directory. */
   builtIn?: boolean;
+  /** File modification time in ms since epoch. */
+  modifiedAt?: number;
+  /** History of the AI conversation that generated/refined this skill. */
+  aiConversation?: FlowAiMessage[];
 }
 
 /** Fields the create/update forms send for a skill (a subset of Skill). */
@@ -40,6 +57,8 @@ export interface SkillInput {
   name: string;
   description?: string;
   instructions?: string;
+  tags?: string[];
+  aiConversation?: FlowAiMessage[];
 }
 
 export interface FlowStep {
@@ -104,6 +123,14 @@ export interface Flow {
   }>;
   steps: FlowStep[];
   sourcePath: string;
+  /**
+   * Security level for headless runs.
+   * - `'trusted'` (default): full file access via --dangerously-skip-permissions.
+   * - `'sandboxed'`: Claude is restricted to only the files declared in `produces`.
+   *   Any write outside of declared outputs will be blocked by the MCP layer.
+   *   Use for untrusted or third-party flows.
+   */
+  trustLevel?: 'trusted' | 'sandboxed';
   /** Optional history of the AI conversation that generated this flow. */
   aiConversation?: FlowAiMessage[];
 }
@@ -131,13 +158,20 @@ export interface StepRunState {
   modelUsed?: string;
   /** Cost (USD) of the last execution, taken from the run's own `result` event. */
   costUsd?: number;
+  /** Claude CLI session id pinned for an interactive run, so metrics/output read exactly that session's .jsonl. */
+  sessionId?: string;
 }
 
 export interface FlowRunState {
   flowId: string;
   runId: string;
+  runName?: string;
+  /** Human-readable flow name, captured at run creation so the run file can be named by slug. */
+  flowName?: string;
   source: string;
   projectPath: string;
   inputs: Record<string, string>;
   steps: Record<string, StepRunState>;
+  /** True when the run has been finalized ("Done Flow" or explicitly closed) and should not auto-resume. */
+  isClosed?: boolean;
 }

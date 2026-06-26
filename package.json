@@ -8,6 +8,9 @@
   "description": "Orchestrate Claude agents, skills & workflows for structured AI development.",
   "version": "0.1.0",
   "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/khainguyenhm-itr/ai-stepflow"
@@ -32,7 +35,8 @@
     "compile:webview-test": "rm -rf packages/webview/out-test && tsc -p packages/webview/test/tsconfig.json",
     "test:webview": "npm run compile && npm run compile:webview-test && node --test packages/webview/out-test/test/*.test.js",
     "test:integration": "npm run compile && npm run compile:itest && node packages/extension/out-itest/test/runIntegration.js",
-    "test": "npm run test:unit && npm run test:webview"
+    "test": "npm run test:unit && npm run test:webview",
+    "test:coverage": "npm run compile && npm run compile:test && c8 node --test packages/core/out/test/test/*.test.js"
   },
   "devDependencies": {
     "@types/glob": "^8.1.0",
@@ -43,6 +47,7 @@
     "@typescript-eslint/parser": "^6.15.0",
     "@vscode/test-electron": "^2.3.8",
     "@vscode/vsce": "^3.9.2",
+    "c8": "^10.1.3",
     "esbuild": "^0.28.0",
     "eslint": "^8.56.0",
     "glob": "^10.3.10",

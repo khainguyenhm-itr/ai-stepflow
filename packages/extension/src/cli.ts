@@ -9,11 +9,12 @@ import {
   Flow, FlowRunState, FlowStep,
   reviewStepArtifacts,
   resolveStepRunner,
-  renderVerifyReportMarkdown, verifyRun
+  renderVerifyReportMarkdown, verifyRun,
+  resolveTemplates, resolveMaxTurns
 } from '@ai-stepflow/core';
 import * as machine from '@ai-stepflow/core';
 
-const COMMANDS = ['run', 'verify', 'report', 'approve', 'reject', 'mark-done'] as const;
+const COMMANDS = ['run', 'verify', 'report', 'approve', 'reject', 'mark-done', 'lint'] as const;
 type Command = typeof COMMANDS[number];
 
 interface CliOptions {
@@ -29,7 +30,7 @@ interface CliOptions {
 function parseArgs(argv: string[]): { command: Command; options: CliOptions } {
   const [commandRaw, ...rest] = argv;
   if (!COMMANDS.includes(commandRaw as Command)) {
-    throw new Error('Usage: ai-stepflow <run|verify|report|approve|reject|mark-done> --project <path> [--flow <id-or-path>] [--run <file>] [--step <id>] [--out <file>] [--comment <text>] [--input key=value]');
+    throw new Error('Usage: ai-stepflow <run|verify|report|approve|reject|mark-done|lint> --project <path> [--flow <id-or-path>] [--run <file>] [--step <id>] [--out <file>] [--comment <text>] [--input key=value]');
   }
   const options: CliOptions = { project: process.cwd(), input: {} };
   for (let i = 0; i < rest.length; i++) {
@@ -57,17 +58,26 @@ async function loadRunFile(filePath: string): Promise<FlowRunState> {
   return JSON.parse(await fs.readFile(filePath, 'utf8')) as FlowRunState;
 }
 
+function slugify(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
 async function saveRun(projectPath: string, run: FlowRunState): Promise<string> {
   const runsDir = path.join(projectPath, '.ai-stepflow', 'runs');
   await fs.mkdir(runsDir, { recursive: true });
-  const safe = (value: string) => value.replace(/[^a-zA-Z0-9_-]+/g, '-');
-  const filePath = path.join(runsDir, `${safe(run.flowId)}-${safe(run.runId)}.json`);
+  const filePath = path.join(runsDir, `${runFileBase(run)}.json`);
   await fs.writeFile(filePath, JSON.stringify(run, null, 2), 'utf8');
   return filePath;
 }
 
-async function saveReport(projectPath: string, flowId: string, runId: string, content: string, out?: string): Promise<string> {
-  const filePath = out ?? path.join(projectPath, '.ai-stepflow', 'reports', `${flowId.replace(/[^a-zA-Z0-9_-]+/g, '-')}-${runId.replace(/[^a-zA-Z0-9_-]+/g, '-')}.md`);
+function runFileBase(run: FlowRunState): string {
+  const flow = slugify(run.flowName || run.flowId) || slugify(run.flowId);
+  const name = slugify(run.runName || '') || slugify(run.runId);
+  return `${flow}-${name}`;
+}
+
+async function saveReport(projectPath: string, run: FlowRunState, content: string, out?: string): Promise<string> {
+  const filePath = out ?? path.join(projectPath, '.ai-stepflow', 'reports', `${runFileBase(run)}.md`);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, content, 'utf8');
   return filePath;
@@ -81,10 +91,112 @@ async function runAiReview(runState: FlowRunState, step: FlowStep, projectPath: 
     step,
     runState,
     deep: step.review.deep !== false,
-    runner: opts => runClaudeStreaming(opts).completed,
+    runner: opts => runClaudeStreaming({ ...opts, maxTurns: 1 }).completed,
     onText: chunk => process.stdout.write(chunk)
   });
   return { status: result.status, output: `Review (${result.source}): ${result.status} — ${result.note}` };
+}
+
+// ---------------------------------------------------------------------------
+// lint
+// ---------------------------------------------------------------------------
+
+interface LintIssue {
+  kind: 'error' | 'warning';
+  stepId: string;
+  stepTitle: string;
+  message: string;
+}
+
+/**
+ * Validate every step in a flow against the resolved agents + skills library.
+ * Returns structured issues (errors block CI, warnings are advisory).
+ */
+function lintFlow(
+  flow: Flow,
+  agents: { name: string }[],
+  skills: { name: string }[]
+): LintIssue[] {
+  const issues: LintIssue[] = [];
+  const stepIds = new Set(flow.steps.map(s => s.id));
+  const agentNames = new Set(agents.map(a => a.name));
+  const skillNames = new Set(skills.map(s => s.name));
+
+  for (const step of flow.steps) {
+    const label = step.title || step.id;
+
+    // Agent must exist
+    if (!step.agent) {
+      issues.push({ kind: 'error', stepId: step.id, stepTitle: label, message: 'no agent declared' });
+    } else if (!agentNames.has(step.agent)) {
+      issues.push({ kind: 'error', stepId: step.id, stepTitle: label, message: `agent '${step.agent}' not found in library` });
+    }
+
+    // At least one skill must exist
+    const stepSkills = step.skills?.length ? step.skills : (step.skill ? [step.skill] : []);
+    if (stepSkills.length === 0) {
+      issues.push({ kind: 'error', stepId: step.id, stepTitle: label, message: 'no skill declared' });
+    } else {
+      for (const sk of stepSkills) {
+        if (!skillNames.has(sk)) {
+          issues.push({ kind: 'error', stepId: step.id, stepTitle: label, message: `skill '${sk}' not found in library` });
+        }
+      }
+    }
+
+    // dependsOn references must be valid step IDs
+    for (const dep of step.dependsOn ?? []) {
+      if (!stepIds.has(dep)) {
+        issues.push({ kind: 'error', stepId: step.id, stepTitle: label, message: `dependsOn '${dep}' does not match any step id` });
+      }
+    }
+
+    // No produces = cannot verify completion (advisory)
+    if (!step.produces || step.produces.length === 0) {
+      issues.push({ kind: 'warning', stepId: step.id, stepTitle: label, message: 'no produces declared — completion cannot be auto-verified' });
+    }
+  }
+
+  return issues;
+}
+
+async function runLint(projectPath: string, flowRef: string): Promise<number> {
+  const flow = await loadFlowByIdOrPath({ projectPath, flowRef });
+  if (!flow) throw new Error(`Flow not found: ${flowRef}`);
+
+  const [agents, skills] = await Promise.all([
+    loadAgents({ projectPath }),
+    loadSkills({ projectPath })
+  ]);
+
+  const issues = lintFlow(flow, agents, skills);
+  const errors   = issues.filter(i => i.kind === 'error');
+  const warnings = issues.filter(i => i.kind === 'warning');
+
+  const sourceName = flow.sourcePath.split(/[/\\]/).slice(-2).join('/');
+  process.stdout.write(`\nLinting flow: ${flow.name} (${sourceName})\n\n`);
+
+  for (const [index, step] of flow.steps.entries()) {
+    const stepIssues = issues.filter(i => i.stepId === step.id);
+    const stepErrors   = stepIssues.filter(i => i.kind === 'error');
+    const stepWarnings = stepIssues.filter(i => i.kind === 'warning');
+    const stepSkills = step.skills?.length ? step.skills : (step.skill ? [step.skill] : []);
+
+    if (stepErrors.length === 0 && stepWarnings.length === 0) {
+      // Clean step
+      process.stdout.write(`  \u2713 Step ${index + 1}: ${step.title || step.id} — agent '${step.agent}' \u2713, skills: ${stepSkills.join(', ')} \u2713\n`);
+    } else {
+      for (const issue of stepIssues) {
+        const icon = issue.kind === 'error' ? '\u2717' : '\u26a0';
+        process.stdout.write(`  ${icon} Step ${index + 1}: ${issue.stepTitle} — ${issue.message}\n`);
+      }
+    }
+  }
+
+  const summary = `\n${flow.steps.length} step(s) checked, ${errors.length} error(s), ${warnings.length} warning(s).\n`;
+  process.stdout.write(summary);
+
+  return errors.length > 0 ? 1 : 0;
 }
 
 async function runFlow(projectPath: string, flowRef: string, inputs: Record<string, string>): Promise<number> {
@@ -95,7 +207,7 @@ async function runFlow(projectPath: string, flowRef: string, inputs: Record<stri
   
   const orch = new machine.FlowOrchestrator(flow, runState);
 
-  while (true) {
+  for (;;) {
     const actions = orch.getAutoAdvanceActions();
     const action = actions.find(a => a.type === 'launch_headless' || a.type === 'launch_interactive');
     if (!action) break;
@@ -138,9 +250,10 @@ async function runFlow(projectPath: string, flowRef: string, inputs: Record<stri
 
     let output = '';
     const result = await runner({
-      systemPrompt: composeSystemPrompt(agent, stepSkillNames, skills),
+      systemPrompt: composeSystemPrompt(agent, stepSkillNames, skills, resolveTemplates(next.produces, runState.inputs), runState.inputs, resolveTemplates(next.requires, runState.inputs), next.producesContains),
       userMessage: next.input?.prompt?.trim() || `Run step: ${next.title || next.id}`,
       model: agent.model,
+      maxTurns: resolveMaxTurns(agent.maxTurns, 6),
       projectPath,
       onText: chunk => { output += chunk; process.stdout.write(chunk); }
     });
@@ -168,7 +281,8 @@ async function runFlow(projectPath: string, flowRef: string, inputs: Record<stri
       continue;
     }
 
-    if (!orch.isHeadlessStep(next) && !next.review.validatorPath) {
+    const hasAiReview = next.review.type === 'ai' || !!next.review.reviewers?.some(r => r.type === 'ai');
+    if (!hasAiReview && !next.review.validatorPath) {
       await saveRun(projectPath, runState);
       process.stderr.write(`Step '${next.title || next.id}' requires human review and cannot finish in headless mode.\n`);
       return 3;
@@ -203,7 +317,7 @@ async function reportFromFiles(projectPath: string, flowRef: string, runFile: st
   if (!flow) throw new Error(`Flow not found: ${flowRef}`);
   const runState = await loadRunFile(runFile);
   const markdown = renderRunReport(flow, runState, []);
-  const filePath = await saveReport(projectPath, flow.id, runState.runId, markdown, out);
+  const filePath = await saveReport(projectPath, runState, markdown, out);
   process.stdout.write(`Report written to ${filePath}\n`);
   return 0;
 }
@@ -248,6 +362,10 @@ async function markStepDoneFromFiles(projectPath: string, flowRef: string, runFi
 
 async function main(): Promise<number> {
   const { command, options } = parseArgs(process.argv.slice(2));
+  if (command === 'lint') {
+    if (!options.flow) throw new Error('lint requires --flow');
+    return runLint(options.project, options.flow);
+  }
   if (command === 'run') {
     if (!options.flow) throw new Error('run requires --flow');
     return runFlow(options.project, options.flow, options.input);

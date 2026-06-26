@@ -107,7 +107,7 @@ test('readProducedArtifacts enforces per-file and total caps', () => {
     writeFileSync(path.join(dir, 'a.txt'), big, 'utf8');
     const { text, count } = readProducedArtifacts(step({}, { produces: ['./a.txt'] }), dir, {});
     assert.equal(count, 1);
-    assert.match(text, /…\[truncated\]/);
+    assert.match(text, /…\[(?:middle )?truncated\]/);
     assert.ok(text.length <= REVIEW_TOTAL_CHAR_CAP + 200, 'payload stays within the total cap (plus headers)');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

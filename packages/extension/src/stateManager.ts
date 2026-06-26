@@ -19,27 +19,51 @@ export class StateManager {
     return dir;
   }
 
+  /** Lowercase slug: spaces/punctuation → '-', collapsed, trimmed. Empty input → ''. */
+  private slugify(value: string): string {
+    return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  }
+
+  /** Readable run filename base: <flowName-slug>-<runName-slug>, falling back to ids when names are missing. */
+  private runFileBase(run: FlowRunState): string {
+    const flow = this.slugify(run.flowName || run.flowId) || this.slugify(run.flowId);
+    const name = this.slugify(run.runName || '') || this.slugify(run.runId);
+    return `${flow}-${name}`;
+  }
+
   public async saveRun(run: FlowRunState): Promise<void> {
     if (!this.projectPath) return;
 
     const runsDir = path.join(this.projectPath, '.ai-stepflow', 'runs');
     await fs.mkdir(runsDir, { recursive: true });
 
-    const safe = (value: string) => value.replace(/[^a-zA-Z0-9_-]+/g, '-');
-    const filePath = path.join(runsDir, `${safe(run.flowId)}-${safe(run.runId)}.json`);
+    const filePath = path.join(runsDir, `${this.runFileBase(run)}.json`);
 
     await fs.writeFile(filePath, JSON.stringify(run, null, 2), 'utf8');
   }
 
   /** Save a generated markdown report inside the repo so it can be shared or committed. */
-  public async saveReport(flowId: string, runId: string, content: string): Promise<string | undefined> {
+  public async saveReport(run: FlowRunState, content: string): Promise<string | undefined> {
     if (!this.projectPath) return undefined;
     const reportsDir = path.join(this.projectPath, '.ai-stepflow', 'reports');
     await fs.mkdir(reportsDir, { recursive: true });
-    const safe = (value: string) => value.replace(/[^a-zA-Z0-9_-]+/g, '-');
-    const filePath = path.join(reportsDir, `${safe(flowId)}-${safe(runId)}.md`);
+    const filePath = path.join(reportsDir, `${this.runFileBase(run)}.md`);
     await fs.writeFile(filePath, content, 'utf8');
     return filePath;
+  }
+
+  /** Delete the persisted run JSON. Reconstructs the slug filename from the run itself. */
+  public async deleteRunFile(run: FlowRunState): Promise<void> {
+    if (!this.projectPath) return;
+    const filePath = path.join(this.projectPath, '.ai-stepflow', 'runs', `${this.runFileBase(run)}.json`);
+    try { await fs.unlink(filePath); } catch { /* ignore if not found */ }
+  }
+
+  /** Delete the generated markdown report. Reconstructs the slug filename from the run itself. */
+  public async deleteReportFile(run: FlowRunState): Promise<void> {
+    if (!this.projectPath) return;
+    const filePath = path.join(this.projectPath, '.ai-stepflow', 'reports', `${this.runFileBase(run)}.md`);
+    try { await fs.unlink(filePath); } catch { /* ignore if not found */ }
   }
 
   /** Saves an event to a local audit log that is never committed to the repo. */
@@ -69,6 +93,42 @@ export class StateManager {
     }
   }
 
+  /** Deletes audit log entries for a flow. If runId is provided, only entries for that run are removed. */
+  public async clearAuditLog(flowId: string, runId?: string): Promise<void> {
+    const dir = await this.getLocalStorageDir();
+    if (!dir) return;
+    const logFile = path.join(dir, 'audit-logs', `${flowId}.jsonl`);
+    
+    if (!runId) {
+      try {
+        await fs.unlink(logFile);
+      } catch {
+        // Ignore if file doesn't exist
+      }
+      return;
+    }
+
+    try {
+      const content = await fs.readFile(logFile, 'utf8');
+      const lines = content.trim().split('\n');
+      const filtered = lines.filter(line => {
+        try {
+          const entry = JSON.parse(line);
+          return entry.runId !== runId;
+        } catch {
+          return true;
+        }
+      });
+      if (filtered.length === 0) {
+        await fs.unlink(logFile);
+      } else {
+        await fs.writeFile(logFile, filtered.join('\n') + '\n', 'utf8');
+      }
+    } catch {
+      // Ignore
+    }
+  }
+
   /**
    * Most recently modified run that still has unfinished steps, used to resume an
    * in-progress run when the cockpit reopens. Skipping finished runs keeps a stale
@@ -92,6 +152,7 @@ export class StateManager {
       try {
         const stat = await fs.stat(filePath);
         const run = JSON.parse(await fs.readFile(filePath, 'utf8')) as FlowRunState;
+        if (run.isClosed) continue; // Skip finalized runs
         const unfinished = Object.values(run.steps || {}).some(step => step.completionStatus !== 'done');
         if (unfinished && (!bestUnfinished || stat.mtimeMs > bestUnfinished.mtimeMs)) {
           bestUnfinished = { run, mtimeMs: stat.mtimeMs };
@@ -114,7 +175,7 @@ export class StateManager {
    * sidebar to list the files this extension created in the repo without forcing
    * callers to re-derive paths or re-stat each file.
    */
-  public async listRunFiles(): Promise<{ flowId: string; runId: string; filePath: string; completedSteps: number; totalSteps: number; mtimeMs: number }[]> {
+  public async listRunFiles(): Promise<{ flowId: string; runId: string; runName?: string; filePath: string; completedSteps: number; totalSteps: number; mtimeMs: number; isClosed: boolean }[]> {
     if (!this.projectPath) return [];
 
     const runsDir = path.join(this.projectPath, '.ai-stepflow', 'runs');
@@ -125,7 +186,7 @@ export class StateManager {
       return [];
     }
 
-    const result: { flowId: string; runId: string; filePath: string; completedSteps: number; totalSteps: number; mtimeMs: number }[] = [];
+    const result: { flowId: string; runId: string; runName?: string; filePath: string; completedSteps: number; totalSteps: number; mtimeMs: number; isClosed: boolean }[] = [];
     for (const file of files) {
       const filePath = path.join(runsDir, file);
       try {
@@ -135,10 +196,12 @@ export class StateManager {
         result.push({
           flowId: run.flowId,
           runId: run.runId,
+          runName: run.runName,
           filePath,
           completedSteps: steps.filter(step => step.completionStatus === 'done').length,
           totalSteps: steps.length,
-          mtimeMs: stat.mtimeMs
+          mtimeMs: stat.mtimeMs,
+          isClosed: !!run.isClosed
         });
       } catch (e) {
         console.error(`Error reading run file ${filePath}:`, e);

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeReadySteps, parseVerdict, summarizeUsage, missingMarkers } from '@ai-stepflow/core';
+import { computeReadySteps, extractJsonObject, parseVerdict, summarizeUsage, missingMarkers } from '@ai-stepflow/core';
 
 test('computeReadySteps unlocks a dependent once all its deps are done', () => {
   const steps = [
@@ -45,4 +45,28 @@ test('summarizeUsage sums every token bucket and handles absence', () => {
 test('missingMarkers reports only the markers absent from the content', () => {
   assert.deepEqual(missingMarkers('## Summary\n## Plan', ['## Summary', '## Plan']), []);
   assert.deepEqual(missingMarkers('## Summary', ['## Summary', '## Test Plan']), ['## Test Plan']);
+});
+
+test('extractJsonObject preserves Markdown code fences inside JSON strings', () => {
+  const response = {
+    reply: 'Generated.',
+    name: 'test-coverage-audit',
+    description: 'Audits test coverage.',
+    instructions: '# Audit\n```bash\nnpx gitnexus status\n```\nUse {symbolName} when querying.'
+  };
+  const output = `\`\`\`json\n${JSON.stringify(response)}\n\`\`\``;
+
+  assert.deepEqual(JSON.parse(extractJsonObject(output)), response);
+});
+
+test('extractJsonObject handles prose, nested objects, and escaped quotes', () => {
+  const response = { reply: 'Done "now".', flow: { name: 'test', inputs: {} } };
+  const output = `Here is the result:\n${JSON.stringify(response)}\nGenerated successfully.`;
+
+  assert.deepEqual(JSON.parse(extractJsonObject(output)), response);
+});
+
+test('extractJsonObject rejects output without a complete valid JSON object', () => {
+  assert.throws(() => extractJsonObject('No JSON here.'), /no JSON object found/);
+  assert.throws(() => extractJsonObject('{"reply":"truncated"'), /no JSON object found/);
 });

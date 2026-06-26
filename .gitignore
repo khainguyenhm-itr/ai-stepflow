@@ -7,6 +7,10 @@ out-itest/
 dist/
 *.vsix
 
+# Coverage
+coverage/
+.nyc_output/
+
 # AppData / Temporary files
 .ast-graph/
 .claude-flow/runs/
@@ -28,3 +32,4 @@ yarn-error.log*
 
 # TypeScript info
 *.tsbuildinfo
+.gitnexus

@@ -31,9 +31,13 @@ export function renderRunReport(flow: Flow, runState: FlowRunState, auditEvents:
   const lines: string[] = [];
   const runEvents = auditEvents.filter(event => event.runId === runState.runId);
 
-  lines.push(`# Run Report: ${flow.name}`);
+  const title = runState.runName
+    ? `# Run Report: ${flow.name} — ${runState.runName}`
+    : `# Run Report: ${flow.name}`;
+  lines.push(title);
   lines.push('');
   lines.push(`- **Run ID:** ${runState.runId}`);
+  if (runState.runName) lines.push(`- **Run Name:** ${runState.runName}`);
   lines.push(`- **Flow ID:** ${runState.flowId}`);
   lines.push(`- **Source:** ${runState.source}`);
   lines.push(`- **Started:** ${formatDate(runState.runId)}`);
@@ -53,39 +57,37 @@ export function renderRunReport(flow: Flow, runState: FlowRunState, auditEvents:
     }
   }
 
-  lines.push('');
-  lines.push('## Steps');
-  lines.push('');
-  lines.push('| # | Step | Execution | Review | Completion | Model | Tokens | Cost |');
-  lines.push('|---|------|-----------|--------|------------|-------|--------|------|');
-  for (const [index, step] of flow.steps.entries()) {
-    const state = runState.steps[step.id];
-    lines.push(
-      `| ${index + 1} | ${escapeCell(step.title || step.id)} | ${state?.executionStatus ?? '—'} | ${state?.reviewStatus ?? '—'} | ${state?.completionStatus ?? '—'} | ${escapeCell(state?.modelUsed ?? '—')} | ${formatTokens(state?.tokensUsed)} | ${formatCost(state?.costUsd)} |`
-    );
-  }
-
-  // Prefer externally-supplied audit events; otherwise fall back to the per-step
-  // history the state machine records, so headless/CLI reports still show a timeline.
+  // Prefer externally-supplied audit events; otherwise fall back to per-step history
+  // so headless/CLI reports still show a timeline.
   const eventsForStep = (stepId: string): RunAuditEvent[] => {
     if (runEvents.length > 0) return runEvents.filter(event => event.stepId === stepId);
     return (runState.steps[stepId]?.history ?? []).map(entry => ({ stepId, ...entry }));
   };
-  const hasHistory = flow.steps.some(step => eventsForStep(step.id).length > 0);
 
-  if (hasHistory) {
+  lines.push('');
+  lines.push('## Steps');
+  lines.push('');
+
+  for (const [index, step] of flow.steps.entries()) {
+    const state = runState.steps[step.id];
+    lines.push(`### ${index + 1}. ${step.title || step.id}`);
     lines.push('');
-    lines.push('## History');
-    lines.push('');
-    for (const step of flow.steps) {
-      const events = eventsForStep(step.id);
-      if (events.length === 0) continue;
-      lines.push(`### ${step.title || step.id}`);
+    lines.push('| Execution | Review | Completion | Model | Tokens | Cost |');
+    lines.push('|-----------|--------|------------|-------|--------|------|');
+    lines.push(
+      `| ${state?.executionStatus ?? '—'} | ${state?.reviewStatus ?? '—'} | ${state?.completionStatus ?? '—'} | ${escapeCell(state?.modelUsed ?? '—')} | ${formatTokens(state?.tokensUsed)} | ${formatCost(state?.costUsd)} |`
+    );
+
+    const events = eventsForStep(step.id);
+    if (events.length > 0) {
+      lines.push('');
+      lines.push('#### Execution History');
+      lines.push('');
       for (const event of events) {
         lines.push(`- ${formatDate(event.timestamp)} · **${event.status}**${event.message ? ` · ${event.message}` : ''}`);
       }
-      lines.push('');
     }
+    lines.push('');
   }
 
   return lines.join('\n');

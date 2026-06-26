@@ -36,7 +36,9 @@ test('renderRunReport includes step table and audit history', () => {
   ]);
 
   assert.match(markdown, /Run Report: Report Flow/);
-  assert.match(markdown, /\| 1 \| Plan \| completed \|/);
+  // Step number is in the heading (### 1. Plan), not a table column.
+  assert.match(markdown, /### 1\. Plan/);
+  assert.match(markdown, /\| completed \| not_required \| done \|/);
   assert.match(markdown, /EPIC-1/);
   assert.match(markdown, /Started run/);
 });

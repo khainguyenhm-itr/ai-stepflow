@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { ConfigManager } from './configManager.js';
 import { CockpitPanel } from './webviewPanel.js';
 import { StateManager } from './stateManager.js';
@@ -12,6 +14,7 @@ export function activate(context: vscode.ExtensionContext) {
     const configManager = new ConfigManager(context.extensionUri.fsPath);
     const stateManager = new StateManager(context);
     const output = vscode.window.createOutputChannel('AI StepFlow');
+    void configManager.ensureProjectClaudeMd();
 
     // Sidebar dashboard: active run, library counts, MCP servers, generated files.
     // Defensively handle version access
@@ -21,10 +24,25 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.window.registerWebviewViewProvider(SidebarProvider.viewType, sidebar)
     );
 
-    const refreshAll = () => {
+    /**
+     * Debounce helper — collapses bursts of file-system events (e.g. a `git checkout`
+     * touching dozens of files) into a single refresh call, preventing the extension from
+     * hammering disk reads and webview postMessages for every individual file write.
+     */
+    const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number): T => {
+      let timer: ReturnType<typeof setTimeout>;
+      return ((...args: unknown[]) => {
+        clearTimeout(timer);
+        timer = setTimeout(() => fn(...args), ms);
+      }) as T;
+    };
+
+    const refreshAll = debounce(() => {
+      // Invalidate the in-memory library cache so the next load scans disk fresh.
+      configManager.invalidateLibraryCache();
       void CockpitPanel.currentPanel?.refreshData();
       void sidebar.refresh(false);
-    };
+    }, 300);
 
     // The cockpit can also be opened from the status bar.
     const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -68,6 +86,18 @@ export function activate(context: vscode.ExtensionContext) {
       context.subscriptions.push(runsWatcher);
     }
 
+    // GitNexus rewrites ~/.gitnexus/registry.json after `analyze` and group.yaml files under
+    // ~/.gitnexus/groups/ on group create/add/remove; watch both so the sidebar's GitNexus
+    // status (Analyze → Re-analyze / Up to date) and group select update live.
+    const gxWatcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(vscode.Uri.file(join(homedir(), '.gitnexus')), '{registry.json,groups/**}')
+    );
+    const refreshSidebarOnly = () => void sidebar.refresh(false);
+    gxWatcher.onDidCreate(refreshSidebarOnly);
+    gxWatcher.onDidChange(refreshSidebarOnly);
+    gxWatcher.onDidDelete(refreshSidebarOnly);
+    context.subscriptions.push(gxWatcher);
+
     // Re-attach the cockpit after a window reload instead of showing a dead panel.
     context.subscriptions.push(
       vscode.window.registerWebviewPanelSerializer('aiStepFlowCockpit', {
@@ -81,6 +111,10 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
       vscode.commands.registerCommand('ai-stepflow.openOverview', () => {
         CockpitPanel.createOrShow(context.extensionUri, configManager, stateManager);
+      }),
+      vscode.commands.registerCommand('ai-stepflow.openRun', async (flowId: string, runId: string) => {
+        CockpitPanel.createOrShow(context.extensionUri, configManager, stateManager);
+        await CockpitPanel.currentPanel?.openRun(flowId, runId);
       }),
       vscode.commands.registerCommand('ai-stepflow.openTab', (tab: string) => {
         CockpitPanel.createOrShow(context.extensionUri, configManager, stateManager);

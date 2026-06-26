@@ -34,7 +34,7 @@ export function applyDependencyLocks(flow: Flow, steps: Record<string, StepRunSt
 }
 
 /** Build the initial run state for a flow: every step ready, review pending where required. */
-export function initRunState(flow: Flow, opts: { runId: string; projectPath?: string; inputs?: Record<string, string> }): FlowRunState {
+export function initRunState(flow: Flow, opts: { runId: string; runName?: string; projectPath?: string; inputs?: Record<string, string> }): FlowRunState {
   const steps: Record<string, StepRunState> = {};
   for (const step of flow.steps) {
     steps[step.id] = {
@@ -47,6 +47,8 @@ export function initRunState(flow: Flow, opts: { runId: string; projectPath?: st
   return {
     flowId: flow.id,
     runId: opts.runId,
+    runName: opts.runName,
+    flowName: flow.name,
     source: flow.sourcePath,
     projectPath: opts.projectPath ?? '',
     inputs: opts.inputs ?? {},
@@ -127,7 +129,7 @@ export function markRunning(state: FlowRunState, flow: Flow, stepId: string): Fl
   const baseState = rerunDoneStep ? invalidateForRerun(state, flow, stepId) : state;
   const step = flow.steps.find(s => s.id === stepId);
   const revision = (baseState.steps[stepId]?.revision ?? 0) + 1;
-  const patch: Partial<StepRunState> = { executionStatus: 'running', completionStatus: 'not_ready', output: '', error: undefined, startedAt: new Date().toISOString(), revision };
+  const patch: Partial<StepRunState> = { executionStatus: 'running', completionStatus: 'not_ready', output: '', error: undefined, startedAt: new Date().toISOString(), revision, tokensUsed: undefined, costUsd: undefined, modelUsed: undefined };
   if (step?.review.required) {
     patch.reviewStatus = 'pending';
     patch.aiReviewOutput = '';
@@ -146,9 +148,9 @@ export function markCompleted(state: FlowRunState, flow: Flow, stepId: string, m
     // No review: go to 'done' unless the user explicitly wants to manually mark it.
     patch.completionStatus = step?.completion?.requireMarkDone ? 'ready_to_mark_done' : 'done';
   } else {
-    // Review required: always wait for human decision.
+    // Review required: wait for decision.
     patch.completionStatus = 'not_ready';
-    patch.reviewStatus = 'waiting_human';
+    patch.reviewStatus = step.review.type === 'ai' ? 'ai_review_running' : 'waiting_human';
   }
   
   return patchStep(state, flow, stepId, patch, { status: 'completed' });
@@ -173,7 +175,10 @@ export function applyAiReview(
 ): FlowRunState {
   const step = flow.steps.find(s => s.id === stepId);
   const patch: Partial<StepRunState> = { reviewStatus: status };
-  if (aiReviewOutput !== undefined) patch.aiReviewOutput = aiReviewOutput;
+  if (aiReviewOutput !== undefined) {
+    const prev = state.steps[stepId];
+    patch.aiReviewOutput = (prev?.aiReviewOutput || '') + aiReviewOutput;
+  }
 
   if (reviewMetrics && state.steps[stepId]) {
     const prev = state.steps[stepId];

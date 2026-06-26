@@ -6,6 +6,7 @@ import {
   Info,
   Play,
   ChevronUp,
+  ChevronDown,
   Check,
   GripVertical,
   Plus,
@@ -21,7 +22,9 @@ import {
   Zap,
   AlertTriangle,
   Terminal,
-  Lock
+  Lock,
+  Star,
+  Search,
 } from 'lucide-react';
 
 /* Small native UI primitives styled after VS Code. */
@@ -86,6 +89,7 @@ export const Icon = {
   Info,
   Play,
   ChevronUp,
+  ChevronDown,
   Check,
   GripVertical,
   Plus,
@@ -101,5 +105,7 @@ export const Icon = {
   Zap,
   Alert: AlertTriangle,
   Terminal,
-  Lock
+  Lock,
+  Star,
+  Search,
 };

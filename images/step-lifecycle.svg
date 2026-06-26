@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="250" viewBox="0 0 1000 250" font-family="-apple-system,Segoe UI,Roboto,sans-serif">
+  <rect width="1000" height="250" rx="10" fill="#1e1e1e"/>
+
+  <!-- Ready -->
+  <rect x="24" y="96" width="120" height="48" rx="8" fill="#2a2a2a" stroke="#3c3c3c"/>
+  <text x="84" y="125" fill="#dddddd" font-size="13" text-anchor="middle">Ready</text>
+
+  <g stroke="#5a5a5a" stroke-width="2" fill="none"><path d="M146 120 h34"/><path d="M174 114 l8 6 -8 6"/></g>
+
+  <!-- Run in terminal -->
+  <rect x="182" y="90" width="170" height="60" rx="8" fill="#26313c" stroke="#2f9bff"/>
+  <text x="267" y="116" fill="#ffffff" font-size="13" font-weight="600" text-anchor="middle">Run in Claude terminal</text>
+  <text x="267" y="134" fill="#8fb9e0" font-size="11" text-anchor="middle">agent + skills</text>
+
+  <g stroke="#5a5a5a" stroke-width="2" fill="none"><path d="M354 120 h30"/><path d="M378 114 l8 6 -8 6"/></g>
+
+  <!-- produces check (diamond) -->
+  <path d="M450 86 l44 34 -44 34 -44 -34 z" fill="#2a2a2a" stroke="#3c3c3c"/>
+  <text x="450" y="116" fill="#dddddd" font-size="12" text-anchor="middle">produces</text>
+  <text x="450" y="130" fill="#9a9a9a" font-size="11" text-anchor="middle">check</text>
+
+  <!-- produces missing -> Failed -->
+  <g stroke="#a8413a" stroke-width="2" fill="none"><path d="M450 188 v18"/><path d="M444 198 l6 8 6 -8"/></g>
+  <rect x="402" y="206" width="96" height="34" rx="8" fill="#3a1f1d" stroke="#a8413a"/>
+  <text x="450" y="228" fill="#f0a8a2" font-size="12" text-anchor="middle">Failed</text>
+  <text x="386" y="180" fill="#c77" font-size="10.5" text-anchor="end">missing</text>
+
+  <g stroke="#5a5a5a" stroke-width="2" fill="none"><path d="M494 120 h34"/><path d="M522 114 l8 6 -8 6"/></g>
+  <text x="512" y="110" fill="#888" font-size="10.5" text-anchor="middle">ok</text>
+
+  <!-- review? (diamond) -->
+  <path d="M598 86 l44 34 -44 34 -44 -34 z" fill="#2a2a2a" stroke="#3c3c3c"/>
+  <text x="598" y="124" fill="#dddddd" font-size="12" text-anchor="middle">review?</text>
+
+  <!-- review branches labels -->
+  <text x="598" y="184" fill="#888" font-size="10.5" text-anchor="middle">human: approve / reject</text>
+  <text x="598" y="200" fill="#888" font-size="10.5" text-anchor="middle">AI: validator + LLM</text>
+
+  <!-- rejected loops back to Ready -->
+  <g stroke="#c9a227" stroke-width="2" fill="none" stroke-dasharray="5 4">
+    <path d="M576 140 q-260 86 -492 4"/>
+    <path d="M90 138 l-6 8 10 2"/>
+  </g>
+  <text x="300" y="232" fill="#c9a227" font-size="10.5" text-anchor="middle">rejected → back to Ready</text>
+
+  <g stroke="#3fb950" stroke-width="2" fill="none"><path d="M642 120 h34"/><path d="M670 114 l8 6 -8 6"/></g>
+  <text x="660" y="110" fill="#7ee787" font-size="10.5" text-anchor="middle">approved</text>
+
+  <!-- Done -->
+  <rect x="684" y="90" width="120" height="60" rx="8" fill="#21311f" stroke="#3fb950"/>
+  <text x="744" y="116" fill="#ffffff" font-size="14" font-weight="700" text-anchor="middle">✓ Done</text>
+  <text x="744" y="134" fill="#9ff0b0" font-size="10.5" text-anchor="middle">none → straight to Done</text>
+</svg>

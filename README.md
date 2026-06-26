@@ -1,108 +1,87 @@
 # AI StepFlow
 
-A Claude Flow Cockpit for structured AI workflows in VS Code. Manage your Claude
-agents, skills, and multi-step workflows in one place — then run each step through
-the Claude CLI without leaving the editor.
+**Run your Claude agents, skills, and multi-step workflows from inside VS Code** —
+build a flow, run each step through the Claude CLI, and gate it on files or review.
+
+![AI StepFlow cockpit — building, running, streaming, and reviewing a two-step flow](images/cockpit-demo.gif)
+
+## The idea
+
+![How the pieces fit: agents + skills → step → flow → run with gates](images/concepts.png)
+
+Compose reusable **agents** (*who* does the work) and **skills** (*how* — the
+technique) into **steps**; wire steps into a **flow** (a dependency graph); then
+**run** it — **gates** decide when each step is done. Agents and skills are just
+markdown files in `~/.claude` (global) or `.claude` (per project).
 
 ## Features
 
-- **One cockpit for everything** — browse Global (`~/.claude`) and project-level
-  (`.claude`) agents, skills, and flows side by side, filtered by scope.
-- **Visual workflow builder** — create multi-step flows, assign an agent and one
-  or more skills per step, declare run inputs, set dependencies between steps,
-  and reorder steps by drag-and-drop.
-- **Step runner** — each step runs its skills as headless `claude -p` processes,
-  in order. Output streams into the cockpit console and every skill reports its
-  own real exit code; a step only completes when all of its skills exit cleanly.
-- **Human and AI review** — gate a step on a human approve/reject, or on an
-  automated AI review that reads the step output (or a configured review file
-  and checklist) and returns a verdict.
-- **Artifact gates** — declare `requires`, `produces`, and `producesContains`
-  checks so a step cannot start or be marked done unless the expected files and
-  markers are present.
-- **Run persistence** — in-progress runs are saved per project and restored when
-  you reopen the cockpit, so a window reload never loses your place.
-- **Headless CLI** — drive a flow from scripts or CI, including human-review
-  gates via `approve`, `reject`, and `mark-done`.
-- **Create from scratch or import** — author agents/skills in the UI, draft a
-  system prompt or skill body with Claude, or import an existing markdown file.
-
-## Requirements
-
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) on your `PATH`:
-  ```sh
-  npm install -g @anthropic-ai/claude-code
-  ```
+- 🗂️ **One cockpit** — global and project agents, skills, and flows side by side.
+- 🧩 **Visual flow builder** — agent + skills per step, set dependencies, drag to reorder.
+- ▶️ **Step runner** — each step runs in a Claude terminal; output streams into the console.
+- ✅ **Gates** — artifact (`requires` / `produces`) and review (human approve/reject or AI).
+- 💾 **Run persistence** — in-progress runs are saved per project and restored on reload.
+- 🖥️ **Headless CLI** — drive a flow from scripts or CI.
+- 🔗 **GitNexus** *(optional)* — repo knowledge graph and multi-repo groups.
 
 ## Getting started
 
-1. Open the **AI StepFlow** icon in the activity bar, or run **Open AI StepFlow**
-   from the command palette.
-2. Pick a workflow and press **Run**, or create a new one with **New Flow**.
-3. Run each step from the runner panel and review the streamed output.
+1. Install the Claude CLI: `npm install -g @anthropic-ai/claude-code`
+2. Open the **AI StepFlow** icon in the activity bar (or run **AI StepFlow: Open Cockpit**).
+3. Run **AI StepFlow: Install Default Agents & Skills**, then press **+ New Flow** → **Run**.
 
 ## How a step runs
 
-Each skill in a step is invoked as its own `claude -p "/skill-name <input>"`
-process in the project directory. Steps run their skills sequentially and stop on
-the first non-zero exit code. Headless runs use the `acceptEdits` permission mode
-so a non-interactive run does not stall waiting for a prompt that cannot be
-answered. **⚠ This means a headless (AI-reviewed) step can create or modify files
-in your project without asking for confirmation** — run flows you trust, and review
-the diff afterwards. A hung run is killed after `ai-stepflow.run.timeoutSeconds`
-(default 600s; set to 0 to disable), and you can stop one early with the **Cancel**
-button. Ad-hoc **Run agent** / **Run skill** actions instead open an interactive
-Claude session in the integrated terminal.
+![Step lifecycle: Ready → run in terminal → produces check → review → Done](images/step-lifecycle.png)
 
-Steps run only when every id in `dependsOn` is already `done`. New steps created
-from the UI depend on the previous step by default, and the step editor lets you
-adjust dependencies explicitly. When a step finishes and unlocks several dependents
-at once, every headless (AI-reviewed) branch auto-starts in parallel; interactive
-steps share one terminal, so the first opens and the rest wait for you to launch them.
+A step opens an interactive Claude terminal (its agent + primary skill pre-filled).
+It **starts** once its `dependsOn` steps are `done` and every `requires` file
+exists; it **finishes** once every `produces` file/marker exists and the review
+gate passes.
 
-Before a step starts, every path in `requires` must exist. Put any markdown/spec
-file that the step must read before running in `requires`; mentioning a filename
-inside a prompt is not treated as a file gate. After a step finishes, every path
-in `produces` must exist, and each value in `producesContains` must be found in
-at least one produced file. A configured `review.filePath` is also checked as an
-expected post-run artifact. Paths may include run-input placeholders such as
-`{feature}`; placeholders are resolved from the inputs collected when the run
-starts.
-
-AI review uses two layers. First, a deterministic validator module checks the
-artifacts. Then, when `review.deep` is not `false`, Claude reviews the produced
-artifact text with the installed review kit. If the review kit, artifacts, or a
-validator-only setup are missing, the step waits for human review instead of being
-approved automatically.
+> **Permissions / known limitation.** Steps run with Claude's normal interactive
+> permissions — only run flows you trust and review the diff. `trustLevel: sandboxed`
+> is **not currently enforced** on the interactive path (it is implemented in the
+> headless runner but unwired since steps moved to the terminal); treat sandboxed
+> flows as unrestricted until this is rewired.
 
 ## CLI
 
 The packaged extension exposes an `ai-stepflow` command for headless runs:
 
 ```sh
-ai-stepflow run --project . --flow .claude/flows/example.yaml --input feature=login
-ai-stepflow verify --project . --flow .claude/flows/example.yaml --run .claude-flow/runs/example-run.json
-ai-stepflow report --project . --flow .claude/flows/example.yaml --run .claude-flow/runs/example-run.json
-ai-stepflow approve --project . --flow .claude/flows/example.yaml --run .claude-flow/runs/example-run.json --step review --comment "Looks good"
-ai-stepflow reject --project . --flow .claude/flows/example.yaml --run .claude-flow/runs/example-run.json --step review --comment "Needs changes"
+ai-stepflow run       --project . --flow .claude/flows/example.yaml --input feature=login
+ai-stepflow verify    --project . --flow .claude/flows/example.yaml --run .claude-flow/runs/example-run.json
+ai-stepflow report    --project . --flow .claude/flows/example.yaml --run .claude-flow/runs/example-run.json
+ai-stepflow approve   --project . --flow .claude/flows/example.yaml --run .claude-flow/runs/example-run.json --step review
 ai-stepflow mark-done --project . --flow .claude/flows/example.yaml --run .claude-flow/runs/example-run.json --step implement
 ```
 
-`run` exits `3` when it reaches a human gate that cannot be completed headlessly.
-`approve` records the human approval and marks the step done in one command.
-`verify` checks whether declared produced files and markers still match the saved
-run state. `report` writes a markdown report under `.claude-flow/reports` unless
-`--out` is provided.
+`run` exits `3` at a human gate it cannot complete headlessly. `verify` re-checks
+produced files against a saved run; `report` writes a markdown report.
+
+## GitNexus *(optional)*
+
+[GitNexus](https://www.npmjs.com/package/gitnexus) builds a per-repo knowledge
+graph (symbols, call edges, flows) and can link repos into a group. Install it,
+then a GitNexus row appears in **Project Settings**:
+
+```sh
+npm install -g gitnexus
+claude mcp add gitnexus -- gitnexus mcp
+```
 
 ## Commands
 
+All commands live under the **AI StepFlow** category in the Command Palette.
+
 | Command | Description |
 | --- | --- |
-| `Open AI StepFlow` | Open the cockpit |
-| `Refresh All` | Reload agents, skills, and flows from disk |
-| `Install Default Agents & Skills` | Install the bundled SDLC agents, skills, and Karpathy rules into `~/.claude` |
+| `AI StepFlow: Open Cockpit` | Open the cockpit |
+| `AI StepFlow: Refresh All` | Reload agents, skills, and flows from disk |
+| `AI StepFlow: Install Default Agents & Skills` | Install the bundled SDLC agents, skills, and rules into `~/.claude` |
 | `AI StepFlow: Rescan AST Graph` | Re-index the workspace with `ast-graph` |
-| `AI StepFlow: Re-register AST Graph MCP Server` | Re-register the `ast-graph` MCP server with Claude |
+| `AI StepFlow: Re-register AST Graph MCP Server` | Re-register the `ast-graph` MCP server |
 
 ## License
 

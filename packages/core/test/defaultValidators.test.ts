@@ -25,7 +25,7 @@ test('aisf-produces-complete passes for non-empty files and rejects missing/empt
   try {
     const ok = path.join(dir, 'a.md');
     const empty = path.join(dir, 'b.md');
-    writeFileSync(ok, '# real content', 'utf8');
+    writeFileSync(ok, '# Real Content\n\nThis file has enough meaningful content to pass the minimum byte threshold required by the validator. It clearly contains substantial information.', 'utf8');
     writeFileSync(empty, '', 'utf8');
     const review = await loadValidator('aisf-produces-complete.mjs');
     assert.equal(review(ctxWith([ok])).decision, 'pass');

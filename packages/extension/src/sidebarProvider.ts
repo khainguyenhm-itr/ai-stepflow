@@ -1,12 +1,16 @@
 import * as vscode from 'vscode';
-import * as crypto from 'node:crypto';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 import { ConfigManager } from './configManager.js';
 import type { BundledKind } from './configManager.js';
 import { StateManager } from './stateManager.js';
-import { listMcpServers, reconnectRemoteMcpServer, findMcpConfigFile } from './mcp.js';
+import { listMcpServers } from './mcp.js';
 import type { McpServer } from './mcp.js';
-import { listPluginCatalog, togglePlugin, installPlugin, updatePlugin, uninstallPlugin, pluginDetails } from './plugins.js';
+import { listPluginCatalog, togglePlugin } from './plugins.js';
 import type { PluginInfo, AvailablePlugin } from './plugins.js';
+import { getSidebarHtml } from './sidebarHtml.js';
+import { SidebarActions } from './sidebarActions.js';
+import type { GitnexusStatus } from './sidebarActions.js';
 
 /**
  * Renders the activity-bar sidebar as a compact dashboard: the active run, library
@@ -20,13 +24,22 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   /** Last plugin probe result, reused on cheap refreshes so we don't respawn the CLI. */
   private _cachedPlugins: PluginInfo[] = [];
   private _cachedAvailable: AvailablePlugin[] = [];
+  private _actions: SidebarActions;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
     private configManager: ConfigManager,
     private stateManager: StateManager,
     private readonly version: string
-  ) {}
+  ) {
+    this._actions = new SidebarActions(
+      configManager,
+      stateManager,
+      (probeMcp) => this.refresh(probeMcp),
+      () => this._view,
+      () => this._cachedMcp
+    );
+  }
 
   public resolveWebviewView(view: vscode.WebviewView): void {
     try {
@@ -37,9 +50,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       };
       view.webview.html = this._getHtml(view.webview);
 
-      view.webview.onDidReceiveMessage(async (message: { type?: string; path?: string; url?: string; pluginId?: string; pluginName?: string; enable?: boolean; mcpName?: string; mcpTarget?: string; tab?: string; kind?: BundledKind; filename?: string; isGlobal?: boolean }) => {
+      view.webview.onDidReceiveMessage(async (message: { type?: string; path?: string; url?: string; pluginId?: string; pluginName?: string; enable?: boolean; mcpName?: string; mcpTarget?: string; tab?: string; kind?: BundledKind; filename?: string; isGlobal?: boolean; flowId?: string; runId?: string; group?: string; }) => {
         try {
           switch (message?.type) {
+            case 'openRun':
+              if (message.flowId && message.runId) {
+                await vscode.commands.executeCommand('ai-stepflow.openRun', message.flowId, message.runId);
+              } else {
+                await vscode.commands.executeCommand('ai-stepflow.openOverview');
+              }
+              return;
             case 'openOverview':
               if (message.tab) {
                 await vscode.commands.executeCommand('ai-stepflow.openTab', message.tab);
@@ -48,6 +68,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
               }
               return;
             case 'refresh':
+              await this.configManager.ensureProjectClaudeMd();
               await this.refresh(true);
               return;
             case 'openFile':
@@ -57,7 +78,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
               }
               return;
             case 'deleteRun':
-              if (message.path) await this._deleteRun(message.path);
+              if (message.path) await this._actions.deleteRun(message.path);
               return;
             case 'installDefaults':
               await vscode.commands.executeCommand('ai-stepflow.installDefaults');
@@ -85,7 +106,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
               if (message.url) await vscode.env.openExternal(vscode.Uri.parse(message.url));
               return;
             case 'pluginDetails':
-              if (message.pluginId) await this._showPluginDetails(message.pluginId, message.pluginName);
+              if (message.pluginId) await this._actions.showPluginDetails(message.pluginId, message.pluginName);
               return;
             case 'togglePlugin':
               if (message.pluginId && typeof message.enable === 'boolean') {
@@ -100,19 +121,29 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
               }
               return;
             case 'installPlugin':
-              if (message.pluginId) await this._runPluginTask(message.pluginId, message.pluginName, 'install');
+              if (message.pluginId) await this._actions.runPluginTask(message.pluginId, message.pluginName, 'install');
               return;
             case 'updatePlugin':
-              if (message.pluginId) await this._runPluginTask(message.pluginId, message.pluginName, 'update');
+              if (message.pluginId) await this._actions.runPluginTask(message.pluginId, message.pluginName, 'update');
               return;
             case 'uninstallPlugin':
-              if (message.pluginId) await this._runPluginTask(message.pluginId, message.pluginName, 'uninstall');
+              if (message.pluginId) await this._actions.runPluginTask(message.pluginId, message.pluginName, 'uninstall');
+              return;
+            case 'savePref':
+              if ((message as any).key && (message as any).value !== undefined) {
+                if ((message as any).key === 'ai:responseStyle') {
+                  await this.configManager.saveGlobalUiPref((message as any).key, (message as any).value);
+                  await this.configManager.applyResponseStyle((message as any).value);
+                } else {
+                  await this.configManager.saveUiPref((message as any).key, (message as any).value);
+                }
+              }
               return;
             case 'reconnectMcp':
-              if (message.mcpName && message.mcpTarget) await this._reconnectMcp(message.mcpName, message.mcpTarget);
+              if (message.mcpName && message.mcpTarget) await this._actions.reconnectMcp(message.mcpName, message.mcpTarget);
               return;
             case 'mcpDetails':
-              if (message.mcpName) await this._showMcpDetails(message.mcpName);
+              if (message.mcpName) await this._actions.showMcpDetails(message.mcpName);
               return;
             case 'astScan':
               await vscode.commands.executeCommand('ai-stepflow.astGraph.rescan');
@@ -125,6 +156,26 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             case 'openAstSettings':
               await vscode.commands.executeCommand('workbench.action.openSettings', 'ai-stepflow.astGraph');
               return;
+            case 'gitnexusAnalyze':
+              await this._actions.runGitnexusAnalyze(message.group);
+              return;
+            case 'gitnexusClean':
+              await this._actions.runGitnexusClean();
+              return;
+            case 'gitnexusCreateGroup':
+              await this._actions.createGitnexusGroup();
+              return;
+            case 'gitnexusSelectGroup':
+              if (message.group) await this._actions.selectGitnexusGroup(message.group);
+              return;
+            case 'gitnexusOpenRegistry':
+              await this._actions.openGitnexusFile(join(homedir(), '.gitnexus', 'registry.json'), 'registry not found yet — run Analyze first.');
+              return;
+            case 'gitnexusOpenGroup': {
+              const st = await this._actions.readGitnexusStatus();
+              if (st.currentGroup) await this._actions.openGitnexusFile(join(homedir(), '.gitnexus', 'groups', st.currentGroup, 'group.yaml'), 'group config not found.');
+              return;
+            }
           }
         } catch (e) {
           vscode.window.showErrorMessage(`AI StepFlow: ${e instanceof Error ? e.message : String(e)}`);
@@ -149,15 +200,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     if (!this._view) return;
 
     try {
-      const [flows, agents, skills, runFiles, activeRun, defaultItems] = await Promise.all([
+      const [flows, agents, skills, runFiles, activeRun, defaultItems, uiPrefs, gitnexus] = await Promise.all([
         this.configManager.loadFlows().catch(() => []),
         this.configManager.loadAgents().catch(() => []),
         this.configManager.loadSkills().catch(() => []),
         this.stateManager.listRunFiles().catch(() => []),
         this.stateManager.loadLatestRun().catch(() => undefined),
-        this.configManager.listBundledDefaults().catch(() => [])
+        this.configManager.listBundledDefaults().catch(() => []),
+        this.configManager.loadUiPrefs().catch(() => ({} as Record<string, string>)),
+        this._actions.readGitnexusStatus().catch(() => ({ indexed: false, stale: false, files: 0, indexedAt: null, registryName: null, groups: [], currentGroup: null, currentAlias: null } as GitnexusStatus))
       ]);
       const flowName = (id: string) => flows.find(f => f.id === id)?.name || id;
+      const visibleRunFiles = runFiles.filter(file => !file.isClosed);
 
       // Collect every agent/skill name referenced by any flow step (used for in-use guard).
       const usedAgents = new Set<string>();
@@ -186,11 +240,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         // The running step, else the first step not yet done.
         const currentStep = flow?.steps.find(step => activeRun.steps[step.id]?.executionStatus === 'running')
           ?? flow?.steps.find(step => activeRun.steps[step.id]?.completionStatus !== 'done');
-        const activeRunFile = runFiles.find(f => f.runId === activeRun.runId);
+        const activeRunFile = visibleRunFiles.find(f => f.runId === activeRun.runId);
         const stepStatus = currentStep ? (activeRun.steps[currentStep.id]?.executionStatus || 'ready') : null;
         active = {
           flowName: flowName(activeRun.flowId),
           runId: activeRun.runId,
+          runName: activeRun.runName,
           completed,
           total,
           percent: total ? Math.round((completed / total) * 100) : 0,
@@ -206,18 +261,24 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         type: 'data',
         stats: { flows: flows.length, agents: agents.length, skills: skills.length },
         defaultItems: annotatedItems,
-        activeRun: active,
+        uiPrefs,
+        gitnexus,
         mcp: this._cachedMcp,
         plugins: this._cachedPlugins,
         pluginsAvailable: this._cachedAvailable,
-        runFiles: runFiles.map(file => ({
+        runFiles: visibleRunFiles.map(file => ({
+          flowId: file.flowId,
           flowName: flowName(file.flowId),
           runId: file.runId,
+          runName: file.runName,
           completed: file.completedSteps,
           total: file.totalSteps,
-          filePath: file.filePath
+          filePath: file.filePath,
+          isClosed: file.isClosed,
+          isActive: file.runId === activeRun?.runId
         })),
-        totalRunFiles: runFiles.length
+        totalRunFiles: visibleRunFiles.length,
+        activeRun: active
       });
 
       if (probeMcp) {
@@ -255,848 +316,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  /** Install, update, or uninstall a plugin with a progress notification, then re-probe the catalog. */
-  private async _runPluginTask(pluginId: string, pluginName: string | undefined, action: 'install' | 'update' | 'uninstall'): Promise<void> {
-    const label = pluginName || pluginId;
-    if (action === 'uninstall') {
-      const choice = await vscode.window.showWarningMessage(
-        `Uninstall plugin '${label}'?`,
-        { modal: true, detail: 'Its data directory is preserved, so reinstalling keeps your config and history.' },
-        'Uninstall'
-      );
-      if (choice !== 'Uninstall') return;
-    }
-    await vscode.window.withProgress({
-      location: vscode.ProgressLocation.Notification,
-      title: `${action === 'install' ? 'Installing' : action === 'update' ? 'Updating' : 'Uninstalling'} plugin '${label}'…`,
-      cancellable: false
-    }, async () => {
-      const res = action === 'install' ? await installPlugin(pluginId) : action === 'update' ? await updatePlugin(pluginId) : await uninstallPlugin(pluginId);
-      if (res.ok) {
-        vscode.window.showInformationMessage(`AI StepFlow: plugin '${label}' ${action === 'install' ? 'installed' : action === 'update' ? 'updated' : 'uninstalled'}.`);
-      } else {
-        vscode.window.showErrorMessage(`AI StepFlow: failed to ${action} plugin. ${res.error}`);
-      }
-      await this.refresh(true);
-    });
-  }
-
-  private async _showPluginDetails(pluginId: string, pluginName: string | undefined): Promise<void> {
-    const label = pluginName || pluginId;
-    const res = await pluginDetails(pluginId);
-    if (!res.ok) {
-      vscode.window.showErrorMessage(`AI StepFlow: unable to load details for '${label}'. ${res.error}`);
-      return;
-    }
-    const doc = await vscode.workspace.openTextDocument({
-      language: 'plaintext',
-      content: res.output || `No details returned for ${label}.`
-    });
-    await vscode.window.showTextDocument(doc, { preview: true });
-  }
-
-  private async _showMcpDetails(name: string): Promise<void> {
-    const server = this._cachedMcp.find(s => s.name === name);
-    if (!server) {
-      vscode.window.showWarningMessage(`AI StepFlow: MCP server '${name}' is no longer in the current list.`);
-      return;
-    }
-    const cwd = this.configManager.getProjectPath();
-    const configFile = findMcpConfigFile(name, cwd) ?? '(not found in local or global config)';
-    const content = [
-      `Name:        ${server.name}`,
-      `Status:      ${server.status}`,
-      `Target:      ${server.target || '(not reported)'}`,
-      `Config file: ${configFile}`,
-      '',
-      'Source: claude mcp list'
-    ].join('\n');
-    const doc = await vscode.workspace.openTextDocument({ language: 'plaintext', content });
-    await vscode.window.showTextDocument(doc, { preview: true });
-  }
-
-  /** Retry a failed remote MCP server from the sidebar using its current target. */
-  private async _reconnectMcp(name: string, target: string): Promise<void> {
-    await vscode.window.withProgress({
-      location: vscode.ProgressLocation.Notification,
-      title: `Reconnecting MCP server '${name}'…`,
-      cancellable: false
-    }, async () => {
-      const res = await reconnectRemoteMcpServer({ name, target, scope: 'user', cwd: this.configManager.getProjectPath() });
-      if (res.ok) {
-        vscode.window.showInformationMessage(`AI StepFlow: MCP server '${name}' reconnected.`);
-      } else {
-        vscode.window.showErrorMessage(`AI StepFlow: failed to reconnect MCP server. ${res.error}`);
-      }
-      await this.refresh(true);
-    });
-  }
-
-  /** Deletes a generated run file after a modal confirmation, then repaints. */
-  private async _deleteRun(filePath: string): Promise<void> {
-    const name = filePath.split(/[\\/]/).pop() || filePath;
-    const choice = await vscode.window.showWarningMessage(
-      `Delete this run file?\n${name}`,
-      { modal: true },
-      'Delete'
-    );
-    if (choice !== 'Delete') return;
-
-    try {
-      await vscode.workspace.fs.delete(vscode.Uri.file(filePath));
-    } catch (e) {
-      vscode.window.showErrorMessage(`AI StepFlow: unable to delete run file. ${e instanceof Error ? e.message : String(e)}`);
-    }
-    await this.refresh(false);
-  }
-
   private _getHtml(webview: vscode.Webview): string {
-    const nonce = crypto.randomBytes(16).toString('base64');
-    const csp = [
-      `default-src 'none'`,
-      `style-src ${webview.cspSource} 'unsafe-inline'`,
-      `script-src 'nonce-${nonce}'`
-    ].join('; ');
-
-    return /* html */ `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="${csp}">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    :root {
-      --r: 3px;
-      --r-sm: 2px;
-      --border: var(--vscode-panel-border, #3c3c3c);
-      --panel: var(--vscode-sideBar-background, #252526);
-      --panel-2: var(--vscode-editorWidget-background, #2d2d2d);
-      --hover: var(--vscode-list-hoverBackground, #2a2d2e);
-      --focus: var(--vscode-focusBorder, #007fd4);
-      --btn: var(--vscode-button-background, #0e639c);
-      --btn-fg: var(--vscode-button-foreground, #fff);
-      --btn-h: var(--vscode-button-hoverBackground, #1177bb);
-      --error: var(--vscode-errorForeground, #f48771);
-      --badge: var(--vscode-badge-background, #4d4d4d);
-      --badge-fg: var(--vscode-badge-foreground, #fff);
-      --muted: var(--vscode-descriptionForeground, #9d9d9d);
-      --success: var(--vscode-charts-green, #73c991);
-    }
-    *, *::before, *::after { box-sizing: border-box; }
-    html, body { height: 100%; overflow: hidden; margin: 0; padding: 0; }
-    body { color: var(--vscode-foreground); background: var(--panel); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); line-height: 1.4; }
-    button { font-family: inherit; cursor: pointer; }
-
-    /* ── shell layout ── */
-    .shell { display: flex; flex-direction: column; height: 100vh; }
-
-    /* header row */
-    .hdr { display: flex; align-items: center; gap: 7px; padding: 10px 12px 0; flex: 0 0 auto; }
-    .mark { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: var(--r); background: var(--btn); color: var(--btn-fg); font-size: 9px; font-weight: 700; flex: 0 0 auto; letter-spacing: .02em; }
-    .brand-name { flex: 1; font-size: 12.5px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .ver { color: var(--muted); font-size: 10px; flex: 0 0 auto; }
-    .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 13px; line-height: 1; }
-    .icon-btn:hover { color: var(--vscode-foreground); background: var(--hover); }
-
-    /* scrollable content area */
-    .body { flex: 1 1 0; overflow-y: auto; overflow-x: hidden; padding: 0 12px 16px; overscroll-behavior: contain; }
-    .body::-webkit-scrollbar { display: none; }
-    .body { scrollbar-width: none; }
-
-    /* ── active run inline (inside Runs list) ── */
-    .run-active { border-left: 2px solid var(--btn); background: rgba(14,99,156,.06); }
-    .run-active .item-acts { opacity: 1 !important; }
-    .run-prog { height: 3px; border-radius: 2px; background: var(--border); overflow: hidden; margin-top: 4px; }
-    .run-prog-fill { height: 100%; background: var(--vscode-progressBar-background, #0e70c0); transition: width .3s ease; }
-    .run-count { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-
-    /* badge */
-    .badge { display: inline-flex; align-items: center; height: 16px; padding: 0 6px; border-radius: 9px; font-size: 9px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--badge-fg); background: var(--badge); white-space: nowrap; flex: 0 0 auto; }
-    .badge.running { background: var(--vscode-charts-blue, var(--focus)); }
-    .badge.completed { background: var(--success); }
-
-    /* ── section ── */
-    .sec { margin-top: 8px; }
-    .sec-hdr { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
-    #lib-hdr { padding: 9px 8px; }
-    .sec-label { flex: 1; font-size: 12px; font-weight: 700; color: var(--vscode-foreground); }
-    .sec-count { display: inline-flex; align-items: center; height: 15px; padding: 0 5px; border-radius: 9px; font-size: 9px; font-weight: 700; color: var(--badge-fg); background: var(--badge); }
-    .sec-count:empty { display: none; }
-    .sec-toggle { display: flex; align-items: center; gap: 7px; width: 100%; padding: 9px 8px; border: 0; background: transparent; color: inherit; text-align: left; font-family: inherit; transition: background .1s; }
-    .sec-toggle:hover { background: var(--hover); }
-
-    /* ── library stats ── */
-    .stats { display: flex; gap: 5px; }
-    .stat { flex: 1; min-width: 0; padding: 7px 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); cursor: pointer; text-align: center; transition: border-color .1s, background .1s; }
-    .stat:hover { border-color: var(--focus); }
-    .stat-num { font-size: 18px; font-weight: 700; line-height: 1.1; }
-    .stat-lbl { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-top: 2px; }
-
-    /* default library expandable */
-    .lib-toggle { display: flex; align-items: center; gap: 7px; margin-top: 6px; padding: 9px 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); cursor: pointer; width: 100%; text-align: left; font-family: inherit; color: var(--vscode-foreground); transition: background .1s; }
-    .lib-toggle:hover { background: var(--hover); }
-    .lib-caret { font-size: 9px; color: var(--muted); transition: transform .15s; flex: 0 0 auto; }
-    .lib-caret.open { transform: rotate(90deg); }
-    .lib-toggle-label { flex: 1; font-size: 11.5px; font-weight: 500; }
-    .lib-toggle-badge { display: inline-flex; align-items: center; height: 15px; padding: 0 5px; border-radius: 9px; font-size: 9px; font-weight: 700; color: var(--badge-fg); background: var(--success); flex: 0 0 auto; }
-    .lib-toggle-badge:empty { display: none; }
-    .lib-panel { margin-top: 2px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
-    .lib-tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 8px; background: var(--panel); gap: 0; }
-    .lib-tab { padding: 5px 8px 4px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 11px; font-weight: 600; cursor: pointer; line-height: 1.4; white-space: nowrap; font-family: inherit; }
-    .lib-tab:hover { color: var(--vscode-foreground); }
-    .lib-tab.active { color: var(--vscode-foreground); border-bottom-color: var(--focus); }
-
-    /* ── box (bordered list container) ── */
-    .box { border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
-
-    /* tabs inside box */
-    .box-tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 8px; background: var(--panel); }
-    .tab { padding: 6px 8px 5px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 11.5px; font-weight: 600; cursor: pointer; line-height: 1.4; }
-    .tab:hover { color: var(--vscode-foreground); }
-    .tab.active { color: var(--vscode-foreground); border-bottom-color: var(--focus); }
-
-    /* search row inside box */
-    .box-search { padding: 5px 8px; border-bottom: 1px solid var(--border); background: var(--panel); }
-    .search { width: 100%; padding: 3px 7px; border: 1px solid var(--vscode-input-border, var(--border)); border-radius: var(--r-sm); background: var(--vscode-input-background); color: var(--vscode-input-foreground); font-size: 11.5px; font-family: inherit; outline: none; }
-    .search:focus { border-color: var(--focus); }
-    .search::placeholder { color: var(--vscode-input-placeholderForeground, #818181); }
-
-    /* ── list items ── */
-    .item { position: relative; display: grid; grid-template-columns: 8px minmax(0,1fr) auto; align-items: center; gap: 6px; min-height: 36px; padding: 5px 8px; transition: background .1s; }
-    .item + .item { border-top: 1px solid rgba(127,127,127,.07); }
-    .item:hover { background: var(--hover); }
-    .item-dot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
-    .item-body { min-width: 0; }
-    .item-name { display: block; font-size: 11.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
-    .item-sub { display: block; font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; margin-top: 1px; }
-    /* action buttons: hidden until hover so narrow sidebars don't clip content */
-    .item-acts { display: flex; align-items: center; gap: 3px; opacity: 0; transition: opacity .1s; }
-    .item:hover .item-acts, .item.menu-open .item-acts { opacity: 1; }
-
-    /* ── pill action buttons ── */
-    .pill { display: inline-flex; align-items: center; justify-content: center; height: 22px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--r-sm); background: transparent; color: var(--vscode-foreground); font-size: 10.5px; font-weight: 600; cursor: pointer; white-space: nowrap; font-family: inherit; transition: background .1s, border-color .1s; }
-    .pill:hover { background: var(--hover); }
-    .pill[disabled] { opacity: .4; cursor: default; }
-    .pill.accent { border-color: var(--btn); background: var(--btn); color: var(--btn-fg); }
-    .pill.accent:hover { background: var(--btn-h); border-color: var(--btn-h); }
-    .pill.danger:hover { color: var(--error); border-color: var(--error); background: transparent; }
-
-    /* ── context menu (details dropdown) ── */
-    .menu { position: relative; }
-    .menu > summary { list-style: none; }
-    .menu > summary::-webkit-details-marker { display: none; }
-    .menu-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1px solid transparent; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 14px; font-weight: 700; cursor: pointer; line-height: 1; font-family: inherit; }
-    .menu-btn:hover, .menu[open] .menu-btn { color: var(--vscode-foreground); background: var(--hover); border-color: var(--border); }
-    .menu-pop { position: fixed; z-index: 9999; min-width: 130px; max-width: calc(100vw - 12px); padding: 3px; border: 1px solid var(--border); border-radius: var(--r); background: var(--vscode-dropdown-background, var(--panel-2)); box-shadow: 0 6px 20px rgba(0,0,0,.36); }
-    .menu-item { display: flex; align-items: center; width: 100%; min-height: 26px; border: 0; border-radius: var(--r-sm); padding: 4px 8px; background: transparent; color: var(--vscode-foreground); font-size: 11.5px; font-family: inherit; text-align: left; cursor: pointer; }
-    .menu-item:hover { background: var(--hover); }
-    .menu-item.danger { color: var(--error); }
-    .menu-item[disabled] { opacity: .4; cursor: default; pointer-events: none; }
-
-    /* list footer */
-    .list-more { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--muted); padding: 5px 8px 6px; border-top: 1px solid rgba(127,127,127,.08); }
-    /* Default Library tab bar: sticky so it stays visible while scrolling items */
-    .lib-panel .lib-tabs { position: sticky; top: 0; z-index: 1; background: var(--panel); }
-
-    /* ── states ── */
-    .empty { display: block; color: var(--muted); font-size: 11.5px; padding: 8px; font-style: italic; }
-    .skel { display: flex; flex-direction: column; gap: 7px; padding: 10px 8px; }
-    .skel-line { height: 11px; border-radius: 2px; background: linear-gradient(90deg, rgba(127,127,127,.10) 25%, rgba(127,127,127,.18) 37%, rgba(127,127,127,.10) 63%); background-size: 400% 100%; animation: shimmer 1.4s ease infinite; }
-    .skel-line:nth-child(2) { width: 68%; }
-    .skel-line:nth-child(3) { width: 80%; }
-    @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .spin { display: inline-block; width: 9px; height: 9px; border: 1.5px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin .65s linear infinite; vertical-align: middle; margin-right: 4px; flex-shrink: 0; }
-
-    /* ── fixed-height list containers: each section scrolls internally, scrollbar hidden ── */
-    #mcp, #plugins, #runs { max-height: 200px; overflow-y: auto; scrollbar-width: none; }
-    #mcp::-webkit-scrollbar, #plugins::-webkit-scrollbar, #runs::-webkit-scrollbar { display: none; }
-    .lib-panel { max-height: 180px; overflow-y: auto; scrollbar-width: none; }
-    .lib-panel::-webkit-scrollbar { display: none; }
-
-    footer { display: none; }
-  </style>
-</head>
-<body>
-<div class="shell">
-
-  <!-- header: brand + version + refresh -->
-  <div class="hdr">
-    <span class="mark">AI</span>
-    <span class="brand-name">AI StepFlow</span>
-    ${this.version ? `<span class="ver">v${this.version}</span>` : ''}
-    <button class="icon-btn" id="refresh" title="Refresh" aria-label="Refresh">↻</button>
-  </div>
-
-  <!-- scrollable content -->
-  <div class="body">
-
-    <!-- library stats -->
-    <section class="sec">
-      <div class="sec-hdr" id="lib-hdr">
-        <span class="sec-label">Library</span>
-        <span class="sec-count" id="lib-count"></span>
-      </div>
-      <div class="stats" id="stats"></div>
-      <div id="defaults-toggle"></div>
-      <div id="defaults-panel" style="display:none"></div>
-    </section>
-
-    <!-- MCP connections -->
-    <section class="sec">
-      <div class="sec-hdr">
-        <button class="sec-toggle" id="mcp-section-toggle" type="button" aria-expanded="false">
-          <span class="lib-caret open" id="mcp-caret">&#9658;</span>
-          <span class="sec-label">MCP Connections</span>
-          <span class="sec-count" id="conn-count"></span>
-        </button>
-      </div>
-      <div class="box" id="mcp-panel">
-        <div class="box-tabs" id="mcp-tabs">
-          <button class="tab active" type="button" data-tab="installed">Installed</button>
-          <button class="tab" type="button" data-tab="available">Available</button>
-        </div>
-        <div class="box-search">
-          <input class="search" id="mcp-search" type="text" placeholder="Filter servers…" autocomplete="off" spellcheck="false">
-        </div>
-        <div id="mcp"><div class="skel"><div class="skel-line"></div><div class="skel-line"></div></div></div>
-      </div>
-    </section>
-
-    <!-- plugins -->
-    <section class="sec">
-      <div class="sec-hdr">
-        <button class="sec-toggle" id="plugins-section-toggle" type="button" aria-expanded="false">
-          <span class="lib-caret open" id="plugins-caret">&#9658;</span>
-          <span class="sec-label">Plugins</span>
-          <span class="sec-count" id="plug-count"></span>
-        </button>
-      </div>
-      <div class="box" id="plugins-panel">
-        <div class="box-tabs" id="plugin-tabs">
-          <button class="tab active" type="button" data-tab="installed">Installed</button>
-          <button class="tab" type="button" data-tab="marketplace">Available</button>
-        </div>
-        <div class="box-search">
-          <input class="search" id="plugin-search" type="text" placeholder="Filter plugins…" autocomplete="off" spellcheck="false">
-        </div>
-        <div id="plugins"><div class="skel"><div class="skel-line"></div><div class="skel-line"></div><div class="skel-line"></div></div></div>
-      </div>
-    </section>
-
-    <!-- runs (active + recent) -->
-    <section class="sec">
-      <div class="sec-hdr">
-        <button class="sec-toggle" id="runs-section-toggle" type="button" aria-expanded="false">
-          <span class="lib-caret open" id="runs-caret">&#9658;</span>
-          <span class="sec-label">Runs</span>
-          <span class="sec-count" id="runs-count"></span>
-        </button>
-      </div>
-      <div class="box" id="runs-panel"><div id="runs"><span class="empty">No runs yet</span></div></div>
-    </section>
-
-  </div><!-- /.body -->
-</div><!-- /.shell -->
-<footer>AI StepFlow</footer>
-
-<script nonce="${nonce}">
-  const vscode = acquireVsCodeApi();
-  document.getElementById('refresh').onclick = () => vscode.postMessage({ type: 'refresh' });
-
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const fmtTime = iso => { const d = new Date(iso); return !isNaN(d.getTime()) ? d.toLocaleString() : esc(iso); };
-  const statusText = s => s === 'connected' ? 'Connected' : s === 'needs-auth' ? 'Needs auth' : s === 'failed' ? 'Failed' : s || 'Not added';
-  const spinHtml = '<span class="spin" aria-hidden="true"></span>';
-  const actionMenu = items => items && items.length
-    ? '<details class="menu"><summary class="menu-btn" title="More actions" aria-label="More">···</summary><div class="menu-pop">' + items.join('') + '</div></details>'
-    : '';
-  const menuItem = (label, attrs, danger, disabled) =>
-    '<button class="menu-item' + (danger ? ' danger' : '') + '" type="button" ' + (disabled ? 'disabled ' : '') + attrs + '>' + esc(label) + '</button>';
-
-  function positionMenu(menu) {
-    const btn = menu.querySelector('.menu-btn');
-    const pop = menu.querySelector('.menu-pop');
-    if (!btn || !pop) return;
-
-    pop.style.left = '0px';
-    pop.style.right = 'auto';
-    pop.style.top = '0px';
-
-    const margin = 6;
-    const btnRect = btn.getBoundingClientRect();
-    const popRect = pop.getBoundingClientRect();
-    const viewportW = document.documentElement.clientWidth;
-    const viewportH = document.documentElement.clientHeight;
-    const width = Math.min(popRect.width, Math.max(0, viewportW - margin * 2));
-    const height = popRect.height;
-
-    let left = btnRect.right - width;
-    left = Math.max(margin, Math.min(left, viewportW - width - margin));
-
-    let top = btnRect.bottom + 4;
-    if (top + height > viewportH - margin) {
-      top = btnRect.top - height - 4;
-    }
-    top = Math.max(margin, Math.min(top, viewportH - height - margin));
-
-    pop.style.left = left + 'px';
-    pop.style.top = top + 'px';
-  }
-
-  // Close any open menu when clicking outside it; position opened menu-pop via fixed coords.
-  document.addEventListener('click', e => {
-    const menu = e.target instanceof Element ? e.target.closest('.menu') : null;
-    document.querySelectorAll('.menu[open]').forEach(n => {
-      if (n !== menu) {
-        n.open = false;
-        n.closest('.item')?.classList.remove('menu-open');
-      }
-    });
-  });
-  document.addEventListener('toggle', e => {
-    const menu = e.target instanceof Element ? e.target.closest('.menu') : null;
-    if (!menu) return;
-    menu.closest('.item')?.classList.toggle('menu-open', menu.open);
-    if (menu.open) positionMenu(menu);
-  }, true);
-  window.addEventListener('resize', () => {
-    document.querySelectorAll('.menu[open]').forEach(positionMenu);
-  });
-
-  let activePluginTab = 'installed';
-  let pluginQuery = '';
-  let installedPlugins = [];
-  let availablePlugins = [];
-  let lastActiveRun = null;
-  let lastRunFiles = [];
-  let lastRunTotal = 0;
-  const sectionOpen = { mcp: false, plugins: false, runs: false };
-
-  function setSectionOpen(key, open) {
-    sectionOpen[key] = open;
-    const panel = document.getElementById(key + '-panel');
-    const caret = document.getElementById(key + '-caret');
-    const toggle = document.getElementById(key + '-section-toggle');
-    if (panel) panel.style.display = open ? '' : 'none';
-    if (caret) caret.className = 'lib-caret' + (open ? ' open' : '');
-    if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-  }
-
-  ['mcp', 'plugins', 'runs'].forEach(key => {
-    const toggle = document.getElementById(key + '-section-toggle');
-    if (!toggle) return;
-    toggle.onclick = () => setSectionOpen(key, !sectionOpen[key]);
-    setSectionOpen(key, sectionOpen[key]);
-  });
-
-  // Plugin tab switcher
-  document.querySelectorAll('#plugin-tabs .tab').forEach(n => {
-    n.onclick = () => {
-      document.querySelectorAll('#plugin-tabs .tab').forEach(t => t.classList.remove('active'));
-      n.classList.add('active');
-      activePluginTab = n.getAttribute('data-tab');
-      renderPlugins();
-    };
-  });
-  document.getElementById('plugin-search').addEventListener('input', e => {
-    pluginQuery = e.target.value.trim().toLowerCase();
-    renderPlugins();
-  });
-
-  // MCP tabs + search
-  let activeMcpTab = 'installed';
-  let mcpQuery = '';
-  let mcpServers = [];
-  document.querySelectorAll('#mcp-tabs .tab').forEach(n => {
-    n.onclick = () => {
-      document.querySelectorAll('#mcp-tabs .tab').forEach(t => t.classList.remove('active'));
-      n.classList.add('active');
-      activeMcpTab = n.getAttribute('data-tab');
-      renderMcp();
-    };
-  });
-  document.getElementById('mcp-search').addEventListener('input', e => {
-    mcpQuery = e.target.value.trim().toLowerCase();
-    renderMcp();
-  });
-
-  // ── render functions ──
-
-  function renderStats(s) {
-    const items = [['flows', s.flows, 'Flows'], ['agents', s.agents, 'Agents'], ['skills', s.skills, 'Skills']];
-    document.getElementById('stats').innerHTML = items.map(([key, n, lbl]) =>
-      '<div class="stat" data-tab="' + key + '" title="Open ' + lbl + '">' +
-      '<div class="stat-num">' + n + '</div>' +
-      '<div class="stat-lbl">' + lbl + '</div>' +
-      '</div>'
-    ).join('');
-    document.querySelectorAll('.stat').forEach(n => {
-      n.onclick = () => vscode.postMessage({ type: 'openOverview', tab: n.getAttribute('data-tab') });
-    });
-    const total = (s.flows || 0) + (s.agents || 0) + (s.skills || 0);
-    document.getElementById('lib-count').textContent = total ? String(total) : '';
-  }
-
-  let defaultLibraryOpen = false;
-  let defaultItemsData = [];
-  let defaultLibTab = 'agents';
-  const LIB_TABS = [
-    { key: 'agents',     label: 'Agents' },
-    { key: 'skills',     label: 'Skills' },
-    { key: 'reviews',    label: 'Reviews' },
-    { key: 'validators', label: 'Validators' },
-  ];
-
-  function renderDefaults(items) {
-    defaultItemsData = items || [];
-    const installedCount = defaultItemsData.filter(i => i.installed).length;
-    const toggle = document.getElementById('defaults-toggle');
-    toggle.innerHTML =
-      '<button class="lib-toggle" id="lib-toggle-btn">' +
-      '<span class="lib-caret' + (defaultLibraryOpen ? ' open' : '') + '">&#9658;</span>' +
-      '<span class="lib-toggle-label">Default Library</span>' +
-      (installedCount ? '<span class="lib-toggle-badge">' + installedCount + ' installed</span>' : '') +
-      '</button>';
-    document.getElementById('lib-toggle-btn').onclick = () => {
-      defaultLibraryOpen = !defaultLibraryOpen;
-      renderDefaultsPanel();
-    };
-    renderDefaultsPanel();
-  }
-
-  function fmtDefaultName(name) {
-    return name.replace(/^aisf-(?:agent|skill|review|validator)?-?/, '').replace(/-/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());
-  }
-
-  function renderDefaultsPanel() {
-    const panel = document.getElementById('defaults-panel');
-    const btn = document.getElementById('lib-toggle-btn');
-    if (btn) btn.querySelector('.lib-caret').className = 'lib-caret' + (defaultLibraryOpen ? ' open' : '');
-    if (!defaultLibraryOpen) { panel.style.display = 'none'; return; }
-    panel.style.display = '';
-
-    const tabsHtml = LIB_TABS.map(t => {
-      const count = defaultItemsData.filter(i => i.kind === t.key).length;
-      if (!count) return '';
-      return '<button class="lib-tab' + (defaultLibTab === t.key ? ' active' : '') + '" type="button" data-libtab="' + t.key + '">' + t.label + ' <span style="opacity:.6;font-weight:400">(' + count + ')</span></button>';
-    }).join('');
-
-    const items = defaultItemsData.filter(i => i.kind === defaultLibTab);
-    const itemsHtml = items.length
-      ? items.map(item =>
-          '<div class="item">' +
-          '<span class="item-dot" style="background:' + (item.installed ? 'var(--success)' : 'var(--badge)') + '"></span>' +
-          '<span class="item-body">' +
-            '<span class="item-name" title="' + esc(item.name) + '">' + esc(fmtDefaultName(item.name)) + '</span>' +
-            '<span class="item-sub" title="' + esc(item.description) + '">' + esc(item.description) + '</span>' +
-          '</span>' +
-          '<span class="item-acts">' +
-            (item.installed
-              ? (item.hasUpdate ? '<button class="pill accent" type="button" data-act="updateDefault" data-kind="' + esc(item.kind) + '" data-filename="' + esc(item.filename) + '">Update</button>' : '') +
-                (item.inUse
-                  ? '<button class="pill" type="button" disabled title="Used by a flow — remove from flows first">Remove</button>'
-                  : '<button class="pill danger" type="button" data-act="uninstallDefault" data-kind="' + esc(item.kind) + '" data-filename="' + esc(item.filename) + '">Remove</button>')
-              : '<button class="pill accent" type="button" data-act="installDefault" data-kind="' + esc(item.kind) + '" data-filename="' + esc(item.filename) + '">Install</button>') +
-          '</span>' +
-          '</div>'
-        ).join('')
-      : '<span class="empty">No items</span>';
-
-    panel.innerHTML = '<div class="lib-panel"><div class="lib-tabs" id="lib-tab-bar">' + tabsHtml + '</div>' + itemsHtml + '</div>';
-
-    panel.querySelectorAll('[data-libtab]').forEach(t => {
-      t.onclick = () => { defaultLibTab = t.getAttribute('data-libtab'); renderDefaultsPanel(); };
-    });
-    panel.querySelectorAll('button[data-act]').forEach(btn => {
-      btn.onclick = () => {
-        const act = btn.getAttribute('data-act');
-        const kind = btn.getAttribute('data-kind');
-        const filename = btn.getAttribute('data-filename');
-        btn.disabled = true;
-        btn.innerHTML = spinHtml + (act === 'installDefault' ? 'Installing…' : act === 'updateDefault' ? 'Updating…' : 'Removing…');
-        vscode.postMessage({ type: act === 'installDefault' ? 'installDefaultItem' : act === 'updateDefault' ? 'updateDefaultItem' : 'uninstallDefaultItem', kind, filename });
-      };
-    });
-  }
-
-  const MCP_STATUS = {
-    'connected':  { color: 'var(--vscode-charts-green, #73c991)',   label: 'Connected',  rank: 0 },
-    'needs-auth': { color: 'var(--vscode-charts-yellow, #d7a000)',  label: 'Needs auth', rank: 1 },
-    'unknown':    { color: 'var(--muted, #888)',                     label: 'Unknown',    rank: 2 },
-    'failed':     { color: 'var(--vscode-charts-red, #f48771)',     label: 'Failed',     rank: 3 }
-  };
-
-  function setMcpData(list) {
-    mcpServers = (list || []).slice();
-    renderMcp();
-  }
-
-  function renderMcp() {
-    const el = document.getElementById('mcp');
-    const connected = mcpServers.filter(s => s.status === 'connected').length;
-    document.getElementById('conn-count').textContent = connected ? String(connected) : '';
-    const q = mcpQuery;
-
-    if (!mcpServers.length) {
-      el.innerHTML = '<span class="empty">No MCP connections installed</span>';
-      return;
-    }
-    const rows = mcpServers
-      .filter(s => activeMcpTab === 'installed' ? s.status === 'connected' : s.status !== 'connected')
-      .filter(s => !q || s.name.toLowerCase().includes(q))
-      .sort((a, b) =>
-        (MCP_STATUS[a.status] || MCP_STATUS.unknown).rank - (MCP_STATUS[b.status] || MCP_STATUS.unknown).rank
-        || a.name.localeCompare(b.name));
-    if (activeMcpTab === 'installed' && !connected) {
-      el.innerHTML = '<span class="empty">No MCP connections installed</span>';
-      return;
-    }
-    if (activeMcpTab === 'available' && !mcpServers.some(s => s.status !== 'connected')) {
-      el.innerHTML = '<span class="empty">No available MCP connections</span>';
-      return;
-    }
-    if (!rows.length) {
-      el.innerHTML = '<span class="empty">No match for &ldquo;' + esc(q) + '&rdquo;</span>';
-      return;
-    }
-    el.innerHTML = rows.map(s => {
-      const st = MCP_STATUS[s.status] || MCP_STATUS.unknown;
-      const tgt = s.target || '';
-      const isHttp = tgt.toLowerCase().startsWith('http://') || tgt.toLowerCase().startsWith('https://') || tgt.toUpperCase().endsWith('(HTTP)');
-      const isClaudeAi = s.name.startsWith('claude.ai ');
-      const canReconnect = (s.status === 'failed' || s.status === 'needs-auth') && tgt && isHttp && !isClaudeAi;
-      const canBrowserAuth = isClaudeAi && s.status === 'needs-auth';
-      const canRetryLocal = s.status === 'failed' && !isHttp && !isClaudeAi;
-      return '<div class="item">' +
-        '<span class="item-dot" title="' + esc(s.status) + '" style="background:' + st.color + '"></span>' +
-        '<span class="item-body">' +
-          '<span class="item-name" title="' + esc(s.name) + '">' + esc(s.name) + '</span>' +
-          '<span class="item-sub">' + esc(st.label) + '</span>' +
-        '</span>' +
-        '<span class="item-acts">' +
-          '<button class="pill" type="button" data-act="mcpDetails" data-name="' + esc(s.name) + '">Details</button>' +
-          (canReconnect
-            ? '<button class="pill accent" type="button" data-act="mcpReconnect" data-name="' + esc(s.name) + '" data-target="' + esc(tgt) + '">' +
-              (s.status === 'failed' ? 'Retry' : 'Auth') + '</button>'
-            : '') +
-          (canBrowserAuth
-            ? '<button class="pill accent" type="button" data-act="openExternal" data-url="https://claude.ai" title="Authenticate via claude.ai">Auth</button>'
-            : '') +
-          (canRetryLocal
-            ? '<button class="pill accent" type="button" data-act="refresh" title="Re-probe this server">Retry</button>'
-            : '') +
-        '</span>' +
-        '</div>';
-    }).join('');
-    bindActionButtons(el);
-  }
-
-  function setPluginData(installed, available) {
-    installedPlugins = installed || [];
-    availablePlugins = available || [];
-    renderPlugins();
-  }
-
-  function renderPanelError(id, label) {
-    const el = document.getElementById(id);
-    if (el) el.innerHTML = '<span class="empty">' + esc(label) + ' unavailable</span>';
-  }
-
-  function renderPlugins() {
-    const el = document.getElementById('plugins');
-    document.getElementById('plug-count').textContent = installedPlugins.length ? String(installedPlugins.length) : '';
-    const q = pluginQuery;
-
-    if (activePluginTab === 'installed') {
-      const rows = installedPlugins.filter(p => !q || p.name.toLowerCase().includes(q));
-      if (!installedPlugins.length) { el.innerHTML = '<span class="empty">No plugins installed</span>'; return; }
-      if (!rows.length) { el.innerHTML = '<span class="empty">No match for &ldquo;' + esc(q) + '&rdquo;</span>'; return; }
-      el.innerHTML = rows.map(p =>
-        '<div class="item">' +
-        '<span class="item-dot" title="' + (p.enabled ? 'Enabled' : 'Disabled') + '" style="background:' +
-          (p.enabled ? 'var(--vscode-charts-green, #73c991)' : 'var(--vscode-charts-red, #f48771)') + '"></span>' +
-        '<span class="item-body">' +
-          '<span class="item-name" title="' + esc(p.name) + ' · v' + esc(p.version) + '">' + esc(p.name) + '</span>' +
-          '<span class="item-sub">' + esc(p.scope) + ' · v' + esc(p.version) + '</span>' +
-        '</span>' +
-        '<span class="item-acts">' +
-          '<button class="pill" type="button" data-act="details" data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '">Details</button>' +
-          actionMenu([
-            menuItem(p.enabled ? 'Disable' : 'Enable', 'data-act="toggle" data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '" data-enable="' + !p.enabled + '"'),
-            menuItem('Update', 'data-act="update" data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '"'),
-            menuItem('Uninstall', 'data-act="uninstall" data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '"', true)
-          ]) +
-        '</span>' +
-        '</div>'
-      ).join('');
-    } else {
-      const rows = availablePlugins.filter(p => !q || p.name.toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q));
-      if (!availablePlugins.length) { el.innerHTML = '<span class="empty">No marketplace configured</span>'; return; }
-      if (!rows.length) { el.innerHTML = '<span class="empty">No match for &ldquo;' + esc(q) + '&rdquo;</span>'; return; }
-      el.innerHTML = rows.map(p =>
-        '<div class="item">' +
-        '<span class="item-dot" style="background:var(--muted)"></span>' +
-        '<span class="item-body">' +
-          '<span class="item-name" title="' + esc(p.id) + '">' + esc(p.name) + '</span>' +
-          '<span class="item-sub" title="' + esc(p.description || p.id) + '">' + esc(p.description || p.id) + '</span>' +
-        '</span>' +
-        '<span class="item-acts">' +
-          '<button class="pill accent" type="button" data-act="install" data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '">Install</button>' +
-        '</span>' +
-        '</div>'
-      ).join('');
-    }
-    bindActionButtons(el);
-  }
-
-  function bindActionButtons(root) {
-    root.querySelectorAll('button[data-act]').forEach(btn => {
-      btn.onclick = () => {
-        const act = btn.getAttribute('data-act');
-        const id = btn.getAttribute('data-id');
-        const name = btn.getAttribute('data-name');
-        const locks = ['install', 'update', 'uninstall', 'toggle', 'mcpReconnect', 'deleteRun'].includes(act);
-        const menu = btn.closest('.menu');
-        if (menu) menu.open = false;
-
-        if (locks) {
-          btn.closest('.item')?.querySelectorAll('button').forEach(b => b.disabled = true);
-          const label = act === 'install' ? 'Installing…' : act === 'update' ? 'Updating…'
-            : act === 'uninstall' ? 'Removing…' : act === 'mcpReconnect' ? 'Connecting…'
-            : act === 'deleteRun' ? 'Deleting…' : '…';
-          btn.innerHTML = spinHtml + label;
-        } else {
-          // Transient operations: show spinner briefly, auto-restore after 1.5 s
-          const prev = btn.innerHTML;
-          btn.disabled = true;
-          btn.innerHTML = spinHtml + btn.textContent.trim();
-          setTimeout(() => { btn.disabled = false; btn.innerHTML = prev; }, 1500);
-        }
-
-        if (act === 'toggle') vscode.postMessage({ type: 'togglePlugin', pluginId: id, pluginName: name, enable: btn.getAttribute('data-enable') === 'true' });
-        else if (act === 'install') vscode.postMessage({ type: 'installPlugin', pluginId: id, pluginName: name });
-        else if (act === 'update') vscode.postMessage({ type: 'updatePlugin', pluginId: id, pluginName: name });
-        else if (act === 'details') vscode.postMessage({ type: 'pluginDetails', pluginId: id, pluginName: name });
-        else if (act === 'uninstall') vscode.postMessage({ type: 'uninstallPlugin', pluginId: id, pluginName: name });
-        else if (act === 'mcpReconnect') vscode.postMessage({ type: 'reconnectMcp', mcpName: name, mcpTarget: btn.getAttribute('data-target') });
-        else if (act === 'mcpDetails') vscode.postMessage({ type: 'mcpDetails', mcpName: name });
-        else if (act === 'openRun') vscode.postMessage({ type: 'openOverview' });
-        else if (act === 'openFile') vscode.postMessage({ type: 'openFile', path: btn.getAttribute('data-path') });
-        else if (act === 'deleteRun') vscode.postMessage({ type: 'deleteRun', path: btn.getAttribute('data-path') });
-        else if (act === 'openExternal') vscode.postMessage({ type: 'openExternal', url: btn.getAttribute('data-url') });
-        else if (act === 'refresh') vscode.postMessage({ type: 'refresh' });
-      };
-    });
-  }
-
-  function bindRowClicks(root) {
-    root.querySelectorAll('.item[data-row-act]').forEach(row => {
-      row.style.cursor = 'pointer';
-      row.onclick = e => {
-        if (e.target.closest('button, details, .menu')) return;
-        const act = row.getAttribute('data-row-act');
-        if (act === 'openOverview') vscode.postMessage({ type: 'openOverview' });
-        else if (act === 'openFile') vscode.postMessage({ type: 'openFile', path: row.getAttribute('data-row-path') });
-      };
-    });
-  }
-
-  function renderRuns(activeRun, files, total) {
-    lastActiveRun = activeRun || null;
-    lastRunFiles = files || [];
-    lastRunTotal = total || 0;
-    const el = document.getElementById('runs');
-    const totalCount = (activeRun ? 1 : 0) + (total || 0);
-    document.getElementById('runs-count').textContent = totalCount ? String(totalCount) : '';
-
-    if (!activeRun && (!files || !files.length)) {
-      el.innerHTML = '<span class="empty">No runs yet</span>';
-      return;
-    }
-
-    let html = '';
-
-    if (activeRun) {
-      const step = activeRun.currentStep;
-      const stepHtml = step
-        ? '<span class="item-sub" style="display:flex;align-items:center;gap:4px;margin-top:3px">' +
-            '<span class="badge ' + esc(step.status) + '">' + esc(step.status) + '</span>' +
-            '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(step.title) + '</span>' +
-          '</span>'
-        : '';
-      const detailAttr = activeRun.filePath ? 'data-act="openFile" data-path="' + esc(activeRun.filePath) + '"' : 'data-act="openRun"';
-      html +=
-        '<div class="item run-active">' +
-        '<span class="item-dot" title="Running" style="background:var(--vscode-charts-blue,var(--focus));box-shadow:0 0 0 3px rgba(14,99,156,.2)"></span>' +
-        '<span class="item-body">' +
-          '<span class="item-name" title="' + esc(activeRun.flowName) + '">' + esc(activeRun.flowName) + '</span>' +
-          '<div class="run-prog"><div class="run-prog-fill" style="width:' + activeRun.percent + '%"></div></div>' +
-          stepHtml +
-        '</span>' +
-        '<span class="item-acts" style="gap:6px">' +
-          '<span class="run-count">' + activeRun.completed + '/' + activeRun.total + ' · ' + activeRun.percent + '%</span>' +
-          actionMenu([
-            menuItem('Open', 'data-act="openRun"'),
-            menuItem('Detail', detailAttr),
-            menuItem('Delete', 'data-act="deleteRun" data-path="' + esc(activeRun.filePath || '') + '"', true, activeRun.isRunning)
-          ]) +
-        '</span>' +
-        '</div>';
-    }
-
-    if (files && files.length) {
-      html += files.map(f =>
-        '<div class="item">' +
-        '<span class="item-dot" style="background:var(--muted)"></span>' +
-        '<span class="item-body">' +
-          '<span class="item-name" title="' + esc(f.flowName) + '">' + esc(f.flowName) + '</span>' +
-          '<span class="item-sub">' + f.completed + '/' + f.total + ' · ' + fmtTime(f.runId) + '</span>' +
-        '</span>' +
-        '<span class="item-acts">' +
-          actionMenu([
-            menuItem('Open', 'data-act="openRun"'),
-            menuItem('Detail', 'data-act="openFile" data-path="' + esc(f.filePath) + '"'),
-            menuItem('Delete', 'data-act="deleteRun" data-path="' + esc(f.filePath) + '"', true)
-          ]) +
-        '</span>' +
-        '</div>'
-      ).join('');
-    }
-
-    el.innerHTML = html;
-    bindActionButtons(el);
-  }
-
-  // Async probes arrive after first paint — keep skeletons up until each lands.
-  let mcpReceived = false, pluginsReceived = false;
-
-  window.addEventListener('message', e => {
-    try {
-      const m = e.data;
-      if (m.type === 'data') {
-        renderStats(m.stats);
-        renderDefaults(m.defaultItems || []);
-        mcpReceived = true;
-        pluginsReceived = true;
-        setMcpData(m.mcp);
-        setPluginData(m.plugins, m.pluginsAvailable);
-        renderRuns(m.activeRun, m.runFiles, m.totalRunFiles);
-      } else if (m.type === 'mcp') {
-        mcpReceived = true;
-        setMcpData(m.mcp);
-      } else if (m.type === 'plugins') {
-        pluginsReceived = true;
-        setPluginData(m.plugins, m.pluginsAvailable);
-      }
-    } catch (err) {
-      console.error('AI StepFlow sidebar render failed', err);
-      renderPanelError('mcp', 'Connections');
-      renderPanelError('plugins', 'Plugins');
-    }
-  });
-</script>
-</body>
-</html>`;
+    return getSidebarHtml(webview, this.extensionUri, this.version);
   }
 }

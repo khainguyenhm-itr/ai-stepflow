@@ -15,9 +15,60 @@ export class ConfigManager {
   /** Markers wrapping the block we merge into a project's CLAUDE.md, so it can be removed cleanly on uninstall. */
   private static readonly CLAUDE_MD_START = '<!-- ai-stepflow:karpathy:start -->';
   private static readonly CLAUDE_MD_END = '<!-- ai-stepflow:karpathy:end -->';
+  private static readonly STYLE_MD_START = '<!-- ai-stepflow:style:start -->';
+  private static readonly STYLE_MD_END = '<!-- ai-stepflow:style:end -->';
 
   constructor(private readonly extensionPath?: string) {
     this.globalPath = path.join(os.homedir(), '.claude');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Library cache: load agents + skills + flows concurrently once per refresh.
+  // The cache is keyed by a simple generation counter; invalidateLibraryCache()
+  // bumps the counter so the next access triggers a fresh disk scan.
+  // ---------------------------------------------------------------------------
+
+  private _libraryCache: { agents: Agent[]; skills: Skill[]; flows: Flow[] } | undefined;
+  /** In-flight Promise so concurrent callers share one disk-scan. */
+  private _libraryCachePromise: Promise<{ agents: Agent[]; skills: Skill[]; flows: Flow[] }> | undefined;
+
+  /**
+   * Load (or return from cache) the full library triple: agents, skills, and flows.
+   * All three directories are scanned concurrently in a single Promise.all so the
+   * extension sidebar doesn't block on three serial async waterfalls.
+   */
+  private async _loadLibrary(): Promise<{ agents: Agent[]; skills: Skill[]; flows: Flow[] }> {
+    if (this._libraryCache) return this._libraryCache;
+    if (!this._libraryCachePromise) {
+      this._libraryCachePromise = this._scanLibrary().then(result => {
+        this._libraryCache = result;
+        this._libraryCachePromise = undefined;
+        return result;
+      }).catch(err => {
+        this._libraryCachePromise = undefined;
+        throw err;
+      });
+    }
+    return this._libraryCachePromise;
+  }
+
+  /** Parallel disk scan — do not call directly; use _loadLibrary() for caching. */
+  private async _scanLibrary(): Promise<{ agents: Agent[]; skills: Skill[]; flows: Flow[] }> {
+    const [agents, skills, flows] = await Promise.all([
+      this._scanAgents(),
+      this._scanSkills(),
+      this._scanFlows(),
+    ]);
+    return { agents, skills, flows };
+  }
+
+  /**
+   * Invalidate the library cache. Call this whenever a file-system change is
+   * detected in the .claude directory so the next load sees fresh data.
+   */
+  public invalidateLibraryCache(): void {
+    this._libraryCache = undefined;
+    this._libraryCachePromise = undefined;
   }
 
   /**
@@ -47,9 +98,9 @@ export class ConfigManager {
   }
 
   /** Returns every bundled default item with name, description, installed status, and whether an update is available. */
-  public async listBundledDefaults(): Promise<Array<{ kind: BundledKind; filename: string; name: string; description: string; installed: boolean; hasUpdate: boolean }>> {
+  public async listBundledDefaults(): Promise<Array<{ kind: BundledKind; filename: string; name: string; description: string; tags?: string[]; installed: boolean; hasUpdate: boolean }>> {
     if (!this.extensionPath) return [];
-    const result: Array<{ kind: BundledKind; filename: string; name: string; description: string; installed: boolean; hasUpdate: boolean }> = [];
+    const result: Array<{ kind: BundledKind; filename: string; name: string; description: string; tags?: string[]; installed: boolean; hasUpdate: boolean }> = [];
     const KINDS: Array<{ kind: BundledKind; exts: string[] }> = [
       { kind: 'agents', exts: ['.md'] },
       { kind: 'skills', exts: ['.md'] },
@@ -69,17 +120,19 @@ export class ConfigManager {
           const installed = installedContent !== null;
           const hasUpdate = installed && installedContent !== content;
           let name: string, description: string;
+          let tags: string[] | undefined;
           if (filename.endsWith('.md')) {
             const leadingComments = content.match(/^(?:\s*<!--[\s\S]*?-->\s*)+(?=---(?:\r?\n|$))/);
             const parseableContent = leadingComments ? content.slice(leadingComments[0].length) : content;
             const m = matter(parseableContent);
             name = String(m.data.name || filename.replace('.md', ''));
             description = String(m.data.description || this._firstHeading(content) || '');
+            tags = Array.isArray(m.data.tags) ? m.data.tags : undefined;
           } else {
             name = filename.replace(/\.(mjs|js)$/, '');
             description = this._firstJsComment(content);
           }
-          result.push({ kind, filename, name, description, installed, hasUpdate });
+          result.push({ kind, filename, name, description, ...(tags ? { tags } : {}), installed, hasUpdate });
         } catch { /* skip */ }
       }
     }
@@ -203,6 +256,23 @@ export class ConfigManager {
       }
     } catch (e) {
       console.error('AI StepFlow: failed to initialize global CLAUDE.md', e);
+    }
+  }
+
+  /** Remove legacy karpathy block from project CLAUDE.md if still present. No longer injects — rules live in global CLAUDE.md. */
+  public async ensureProjectClaudeMd(): Promise<void> {
+    if (!this.projectPath) return;
+    const claudeMdPath = path.join(this.projectPath, 'CLAUDE.md');
+    try {
+      const content = await fs.readFile(claudeMdPath, 'utf8').catch(() => '');
+      const startIdx = content.indexOf(ConfigManager.CLAUDE_MD_START);
+      const endIdx = content.indexOf(ConfigManager.CLAUDE_MD_END);
+      if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) return;
+      const cleaned = (content.slice(0, startIdx) + content.slice(endIdx + ConfigManager.CLAUDE_MD_END.length))
+        .replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
+      await fs.writeFile(claudeMdPath, cleaned, 'utf8');
+    } catch (e) {
+      console.error('AI StepFlow: failed to clean project CLAUDE.md', e);
     }
   }
 
@@ -352,31 +422,34 @@ export class ConfigManager {
   }
 
   public async loadAgents(): Promise<Agent[]> {
-    const agents = new Map<string, Agent>();
-    console.log('AI StepFlow: loadAgents starting...');
+    return (await this._loadLibrary()).agents;
+  }
 
+  public async loadSkills(): Promise<Skill[]> {
+    return (await this._loadLibrary()).skills;
+  }
+
+  public async loadFlows(): Promise<Flow[]> {
+    return (await this._loadLibrary()).flows;
+  }
+
+  private async _scanAgents(): Promise<Agent[]> {
+    const agents = new Map<string, Agent>();
     for (const dir of this.scopedDirs('agents')) {
       const files = await this.listFiles(dir, name => name.endsWith('.md'));
-      console.log(`AI StepFlow: checking dir ${dir}, found ${files.length} md files.`);
       for (const file of files) {
         const agent = await this.parseAgentFile(path.join(dir, file));
         if (agent) agents.set(agent.name, agent);
       }
     }
-
-    console.log(`AI StepFlow: loadAgents finished, total ${agents.size} unique agents.`);
     return Array.from(agents.values());
   }
 
-  public async loadSkills(): Promise<Skill[]> {
+  private async _scanSkills(): Promise<Skill[]> {
     const skills = new Map<string, Skill>();
-    console.log('AI StepFlow: loadSkills starting...');
-
     for (const dir of this.scopedDirs('skills')) {
       const mdFiles = await this.listFiles(dir, name => name.endsWith('.md'));
       const subDirs = await this.listDirectories(dir);
-      console.log(`AI StepFlow: checking dir ${dir}, found ${mdFiles.length} md files and ${subDirs.length} subdirs.`);
-
       for (const file of mdFiles) {
         const skill = await this.parseSkillFile(path.join(dir, file), true);
         if (skill) skills.set(skill.name, skill);
@@ -386,25 +459,18 @@ export class ConfigManager {
         if (skill) skills.set(skill.name, skill);
       }
     }
-
-    console.log(`AI StepFlow: loadSkills finished, total ${skills.size} unique skills.`);
     return Array.from(skills.values());
   }
 
-  public async loadFlows(): Promise<Flow[]> {
+  private async _scanFlows(): Promise<Flow[]> {
     const flows = new Map<string, Flow>();
-    console.log('AI StepFlow: loadFlows starting...');
-
     for (const dir of this.scopedDirs('flows')) {
       const files = await this.listFiles(dir, name => name.endsWith('.yaml') || name.endsWith('.yml'));
-      console.log(`AI StepFlow: checking dir ${dir}, found ${files.length} flow files.`);
       for (const file of files) {
         const flow = await this.parseFlowFile(path.join(dir, file));
         if (flow) flows.set(flow.id, flow);
       }
     }
-
-    console.log(`AI StepFlow: loadFlows finished, total ${flows.size} unique flows.`);
     return Array.from(flows.values());
   }
 
@@ -487,7 +553,10 @@ export class ConfigManager {
       name: agent.name,
       description: agent.description || '',
       model: agent.model || 'sonnet',
-      ...(agent.tools?.length ? { tools: agent.tools } : {})
+      ...(agent.tools?.length ? { tools: agent.tools } : {}),
+      ...(agent.maxTurns != null && agent.maxTurns >= 0 ? { maxTurns: agent.maxTurns } : {}),
+      ...(agent.tags?.length ? { tags: agent.tags } : {}),
+      ...(agent.aiConversation?.length ? { aiConversation: agent.aiConversation } : {})
     });
 
     await fs.writeFile(filePath, frontmatter, 'utf8');
@@ -501,7 +570,9 @@ export class ConfigManager {
     const filePath = path.join(targetDir, 'SKILL.md');
     const frontmatter = matter.stringify(skill.instructions || '', {
       name: skill.name,
-      description: skill.description || ''
+      description: skill.description || '',
+      ...(skill.tags?.length ? { tags: skill.tags } : {}),
+      ...(skill.aiConversation?.length ? { aiConversation: skill.aiConversation } : {})
     });
 
     await fs.writeFile(filePath, frontmatter, 'utf8');
@@ -523,19 +594,24 @@ export class ConfigManager {
     logMissing: boolean = true
   ): Promise<Skill | undefined> {
     try {
-      const content = await fs.readFile(filePath, 'utf8');
+      const [content, stat] = await Promise.all([fs.readFile(filePath, 'utf8'), fs.stat(filePath).catch(() => null)]);
       // Strip leading HTML comment (e.g. built-in marker) so gray-matter can find --- frontmatter
       const stripped = content.replace(/^<!--[\s\S]*?-->\s*\n/, '');
       const { data, content: body } = matter(stripped);
       const fallbackName = path.basename(filePath).toUpperCase() === 'SKILL.MD'
         ? path.basename(path.dirname(filePath))
         : path.basename(filePath, '.md');
+      const aiConversation = Array.isArray(data.aiConversation) ? data.aiConversation : undefined;
+      const tags = Array.isArray(data.tags) ? (data.tags as string[]) : undefined;
       return {
         name: data.name || fallbackName,
         description: data.description || '',
         instructions: body.trim(),
         sourcePath: filePath,
-        builtIn: this.hasBuiltInMarker(content)
+        ...(tags ? { tags } : {}),
+        builtIn: this.hasBuiltInMarker(content),
+        ...(stat ? { modifiedAt: stat.mtimeMs } : {}),
+        ...(aiConversation ? { aiConversation } : {})
       };
     } catch (e: any) {
       if (logMissing || e?.code !== 'ENOENT') {
@@ -549,7 +625,7 @@ export class ConfigManager {
   private isManagedPath(targetPath: string): boolean {
     const normalized = path.normalize(targetPath);
     const roots = [path.join(this.globalPath, '')];
-    if (this.projectPath) roots.push(path.join(this.projectPath, '.claude'));
+    if (this.projectPath) roots.push(path.join(this.projectPath, '.ai-stepflow'));
     return roots.some(root => normalized.startsWith(path.normalize(root) + path.sep));
   }
 
@@ -574,11 +650,95 @@ export class ConfigManager {
     return this.projectPath;
   }
 
+  public async loadUiPrefs(): Promise<Record<string, string>> {
+    const global = await this.loadGlobalUiPrefs();
+    if (!this.projectPath) return global;
+    const prefsPath = path.join(this.projectPath, '.ai-stepflow', 'ui-prefs.json');
+    try {
+      const project = JSON.parse(await fs.readFile(prefsPath, 'utf8'));
+      return { ...global, ...project };
+    } catch {
+      return global;
+    }
+  }
+
+  public async loadGlobalUiPrefs(): Promise<Record<string, string>> {
+    const prefsPath = path.join(this.globalPath, '.ai-stepflow', 'ui-prefs.json');
+    try {
+      return JSON.parse(await fs.readFile(prefsPath, 'utf8'));
+    } catch {
+      return {};
+    }
+  }
+
+  public async saveUiPref(key: string, value: string): Promise<void> {
+    if (!this.projectPath) return;
+    const prefsPath = path.join(this.projectPath, '.ai-stepflow', 'ui-prefs.json');
+    try {
+      await fs.mkdir(path.dirname(prefsPath), { recursive: true });
+      let prefs: Record<string, string> = {};
+      try { prefs = JSON.parse(await fs.readFile(prefsPath, 'utf8')); } catch { /* none yet */ }
+      prefs[key] = value;
+      await fs.writeFile(prefsPath, JSON.stringify(prefs, null, 2), 'utf8');
+    } catch (e) {
+      console.error('AI StepFlow: failed to save ui pref', e);
+    }
+  }
+
+  public async saveGlobalUiPref(key: string, value: string): Promise<void> {
+    const prefsPath = path.join(this.globalPath, '.ai-stepflow', 'ui-prefs.json');
+    try {
+      await fs.mkdir(path.dirname(prefsPath), { recursive: true });
+      let prefs: Record<string, string> = {};
+      try { prefs = JSON.parse(await fs.readFile(prefsPath, 'utf8')); } catch { /* none yet */ }
+      prefs[key] = value;
+      await fs.writeFile(prefsPath, JSON.stringify(prefs, null, 2), 'utf8');
+    } catch (e) {
+      console.error('AI StepFlow: failed to save global ui pref', e);
+    }
+  }
+
+  /**
+   * Inject or remove a response-style instruction block in the project CLAUDE.md.
+   * 'concise' → upserts the block; 'default' → removes it.
+   */
+  public async applyResponseStyle(style: string): Promise<void> {
+    const claudeMdPath = path.join(this.globalPath, 'CLAUDE.md');
+    const start = ConfigManager.STYLE_MD_START;
+    const end = ConfigManager.STYLE_MD_END;
+    const block = style === 'concise'
+      ? `${start}\n## AI Response Style\nBe concise and direct. Skip preamble, filler phrases, and trailing summaries. Answer in the fewest words that are still complete and accurate.\n${end}`
+      : null;
+
+    let content = '';
+    try { content = await fs.readFile(claudeMdPath, 'utf8'); } catch { /* file may not exist */ }
+
+    // Remove existing block if present
+    const startIdx = content.indexOf(start);
+    const endIdx = content.indexOf(end);
+    if (startIdx !== -1 && endIdx !== -1) {
+      content = (content.slice(0, startIdx) + content.slice(endIdx + end.length)).replace(/\n{3,}/g, '\n\n').trim();
+    }
+
+    if (block) {
+      content = content ? `${content}\n\n${block}\n` : `${block}\n`;
+    }
+
+    try {
+      if (content) {
+        await fs.mkdir(path.dirname(claudeMdPath), { recursive: true });
+        await fs.writeFile(claudeMdPath, content, 'utf8');
+      }
+    } catch (e) {
+      console.error('AI StepFlow: failed to apply response style to CLAUDE.md', e);
+    }
+  }
+
   /** Global dir first so project entries override entries with the same name. */
   private scopedDirs(kind: 'agents' | 'skills' | 'flows'): string[] {
     const dirs = [path.join(this.globalPath, kind)];
     if (this.projectPath) {
-      dirs.push(path.join(this.projectPath, '.claude', kind));
+      dirs.push(path.join(this.projectPath, '.ai-stepflow', kind));
     }
     return dirs;
   }
@@ -588,7 +748,7 @@ export class ConfigManager {
     if (!this.projectPath) {
       throw new Error('No workspace folder is open; cannot save to the current repo. Save globally instead.');
     }
-    return path.join(this.projectPath, '.claude', kind);
+    return path.join(this.projectPath, '.ai-stepflow', kind);
   }
 
   private async listFiles(dir: string, predicate: (name: string) => boolean): Promise<string[]> {
@@ -611,10 +771,12 @@ export class ConfigManager {
 
   private async parseAgentFile(filePath: string): Promise<Agent | undefined> {
     try {
-      const content = await fs.readFile(filePath, 'utf8');
+      const [content, stat] = await Promise.all([fs.readFile(filePath, 'utf8'), fs.stat(filePath).catch(() => null)]);
       // Strip leading HTML comment (e.g. built-in marker) so gray-matter can find --- frontmatter
       const stripped = content.replace(/^<!--[\s\S]*?-->\s*\n/, '');
       const { data, content: body } = matter(stripped);
+      const aiConversation = Array.isArray(data.aiConversation) ? data.aiConversation : undefined;
+      const tags = Array.isArray(data.tags) ? (data.tags as string[]) : undefined;
       return {
         name: data.name || path.basename(filePath, '.md'),
         description: data.description || '',
@@ -622,7 +784,11 @@ export class ConfigManager {
         tools: data.tools,
         systemPrompt: body.trim(),
         sourcePath: filePath,
-        builtIn: this.hasBuiltInMarker(content)
+        ...(tags ? { tags } : {}),
+        builtIn: this.hasBuiltInMarker(content),
+        ...(stat ? { modifiedAt: stat.mtimeMs } : {}),
+        ...(typeof data.maxTurns === 'number' ? { maxTurns: data.maxTurns } : {}),
+        ...(aiConversation ? { aiConversation } : {})
       };
     } catch (e) {
       console.error(`Error parsing agent file ${filePath}:`, e);

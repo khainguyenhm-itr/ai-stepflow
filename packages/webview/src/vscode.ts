@@ -23,7 +23,6 @@ export function getVSCodeApi() {
 
 /** Post a message to the extension host; in browser preview it just logs. */
 export function sendToVSCode(type: string, payload: Record<string, unknown> = {}) {
-  console.log('[AI StepFlow Webview] sending to VS Code:', type, payload);
   if (!isVSCodeWebview()) {
     console.info('[AI StepFlow preview]', { type, ...payload });
     return;

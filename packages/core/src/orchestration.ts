@@ -1,4 +1,4 @@
-import { Flow, FlowRunState, FlowStep } from './types.js';
+import { Flow, FlowRunState } from './types.js';
 import * as machine from './runStateMachine.js';
 import { pickAutoAdvanceSteps, seedStartedSteps } from './runUtils.js';
 
@@ -25,9 +25,8 @@ export class FlowOrchestrator {
   }
 
   /**
-   * Identifies steps ready to run according to the DAG. Headless steps can all run
-   * concurrently; interactive steps are limited to one at a time to avoid terminal
-   * clutter, with the rest parked.
+   * Identifies steps ready to run according to the DAG. All steps run interactively
+   * (one at a time) to avoid terminal clutter; the rest are parked.
    */
   getAutoAdvanceActions(): OrchestratorAction[] {
     const done = machine.doneStepIds(this.runState);
@@ -36,35 +35,21 @@ export class FlowOrchestrator {
     const actions: OrchestratorAction[] = [];
     let interactiveLaunched = false;
 
-    // In a multi-step advance (fan-out), we want to be stable.
     for (const id of readyIds) {
       const step = this.flow.steps.find(s => s.id === id);
       if (!step) continue;
 
-      if (this.isHeadlessStep(step)) {
-        actions.push({ type: 'launch_headless', stepId: id });
+      // All steps run interactively. Only one launches at a time;
+      // the rest are parked until a terminal slot frees up.
+      if (!interactiveLaunched) {
+        actions.push({ type: 'launch_interactive', stepId: id });
         this._startedStepIds.add(id);
+        interactiveLaunched = true;
       } else {
-        // Only one interactive step starts at a time.
-        if (!interactiveLaunched) {
-          actions.push({ type: 'launch_interactive', stepId: id });
-          this._startedStepIds.add(id);
-          interactiveLaunched = true;
-        } else {
-          actions.push({ type: 'park_interactive', stepId: id });
-        }
+        actions.push({ type: 'park_interactive', stepId: id });
       }
     }
     return actions;
-  }
-
-  /**
-   * True when a step runs headless (AI review or no review), so it has no shared UI surface and
-   * can run concurrently.
-   */
-  isHeadlessStep(step: FlowStep): boolean {
-    if (!step.review?.required) return true;
-    return step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai');
   }
 
   /**

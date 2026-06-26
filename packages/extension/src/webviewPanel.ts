@@ -8,7 +8,7 @@ import { TerminalManager } from './terminalManager.js';
 import { RunOrchestrator } from './runOrchestrator.js';
 import { validateMessage, WebviewMessage, HostMessage } from './messages.js';
 import { listConnectedMcpServers, addMcpServer } from './mcp.js';
-import { Agent, Flow, FlowStep, Skill, sanitizeFlowName } from '@ai-stepflow/core';
+import { Agent, Flow, FlowStep, Skill, extractJsonObject, sanitizeFlowName } from '@ai-stepflow/core';
 
 export class CockpitPanel {
   public static currentPanel: CockpitPanel | undefined;
@@ -193,6 +193,19 @@ export class CockpitPanel {
       case 'updateRunState':
         await this._runner.adoptRunState(message.runState, message.historyEvent);
         return;
+      case 'switchRun': {
+        const [runs, flows] = await Promise.all([
+          this.stateManager.loadRuns(),
+          this.configManager.loadFlows()
+        ]);
+        const run = runs.find(r => r.flowId === message.flowId && r.runId === message.runId);
+        const flow = flows.find(f => f.id === message.flowId);
+        if (run && flow) {
+          this._runner.setFlowAndRunState(flow, run);
+          this.postMessage({ type: 'restoreRun', flow, runState: run });
+        }
+        return;
+      }
       case 'runStep':
         await this._runner.runStep(message.stepId, { flow: message.flow, runState: message.runState, description: message.description });
         return;
@@ -212,6 +225,28 @@ export class CockpitPanel {
       case 'markStepDone':
         await this._runner.markStepDone(message.stepId);
         return;
+      case 'resetRun':
+        await this._runner.resetRun();
+        return;
+      case 'closeRun':
+        await this._runner.closeRun(message.finalize);
+        await this._sendAllData();
+        return;
+      case 'deleteRun': {
+        const runState = this._runner.runState;
+        if (!runState) return;
+        const label = runState.runName || runState.runId.split('T')[0];
+        const choice = await vscode.window.showWarningMessage(
+          `Delete run '${label}'? This removes the run file, report, and audit log.`,
+          { modal: true },
+          'Delete'
+        );
+        if (choice !== 'Delete') return;
+        await this._runner.deleteRun();
+        await this._sendAllData();
+        void vscode.commands.executeCommand('ai-stepflow.refreshAll');
+        return;
+      }
       case 'verifyRun':
         await this._runner.verify();
         return;
@@ -224,8 +259,11 @@ export class CockpitPanel {
       case 'importSkillFile':
         await this._handleImportFile('skill');
         return;
+      case 'savePref':
+        await this.configManager.saveUiPref(message.key, message.value);
+        return;
       case 'generateDraft':
-        await this._handleGenerateDraft(message.kind, message.name, message.description);
+        await this._handleGenerateDraft(message.kind, message.prompt, message.history);
         return;
       case 'generateFlow':
         await this._handleGenerateFlow(message.description, message.flow, message.history);
@@ -275,21 +313,65 @@ export class CockpitPanel {
     }
   }
 
-  private async _handleGenerateDraft(kind: 'agent' | 'skill', name: string, description?: string): Promise<void> {
-    const target = kind === 'agent' ? 'a system prompt for a Claude Code subagent' : 'the instruction body for a reusable Claude Code skill';
-    const metaPrompt = [`Write ${target}.`, `Name: ${name}`, description?.trim() ? `Purpose: ${description.trim()}` : '', '', 'Rules:', '- Return ONLY markdown.', '- Be concise.'].join('\n');
+  private async _handleGenerateDraft(kind: 'agent' | 'skill', prompt: string, history?: { role: 'user' | 'assistant'; content: string }[]): Promise<void> {
     const projectPath = this.configManager.getProjectPath() || '';
+    const contentField = kind === 'agent' ? 'systemPrompt' : 'instructions';
+    const jsonShape = kind === 'agent'
+      ? '{"reply":"short summary","name":"kebab-case-name","description":"one-line description","systemPrompt":"full system prompt markdown","maxTurns":null}'
+      : '{"reply":"short summary","name":"kebab-case-name","description":"one-line description","instructions":"full skill instructions markdown"}';
+    const historyBlock = history?.length
+      ? `Conversation so far:\n${history.map(m => `${m.role}: ${m.content}`).join('\n')}\n\n`
+      : '';
+    const metaPrompt = [
+      `Generate a Claude Code ${kind} from the user's description.`,
+      'Do NOT ask clarifying questions. Make a reasonable interpretation and return the JSON immediately.',
+      ...(kind === 'skill' ? ['Do NOT generate a SKILL.md file or use YAML frontmatter. Output ONLY the JSON object below.'] : []),
+      '',
+      historyBlock,
+      `Latest user request: ${prompt}`,
+      '',
+      `Return ONLY compact JSON:\n${jsonShape}`,
+      '',
+      'Rules:',
+      '- name: lowercase, kebab-case, no spaces (e.g. code-reviewer, create-plan)',
+      '- description: one sentence describing what it does',
+      `- ${contentField}: detailed ${kind === 'agent' ? 'system prompt and operating rules' : 'reusable skill instructions'} in markdown`,
+      '- reply: short confirmation for the user (1-2 sentences)',
+      ...(kind === 'agent' ? [
+        '- maxTurns: integer or null. Set null to use the global default (6). Set a higher number (15-30) only for agents clearly doing heavy multi-file work (large refactors, full test suites, complex implementations). Set a lower number (3-5) for agents with narrow, single-step tasks (review-only, one-file edits).'
+      ] : [])
+    ].filter(Boolean).join('\n');
 
-    await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Drafting ${kind}...` }, async () => {
+    await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Generating ${kind}...` }, async () => {
       let text = '';
-      const result = await this._runner.spawnClaudeStreaming({ systemPrompt: '', userMessage: metaPrompt, projectPath, onText: chunk => { text += chunk; } });
+      const result = await this._runner.spawnClaudeStreaming({ systemPrompt: '', userMessage: metaPrompt, projectPath, maxTurns: 1, onText: chunk => { text += chunk; } });
       if (!result.success) {
         const why = result.timedOut ? 'run timed out' : `claude exited ${result.exitCode}`;
         console.error('AI StepFlow: draft generation failed —', why);
         this.postMessage({ type: 'draftGenerated', kind, error: why });
         return;
       }
-      this.postMessage({ type: 'draftGenerated', kind, content: (result.resultText || text).trim() });
+      try {
+        const parsed = JSON.parse(extractJsonObject((result.resultText || text).trim())) as {
+          reply?: string; name?: string; description?: string; systemPrompt?: string; instructions?: string; maxTurns?: number | null;
+        };
+        this.postMessage({
+          type: 'draftGenerated',
+          kind,
+          name: typeof parsed.name === 'string' ? parsed.name.trim() : undefined,
+          description: typeof parsed.description === 'string' ? parsed.description.trim() : undefined,
+          content: kind === 'agent'
+            ? (typeof parsed.systemPrompt === 'string' ? parsed.systemPrompt.trim() : undefined)
+            : (typeof parsed.instructions === 'string' ? parsed.instructions.trim() : undefined),
+          reply: typeof parsed.reply === 'string' ? parsed.reply.trim() : 'Generated.',
+          ...(kind === 'agent' && typeof parsed.maxTurns === 'number' ? { maxTurns: parsed.maxTurns } : {})
+        });
+      } catch (error) {
+        const why = error instanceof Error ? error.message : String(error);
+        const raw = (result.resultText || text).trim();
+        console.error('AI StepFlow: draft generation parse failed —', why, '\nraw output (first 500 chars):', raw.slice(0, 500));
+        this.postMessage({ type: 'draftGenerated', kind, error: `invalid AI response: ${why}` });
+      }
     });
   }
 
@@ -303,6 +385,7 @@ export class CockpitPanel {
     const skillNames = new Set(skills.map(skill => skill.name));
     const metaPrompt = [
       'Generate an AI StepFlow workflow from the user request.',
+      'Do NOT ask clarifying questions. Make a reasonable interpretation and return the JSON immediately.',
       '',
       'Available agents:',
       ...agents.map(agent => `- ${agent.name}: ${agent.description || '(no description)'}`),
@@ -329,7 +412,7 @@ export class CockpitPanel {
 
     await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Generating workflow...' }, async () => {
       let text = '';
-      const result = await this._runner.spawnClaudeStreaming({ systemPrompt: '', userMessage: metaPrompt, projectPath, onText: chunk => { text += chunk; } });
+      const result = await this._runner.spawnClaudeStreaming({ systemPrompt: '', userMessage: metaPrompt, projectPath, maxTurns: 1, onText: chunk => { text += chunk; } });
       if (!result.success) {
         const why = result.timedOut ? 'run timed out' : `claude exited ${result.exitCode}`;
         console.error('AI StepFlow: flow generation failed —', why);
@@ -338,7 +421,7 @@ export class CockpitPanel {
       }
 
       try {
-        const parsed = JSON.parse(this._extractJsonObject((result.resultText || text).trim())) as { reply?: string; flow?: Partial<Flow> };
+        const parsed = JSON.parse(extractJsonObject((result.resultText || text).trim())) as { reply?: string; flow?: Partial<Flow> };
         const generated = parsed.flow;
         if (!generated || !Array.isArray(generated.steps)) throw new Error('missing flow.steps');
         const flowName = typeof generated.name === 'string' ? generated.name : currentFlow?.name || '';
@@ -359,15 +442,6 @@ export class CockpitPanel {
         this.postMessage({ type: 'flowGenerated', error: `invalid AI response: ${why}` });
       }
     });
-  }
-
-  private _extractJsonObject(text: string): string {
-    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    const candidate = fenced?.[1]?.trim() || text;
-    const start = candidate.indexOf('{');
-    const end = candidate.lastIndexOf('}');
-    if (start < 0 || end < start) throw new Error('no JSON object found');
-    return candidate.slice(start, end + 1);
   }
 
   private _normalizeFlowInputs(inputs: unknown): Flow['inputs'] {
@@ -438,13 +512,12 @@ export class CockpitPanel {
 
   private async _sendAllData() {
     try {
-      console.log('AI StepFlow: fetching data from ConfigManager...');
-      const [flows, agents, skills] = await Promise.all([
+      const [flows, agents, skills, runSummaries] = await Promise.all([
         this.configManager.loadFlows().catch(e => { console.error('AI StepFlow: loadFlows failed', e); return []; }),
         this.configManager.loadAgents().catch(e => { console.error('AI StepFlow: loadAgents failed', e); return []; }),
-        this.configManager.loadSkills().catch(e => { console.error('AI StepFlow: loadSkills failed', e); return []; })
+        this.configManager.loadSkills().catch(e => { console.error('AI StepFlow: loadSkills failed', e); return []; }),
+        this.stateManager.listRunFiles().catch(e => { console.error('AI StepFlow: listRunFiles failed', e); return []; })
       ]);
-      console.log(`AI StepFlow: loaded ${flows.length} flows, ${agents.length} agents, ${skills.length} skills.`);
 
       const auditLogs: Record<string, any[]> = {};
       await Promise.all(flows.map(async flow => {
@@ -457,15 +530,17 @@ export class CockpitPanel {
 
       const projectPath = this.configManager.getProjectPath() || '';
       const globalPath = this.configManager.getGlobalPath() || '';
+      const uiPrefs = await this.configManager.loadUiPrefs().catch(() => ({} as Record<string, string>));
 
-      console.log('AI StepFlow: posting loadData message to webview...');
       this.postMessage({
         type: 'loadData',
         flows, agents, skills,
         connectedMcpServers: [],
         auditLogs,
+        runSummaries,
         globalPath,
-        projectPath
+        projectPath,
+        uiPrefs
       });
 
       if (projectPath) {
@@ -482,8 +557,10 @@ export class CockpitPanel {
         flows: [], agents: [], skills: [],
         connectedMcpServers: [],
         auditLogs: {},
+        runSummaries: [],
         globalPath: '',
-        projectPath: ''
+        projectPath: '',
+        uiPrefs: {}
       });
     }
   }
@@ -506,6 +583,27 @@ export class CockpitPanel {
 
   private _buildCommandPrompt(commandName: string, description?: string): string {
     return description?.trim() ? `/${commandName} ${description.trim()}` : `/${commandName}`;
+  }
+
+  public async openRun(flowId: string, runId: string) {
+    // Ensure the panel is ready before sending the explicit restore message
+    if (!this._isReady) {
+      // If we enqueue this, we must ensure it runs *after* the initial restore() call
+      // that might happen on 'ready'. But since this is a user action, we can just wait a bit or let
+      // the front-end fetch it via 'switchRun'. Instead, we push it as a HostMessage.
+      // But we need to load the run first.
+    }
+    const [runs, flows] = await Promise.all([
+      this.stateManager.loadRuns(),
+      this.configManager.loadFlows()
+    ]);
+    const run = runs.find(r => r.flowId === flowId && r.runId === runId);
+    const flow = flows.find(f => f.id === flowId);
+    if (run && flow) {
+      this._runner.setFlowAndRunState(flow, run);
+      this.postMessage({ type: 'restoreRun', flow, runState: run });
+      this.postMessage({ type: 'navigateToTab', tab: 'flows' });
+    }
   }
 
   public dispose() {

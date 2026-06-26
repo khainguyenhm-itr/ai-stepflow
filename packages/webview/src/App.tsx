@@ -22,12 +22,12 @@ const App: React.FC = () => {
   const logic = useAppLogic();
   const {
     activeTab, setActiveTab,
-    flows, agents, skills, auditLogs,
+    flows, agents, skills, auditLogs, runSummaries,
     globalPath, projectPath, connectedMcpServers,
-    activeFlow, setActiveFlow,
+    activeFlow,
     runState,
     activeStepId, setActiveStepId,
-    runnerVisible, setRunnerVisible,
+    runnerVisible,
     commandCopied, setCommandCopied,
     isBookmarked, toggleBookmark,
     standaloneRun, setStandaloneRun,
@@ -37,15 +37,16 @@ const App: React.FC = () => {
     editingStep, setEditingStep,
     stepEditFromBoard, setStepEditFromBoard,
     stepIsNew, setStepIsNew,
-    stepError, setStepError,
+    stepError,
     builderError, setBuilderError,
     newInputName, setNewInputName,
     flowAiPrompt, setFlowAiPrompt,
     flowAiMessages, setFlowAiMessages,
     flowAiLoading, setFlowAiLoading,
     runInputsTarget, setRunInputsTarget,
+    runName, setRunName,
     runInputValues, setRunInputValues,
-    runInputsError, setRunInputsError,
+    runInputsError,
     detailItem, setDetailItem,
     agentModalOpen, setAgentModalOpen,
     skillModalOpen, setSkillModalOpen,
@@ -54,15 +55,21 @@ const App: React.FC = () => {
     editingAgentSource, setEditingAgentSource,
     agentForm, setAgentForm,
     skillForm, setSkillForm,
+    scopeFilters,
+    viewFilters,
+    sortOrders,
     agentFormError, setAgentFormError,
     skillFormError, setSkillFormError,
     draftLoading, setDraftLoading,
+    agentAiPrompt, setAgentAiPrompt,
+    agentAiMessages, setAgentAiMessages,
+    skillAiPrompt, setSkillAiPrompt,
+    skillAiMessages, setSkillAiMessages,
     outputEndRef,
     completedSteps, activeProgress,
     handleHostMessage, seedPreview,
     getItemScope, getFlowScope, getAgentByName, getSkillByName,
-    startOrResumeRun,
-    emptyAgentForm, emptySkillForm,
+    startFreshRun,
     submitAgentModal, openAgentEditor, submitSkillModal, openSkillEditor,
     submitConnectMcp,
     submitRunInputs, runActiveStep, saveEditingFlow, saveStepEdit
@@ -94,7 +101,7 @@ const App: React.FC = () => {
           <button
             key={tab.key}
             className={`tab ${activeTab === tab.key ? 'active' : ''}`}
-            onClick={() => setActiveTab(tab.key)}
+            onClick={() => { setActiveTab(tab.key); sendToVSCode('savePref', { key: 'activeTab', value: tab.key }); }}
           >
             {tab.label}
             <span className="tab-count">{tab.count}</span>
@@ -108,6 +115,7 @@ const App: React.FC = () => {
           agents={agents}
           skills={skills}
           auditLogs={auditLogs}
+          runSummaries={runSummaries}
           activeFlow={activeFlow}
           runState={runState}
           runnerVisible={runnerVisible}
@@ -117,14 +125,7 @@ const App: React.FC = () => {
           commandCopied={commandCopied}
           globalPath={globalPath}
           projectPath={projectPath}
-          onRun={flow => {
-            if (activeFlow?.id === flow.id && runState && runnerVisible) {
-              setRunnerVisible(false);
-              return;
-            }
-            startOrResumeRun(flow);
-            setRunnerVisible(true);
-          }}
+          onRun={startFreshRun}
           onEdit={flow => {
             setEditingFlow(JSON.parse(JSON.stringify(flow)));
             setEditingFlowScope(getFlowScope(flow));
@@ -138,7 +139,7 @@ const App: React.FC = () => {
             title: flow.name,
             description: flow.description,
             sourcePath: flow.sourcePath,
-            meta: { Scope: getScope(flow.sourcePath), Steps: flow.steps.length, Inputs: Object.keys(flow.inputs || {}).length },
+            meta: { Scope: getScope(flow.sourcePath), Steps: flow.steps.length, Inputs: Object.keys(flow.inputs || {}).length, Trust: flow.trustLevel || 'trusted' },
             onDelete: () => sendToVSCode('deleteFlow', { flow })
           })}
           onNew={(flow, scope) => {
@@ -201,6 +202,14 @@ const App: React.FC = () => {
             window.setTimeout(() => setCommandCopied(false), 1200);
           }}
           outputEndRef={outputEndRef}
+          initialFilter={scopeFilters.flows}
+          onScopeFilterChange={v => sendToVSCode('savePref', { key: 'scopeFilter:flows', value: v })}
+          initialViewFilter={viewFilters.flows}
+          onViewFilterChange={v => sendToVSCode('savePref', { key: 'viewFilter:flows', value: v })}
+          initialSortOrder={sortOrders.flows}
+          onSortOrderChange={v => sendToVSCode('savePref', { key: 'sortOrder:flows', value: v })}
+          isBookmarked={flow => isBookmarked('flow', flow.sourcePath)}
+          onToggleBookmark={flow => toggleBookmark('flow', flow.sourcePath)}
         />
       )}
 
@@ -209,6 +218,12 @@ const App: React.FC = () => {
           agents={agents}
           globalPath={globalPath}
           projectPath={projectPath}
+          initialFilter={scopeFilters.agents}
+          onScopeFilterChange={v => sendToVSCode('savePref', { key: 'scopeFilter:agents', value: v })}
+          initialViewFilter={viewFilters.agents}
+          onViewFilterChange={v => sendToVSCode('savePref', { key: 'viewFilter:agents', value: v })}
+          initialSortOrder={sortOrders.agents}
+          onSortOrderChange={v => sendToVSCode('savePref', { key: 'sortOrder:agents', value: v })}
           onOpenEditor={openAgentEditor}
           onRun={agent => {
             setStandaloneRun({ type: 'agent', agent });
@@ -224,7 +239,7 @@ const App: React.FC = () => {
           })}
           isBookmarked={agent => isBookmarked('agent', agent.sourcePath)}
           onToggleBookmark={agent => toggleBookmark('agent', agent.sourcePath)}
-          onNew={scope => openAgentEditor({ name: '', description: '', model: 'claude-sonnet-4-6', tools: [], systemPrompt: '', sourcePath: scope === 'global' ? globalPath : projectPath })}
+          onNew={scope => openAgentEditor({ name: '', description: '', model: 'sonnet', tools: [], systemPrompt: '', sourcePath: scope === 'global' ? globalPath : projectPath })}
         />
       )}
 
@@ -233,6 +248,12 @@ const App: React.FC = () => {
           skills={skills}
           globalPath={globalPath}
           projectPath={projectPath}
+          initialFilter={scopeFilters.skills}
+          onScopeFilterChange={v => sendToVSCode('savePref', { key: 'scopeFilter:skills', value: v })}
+          initialViewFilter={viewFilters.skills}
+          onViewFilterChange={v => sendToVSCode('savePref', { key: 'viewFilter:skills', value: v })}
+          initialSortOrder={sortOrders.skills}
+          onSortOrderChange={v => sendToVSCode('savePref', { key: 'sortOrder:skills', value: v })}
           onOpenEditor={openSkillEditor}
           onRun={skill => {
             setStandaloneRun({ type: 'skill', skill });
@@ -248,7 +269,7 @@ const App: React.FC = () => {
           })}
           isBookmarked={skill => isBookmarked('skill', skill.sourcePath)}
           onToggleBookmark={skill => toggleBookmark('skill', skill.sourcePath)}
-          onNew={scope => openSkillEditor({ name: '', description: '', instructions: '', sourcePath: scope === 'global' ? globalPath : projectPath })}
+          onNew={scope => openSkillEditor(undefined, scope)}
         />
       )}
 
@@ -261,14 +282,30 @@ const App: React.FC = () => {
         error={agentFormError}
         draftLoading={draftLoading === 'agent'}
         connectedMcpServers={connectedMcpServers}
+        aiPrompt={agentAiPrompt}
+        aiMessages={agentAiMessages}
         onClose={() => { setAgentModalOpen(false); setEditingAgentSource(null); }}
         onConnectMcp={() => setConnectMcpModalOpen(true)}
         onChange={patch => setAgentForm(prev => ({ ...prev, ...patch }))}
         onSubmit={submitAgentModal}
-        onGenerateDraft={() => {
+        onAiPromptChange={setAgentAiPrompt}
+        onGenerateAgent={() => {
+          if (!agentAiPrompt.trim() || draftLoading) return;
+          const prompt = agentAiPrompt.trim();
+          const prevMessages = agentAiMessages;
+          setAgentAiMessages([...prevMessages, { role: 'user', content: prompt }]);
+          setAgentAiPrompt('');
           setDraftLoading('agent');
           setAgentFormError(null);
-          sendToVSCode('generateDraft', { kind: 'agent', name: agentForm.name.trim(), description: agentForm.description });
+          if (!isVSCodeWebview()) {
+            window.setTimeout(() => {
+              setAgentForm(prev => ({ ...prev, name: prev.name || 'ai-agent', description: 'AI-generated agent', systemPrompt: `You are an AI agent. ${prompt}` }));
+              setAgentAiMessages(prev => [...prev, { role: 'assistant', content: 'Agent generated — see below.' }]);
+              setDraftLoading(null);
+            }, 800);
+            return;
+          }
+          sendToVSCode('generateDraft', { kind: 'agent', prompt, history: prevMessages });
         }}
       />
 
@@ -278,13 +315,29 @@ const App: React.FC = () => {
         form={skillForm}
         error={skillFormError}
         draftLoading={draftLoading === 'skill'}
+        aiPrompt={skillAiPrompt}
+        aiMessages={skillAiMessages}
         onClose={() => { setSkillModalOpen(false); setEditingSkillSource(null); }}
         onChange={patch => setSkillForm(prev => ({ ...prev, ...patch }))}
         onSubmit={submitSkillModal}
-        onGenerateDraft={() => {
+        onAiPromptChange={setSkillAiPrompt}
+        onGenerateSkill={() => {
+          if (!skillAiPrompt.trim() || draftLoading) return;
+          const prompt = skillAiPrompt.trim();
+          const prevMessages = skillAiMessages;
+          setSkillAiMessages([...prevMessages, { role: 'user', content: prompt }]);
+          setSkillAiPrompt('');
           setDraftLoading('skill');
           setSkillFormError(null);
-          sendToVSCode('generateDraft', { kind: 'skill', name: skillForm.name.trim(), description: skillForm.description });
+          if (!isVSCodeWebview()) {
+            window.setTimeout(() => {
+              setSkillForm(prev => ({ ...prev, name: prev.name || 'ai-skill', description: 'AI-generated skill', instructions: `# Skill\n\n${prompt}` }));
+              setSkillAiMessages(prev => [...prev, { role: 'assistant', content: 'Skill generated — see below.' }]);
+              setDraftLoading(null);
+            }, 800);
+            return;
+          }
+          sendToVSCode('generateDraft', { kind: 'skill', prompt, history: prevMessages });
         }}
       />
 
@@ -308,7 +361,16 @@ const App: React.FC = () => {
         }}
       />
 
-      <RunInputsModal target={runInputsTarget} values={runInputValues} error={runInputsError} onClose={() => setRunInputsTarget(null)} onValueChange={(k, v) => setRunInputValues(prev => ({ ...prev, [k]: v }))} onSubmit={submitRunInputs} />
+      <RunInputsModal
+        target={runInputsTarget}
+        runName={runName}
+        values={runInputValues}
+        error={runInputsError}
+        onClose={() => setRunInputsTarget(null)}
+        onRunNameChange={setRunName}
+        onValueChange={(k, v) => setRunInputValues(prev => ({ ...prev, [k]: v }))}
+        onSubmit={submitRunInputs}
+      />
 
       <FlowBuilderModal
         open={!!editingFlow && !editingStep}

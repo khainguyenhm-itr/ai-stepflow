@@ -20,9 +20,9 @@ test('FlowOrchestrator identifies ready steps and respects interactive limits', 
     id: 'f', name: 'f', description: '', inputs: {}, sourcePath: '/f.yaml',
     steps: [
       step('a'),
-      step('b', { dependsOn: ['a'], review: { required: true, type: 'ai' } }), // headless
-      step('c', { dependsOn: ['a'] }), // interactive
-      step('d', { dependsOn: ['a'] })  // interactive (will be parked)
+      step('b', { dependsOn: ['a'], review: { required: true, type: 'ai' } }), // AI review, still interactive
+      step('c', { dependsOn: ['a'] }),
+      step('d', { dependsOn: ['a'] })
     ]
   };
 
@@ -36,11 +36,13 @@ test('FlowOrchestrator identifies ready steps and respects interactive limits', 
   st = markCompleted(markRunning(st, flow, 'a'), flow, 'a');
   orch = new FlowOrchestrator(flow, st);
 
+  // Every step runs interactively (AI review only changes post-run verify, not launch mode).
+  // Of the three ready steps, exactly one launches and the rest are parked.
   const actions = orch.getAutoAdvanceActions();
   assert.equal(actions.length, 3);
-  assert.deepEqual(actions.find(a => a.stepId === 'b'), { type: 'launch_headless', stepId: 'b' });
-  assert.deepEqual(actions.find(a => a.stepId === 'c'), { type: 'launch_headless', stepId: 'c' });
-  assert.deepEqual(actions.find(a => a.stepId === 'd'), { type: 'launch_headless', stepId: 'd' });
+  assert.equal(actions.filter(a => a.type === 'launch_interactive').length, 1);
+  assert.equal(actions.filter(a => a.type === 'park_interactive').length, 2);
+  assert.ok(!actions.some(a => a.type === 'launch_headless'));
 });
 
 test('FlowOrchestrator does not re-launch already started steps', () => {
@@ -55,7 +57,7 @@ test('FlowOrchestrator does not re-launch already started steps', () => {
   let st = initRunState(flow, { runId: 'r1' });
   st = markCompleted(markRunning(st, flow, 'a'), flow, 'a');
   
-  let orch = new FlowOrchestrator(flow, st);
+  const orch = new FlowOrchestrator(flow, st);
   const actions1 = orch.getAutoAdvanceActions();
   assert.equal(actions1.length, 1);
   assert.equal(actions1[0].stepId, 'b');

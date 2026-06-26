@@ -59,7 +59,7 @@
         {
           "id": "ai-stepflow",
           "title": "AI StepFlow",
-          "icon": "resources/activity-icon.svg"
+          "icon": "resources/icon.svg"
         }
       ]
     },
@@ -75,27 +75,32 @@
     "commands": [
       {
         "command": "ai-stepflow.openOverview",
-        "title": "Open AI StepFlow",
+        "title": "Open Cockpit",
+        "category": "AI StepFlow",
         "icon": "$(rocket)"
       },
       {
         "command": "ai-stepflow.refreshAll",
         "title": "Refresh All",
+        "category": "AI StepFlow",
         "icon": "$(refresh)"
       },
       {
         "command": "ai-stepflow.installDefaults",
         "title": "Install Default Agents & Skills",
+        "category": "AI StepFlow",
         "icon": "$(cloud-download)"
       },
       {
         "command": "ai-stepflow.astGraph.rescan",
-        "title": "AI StepFlow: Rescan AST Graph",
+        "title": "Rescan AST Graph",
+        "category": "AI StepFlow",
         "icon": "$(type-hierarchy)"
       },
       {
         "command": "ai-stepflow.astGraph.reregisterMcp",
-        "title": "AI StepFlow: Re-register AST Graph MCP Server"
+        "title": "Re-register AST Graph MCP Server",
+        "category": "AI StepFlow"
       }
     ],
     "configuration": {
@@ -122,9 +127,56 @@
           "default": 600,
           "minimum": 0,
           "description": "Kill a headless step/AI-review run that exceeds this many seconds (it is marked failed). Set to 0 to disable the timeout."
+        },
+        "ai-stepflow.run.maxTurns": {
+          "type": "number",
+          "default": 6,
+          "minimum": 0,
+          "description": "Maximum number of agentic turns per headless step run. Prevents runaway multi-turn execution from consuming excessive tokens. Set to 0 to disable the limit. Individual agents can override this via their maxTurns field."
+        },
+        "ai-stepflow.run.headlessMcpServers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "MCP servers (by name, as configured in your ~/.claude.json) to make available to headless step runs and AI reviews. Default is empty: headless runs carry NO MCP servers, which keeps their tool/instruction context — and token cost — minimal. Add names (e.g. \"ast-graph\") only for servers a headless step genuinely needs. Does not affect interactive terminal steps, which always use your full MCP config."
         }
       }
-    }
+    },
+    "walkthroughs": [
+      {
+        "id": "ai-stepflow.getStarted",
+        "title": "Get started with AI StepFlow",
+        "description": "Run your Claude agents, skills, and multi-step flows without leaving VS Code.",
+        "steps": [
+          {
+            "id": "installCli",
+            "title": "Install the Claude Code CLI",
+            "description": "AI StepFlow drives the local `claude` CLI. Install it globally and make sure `claude` is on your PATH:\n```\nnpm install -g @anthropic-ai/claude-code\n```",
+            "media": { "markdown": "resources/walkthrough/install-cli.md" }
+          },
+          {
+            "id": "installDefaults",
+            "title": "Install default agents & skills",
+            "description": "Add the bundled SDLC agents and skills (plus the project's engineering rules) to your global `~/.claude`.\n[Install Default Agents & Skills](command:ai-stepflow.installDefaults)",
+            "media": { "markdown": "resources/walkthrough/install-defaults.md" },
+            "completionEvents": ["onCommand:ai-stepflow.installDefaults"]
+          },
+          {
+            "id": "openCockpit",
+            "title": "Open the cockpit",
+            "description": "Browse global and project agents, skills, and flows side by side.\n[Open Cockpit](command:ai-stepflow.openOverview)",
+            "media": { "image": "resources/walkthrough/cockpit.png", "altText": "The AI StepFlow cockpit showing the Workflows board" },
+            "completionEvents": ["onCommand:ai-stepflow.openOverview"]
+          },
+          {
+            "id": "runFlow",
+            "title": "Build and run your first flow",
+            "description": "Press **+ New Flow**, add steps (assign an agent + skills to each), then press **Run**. Each step opens in a Claude terminal — review the output and approve the gate.",
+            "media": { "markdown": "resources/walkthrough/run-flow.md" }
+          }
+        ]
+      }
+    ]
   },
   "dependencies": {
     "@ai-stepflow/core": "^0.1.0"

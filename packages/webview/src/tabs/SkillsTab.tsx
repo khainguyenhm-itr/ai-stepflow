@@ -2,8 +2,11 @@ import React, { useState } from 'react';
 import { Skill } from '@ai-stepflow/core/types';
 import { Icon } from '../components/primitives';
 import { ResourceCard, EmptyState } from '../components/ResourceCard';
-import { ScopeFilterSelect, ScopeFilter, SaveScope } from '../components/ScopeControls';
+import { ScopeFilter, SaveScope, ViewFilter, SortOrder, UnifiedFilterPanel } from '../components/ScopeControls';
 import { sendToVSCode } from '../vscode';
+import { useScopeFilter } from '../hooks/useScopeFilter';
+import { useViewFilter } from '../hooks/useViewFilter';
+import { useSortOrder } from '../hooks/useSortOrder';
 
 interface SkillsTabProps {
   skills: Skill[];
@@ -15,37 +18,59 @@ interface SkillsTabProps {
   onNew: (scope: SaveScope) => void;
   isBookmarked: (skill: Skill) => boolean;
   onToggleBookmark: (skill: Skill) => void;
+  initialFilter: ScopeFilter;
+  onScopeFilterChange: (v: ScopeFilter) => void;
+  initialViewFilter: ViewFilter;
+  onViewFilterChange: (v: ViewFilter) => void;
+  initialSortOrder: SortOrder;
+  onSortOrderChange: (v: SortOrder) => void;
 }
 
 export const SkillsTab: React.FC<SkillsTabProps> = ({
   skills,
   globalPath,
-  projectPath,
   onOpenEditor,
   onRun,
   onDetail,
   onNew,
   isBookmarked,
-  onToggleBookmark
+  onToggleBookmark,
+  initialFilter,
+  onScopeFilterChange,
+  initialViewFilter,
+  onViewFilterChange,
+  initialSortOrder,
+  onSortOrderChange,
 }) => {
-  const [filter, setFilter] = useState<ScopeFilter>('all');
+  const [filter, setFilter] = useScopeFilter(initialFilter, onScopeFilterChange);
+  const [viewFilter, setViewFilter] = useViewFilter(initialViewFilter, onViewFilterChange);
+  const [sortOrder, setSortOrder] = useSortOrder(initialSortOrder, onSortOrderChange);
+  const [search, setSearch] = useState('');
 
   const getItemScope = (sourcePath: string): SaveScope => {
     if (globalPath && sourcePath.startsWith(globalPath)) return 'global';
     return 'project';
   };
 
-  const matchesScopeFilter = (sourcePath: string) => 
-    filter === 'all' || getItemScope(sourcePath) === filter;
-
+  const q = search.trim().toLowerCase();
   const visibleSkills = skills
-    .filter(skill => matchesScopeFilter(skill.sourcePath))
-    // Bookmarked skills are easiest to reach, then built-ins, then alphabetical.
-    .sort((a, b) =>
-      (Number(isBookmarked(b)) - Number(isBookmarked(a)))
-      || (Number(!!b.builtIn) - Number(!!a.builtIn))
-      || a.name.localeCompare(b.name)
-    );
+    .filter(skill => filter === 'all' || getItemScope(skill.sourcePath) === filter)
+    .filter(skill =>
+      viewFilter.length === 0 ||
+      (viewFilter.includes('bookmarked') && isBookmarked(skill)) ||
+      (viewFilter.includes('built-in') && !!skill.builtIn)
+    )
+    .filter(skill =>
+      !q ||
+      skill.name.toLowerCase().includes(q) ||
+      (skill.description ?? '').toLowerCase().includes(q)
+    )
+    .sort((a, b) => {
+      if (sortOrder === 'newest') return (b.modifiedAt ?? 0) - (a.modifiedAt ?? 0);
+      if (sortOrder === 'oldest') return (a.modifiedAt ?? 0) - (b.modifiedAt ?? 0);
+      return (Number(!!b.builtIn) - Number(!!a.builtIn)) ||
+        (sortOrder === 'desc' ? b.name.localeCompare(a.name) : a.name.localeCompare(b.name));
+    });
 
   const renderScopeBadge = (sourcePath: string) => {
     const scope = getItemScope(sourcePath);
@@ -57,7 +82,22 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
       <div className="page-head">
         <h2>Skills</h2>
         <div className="page-head-actions">
-          <ScopeFilterSelect value={filter} onChange={setFilter} />
+          <div className="page-search">
+            <span className="page-search-icon"><Icon.Search size={14} /></span>
+            <input
+              className="page-search-input"
+              type="text"
+              placeholder="Search skills…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
+          <UnifiedFilterPanel
+            scope={filter}
+            view={viewFilter}
+            sort={sortOrder}
+            onApply={(s, v, o) => { setFilter(s); setViewFilter(v); setSortOrder(o); }}
+          />
           <button className="btn" title="Create a skill from an existing markdown file" onClick={() => sendToVSCode('importSkillFile', {})}>
             <span className="btn-glyph"><Icon.Upload size={14} /></span>Import file
           </button>
@@ -70,13 +110,20 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
         </div>
       </div>
       {visibleSkills.length === 0 ? (
-        <EmptyState title="No skills found" text="Create reusable skills that agents can use across different steps." icon={<Icon.Zap size={24} />} />
+        <EmptyState title="No skills found" text={q ? `No skills match "${search}"` : 'Create reusable skills that agents can use across different steps.'} icon={<Icon.Zap size={24} />} />
       ) : (
         <div className="card-grid">
-          {visibleSkills.map(skill => (
+          {visibleSkills.map(skill => {
+            const parts = skill.sourcePath.split('/');
+            const basename = parts[parts.length - 1] ?? '';
+            const fileTitle = basename.toUpperCase() === 'SKILL.MD'
+              ? (parts[parts.length - 2] ?? skill.name)
+              : basename.replace(/\.md$/i, '') || skill.name;
+            return (
             <ResourceCard
               key={skill.name}
-              title={skill.name}
+              title={fileTitle}
+              subtitle={skill.name}
               description={skill.description}
               scopeBadge={renderScopeBadge(skill.sourcePath)}
               badge={skill.builtIn ? <span className="badge built-in">Build-in</span> : undefined}
@@ -90,7 +137,8 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
               }
               onDetail={() => onDetail(skill)}
             />
-          ))}
+          );
+          })}
         </div>
       )}
     </div>
