@@ -53,6 +53,9 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     .ver { color: var(--muted); font-size: 10px; flex: 0 0 auto; }
     .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 13px; line-height: 1; }
     .icon-btn:hover { color: var(--fg); background: var(--hover); }
+    #refresh.spinning { animation: spin .65s linear infinite; pointer-events: none; color: var(--focus); }
+    #refresh-status { font-size: 10px; font-weight: 600; color: var(--success); flex: 0 0 auto; white-space: nowrap; opacity: 0; transition: opacity .2s; }
+    #refresh-status.show { opacity: 1; }
 
     /* scrollable content area — flex column so expanded accordion section can grow */
     .body { flex: 1 1 0; overflow: hidden; display: flex; flex-direction: column; padding: 0 12px 8px; }
@@ -250,6 +253,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
   <div class="hdr">
     <span class="mark">AI</span>
     <span class="brand-name">AI StepFlow</span>
+    <span id="refresh-status" aria-live="polite"></span>
     ${version ? `<span class="ver">v${version}</span>` : ''}
     <button class="icon-btn" id="refresh" title="Refresh" aria-label="Refresh">↻</button>
   </div>
@@ -367,7 +371,33 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
 
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
-  document.getElementById('refresh').onclick = () => vscode.postMessage({ type: 'refresh' });
+  let refreshing = false;
+  let refreshStatusTimer = null;
+  document.getElementById('refresh').onclick = () => {
+    if (refreshing) return;
+    refreshing = true;
+    const btn = document.getElementById('refresh');
+    btn.classList.add('spinning');
+    btn.setAttribute('aria-busy', 'true');
+    const status = document.getElementById('refresh-status');
+    if (status) { status.classList.remove('show'); status.textContent = ''; }
+    clearTimeout(refreshStatusTimer);
+    vscode.postMessage({ type: 'refresh' });
+  };
+  // Called when fresh data lands after a manual refresh: stop the spin, flash "Updated ✓".
+  function finishRefresh() {
+    if (!refreshing) return;
+    refreshing = false;
+    const btn = document.getElementById('refresh');
+    btn.classList.remove('spinning');
+    btn.removeAttribute('aria-busy');
+    const status = document.getElementById('refresh-status');
+    if (status) {
+      status.textContent = 'Updated ✓';
+      status.classList.add('show');
+      refreshStatusTimer = setTimeout(() => status.classList.remove('show'), 2000);
+    }
+  }
 
   // ── Per-repo sidebar state persistence (via .ai-stepflow/ui-prefs.json) ──
   function saveSidebarState() {
@@ -1024,6 +1054,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
         document.getElementById('loading-overlay').style.display = 'none';
         renderStats(m.stats);
         renderDefaults(m.defaultItems || []);
+        finishRefresh();
         mcpReceived = true;
         pluginsReceived = true;
         if (m.gitnexus) gitnexusStatus = m.gitnexus;
