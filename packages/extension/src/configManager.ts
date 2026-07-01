@@ -694,6 +694,17 @@ export class ConfigManager {
     }
   }
 
+  public async deleteUiPref(key: string): Promise<void> {
+    if (!this.projectPath) return;
+    const prefsPath = path.join(this.projectPath, '.ai-stepflow', 'ui-prefs.json');
+    try {
+      const prefs: Record<string, string> = JSON.parse(await fs.readFile(prefsPath, 'utf8'));
+      if (!(key in prefs)) return;
+      delete prefs[key];
+      await fs.writeFile(prefsPath, JSON.stringify(prefs, null, 2), 'utf8');
+    } catch { /* no project prefs file — nothing to remove */ }
+  }
+
   public async saveGlobalUiPref(key: string, value: string): Promise<void> {
     const prefsPath = path.join(this.globalPath, '.ai-stepflow', 'ui-prefs.json');
     try {

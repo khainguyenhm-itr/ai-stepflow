@@ -58,7 +58,7 @@ const App: React.FC = () => {
     scopeFilters,
     viewFilters,
     sortOrders,
-    groupBys,
+    groupBys, setGroupBys,
     agentFormError, setAgentFormError,
     skillFormError, setSkillFormError,
     draftLoading, setDraftLoading,
@@ -226,7 +226,7 @@ const App: React.FC = () => {
           initialSortOrder={sortOrders.agents}
           onSortOrderChange={v => sendToVSCode('savePref', { key: 'sortOrder:agents', value: v })}
           initialGroupBy={groupBys.agents}
-          onGroupByChange={v => sendToVSCode('savePref', { key: 'groupBy:agents', value: v, global: true })}
+          onGroupByChange={v => { setGroupBys(p => ({ ...p, agents: v })); sendToVSCode('savePref', { key: 'groupBy:agents', value: v, global: true }); }}
           onOpenEditor={openAgentEditor}
           onRun={agent => {
             setStandaloneRun({ type: 'agent', agent });
@@ -258,7 +258,7 @@ const App: React.FC = () => {
           initialSortOrder={sortOrders.skills}
           onSortOrderChange={v => sendToVSCode('savePref', { key: 'sortOrder:skills', value: v })}
           initialGroupBy={groupBys.skills}
-          onGroupByChange={v => sendToVSCode('savePref', { key: 'groupBy:skills', value: v, global: true })}
+          onGroupByChange={v => { setGroupBys(p => ({ ...p, skills: v })); sendToVSCode('savePref', { key: 'groupBy:skills', value: v, global: true }); }}
           onOpenEditor={openSkillEditor}
           onRun={skill => {
             setStandaloneRun({ type: 'skill', skill });

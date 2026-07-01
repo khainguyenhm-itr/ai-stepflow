@@ -134,6 +134,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 if ((message as any).key === 'ai:responseStyle') {
                   await this.configManager.saveGlobalUiPref((message as any).key, (message as any).value);
                   await this.configManager.applyResponseStyle((message as any).value);
+                } else if ((message as any).global) {
+                  await this.configManager.saveGlobalUiPref((message as any).key, (message as any).value);
+                  await this.configManager.deleteUiPref((message as any).key);
                 } else {
                   await this.configManager.saveUiPref((message as any).key, (message as any).value);
                 }
