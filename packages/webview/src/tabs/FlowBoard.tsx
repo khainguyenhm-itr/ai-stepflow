@@ -103,6 +103,13 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
           {runnerOpen && runState?.isClosed && <span className="badge success">run finalized</span>}
         </div>
         <div className="panel-head-actions">
+          <button
+            className="icon-btn"
+            title={isExpanded ? 'Collapse' : 'Expand'}
+            onClick={handleExpand}
+          >
+            {isExpanded ? <Icon.ChevronUp size={18} /> : <Icon.ChevronDown size={18} />}
+          </button>
           {onToggleBookmark && (
             <button
               className={`icon-btn bookmark ${bookmarked ? 'active' : ''}`}
@@ -113,13 +120,6 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
               <Icon.Bookmark size={14} fill={bookmarked ? 'currentColor' : 'none'} />
             </button>
           )}
-          <button
-            className="icon-btn"
-            title={isExpanded ? 'Collapse' : 'Expand'}
-            onClick={handleExpand}
-          >
-            {isExpanded ? <Icon.ChevronUp size={18} /> : <Icon.ChevronDown size={18} />}
-          </button>
           <button className="icon-btn pencil" title="Edit flow" onClick={() => onEdit(flow)}><Icon.Pencil size={14} /></button>
           <button className="icon-btn" title="Details" onClick={() => onDetail(flow)}>
             <Icon.Info size={14} />
