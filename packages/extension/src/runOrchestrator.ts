@@ -178,7 +178,13 @@ export class RunOrchestrator {
     const agents = await this.configManager.loadAgents();
     const agent = agents.find(a => a.name === step.agent);
     const stepSkillNames = step.skills && step.skills.length ? step.skills : (step.skill ? [step.skill] : []);
-    if (!agent || stepSkillNames.length === 0) return;
+    // A skill is optional (the UI no longer forces one, and composeInteractiveMessage falls back to
+    // the plain description when there is none). Only a valid agent is required to run the step.
+    if (!agent) {
+      this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[cannot run — agent '${step.agent || '(none)'}' not found]\n` });
+      vscode.window.showErrorMessage(`Step '${step.title || step.id}' cannot run: agent '${step.agent || '(none)'}' not found.`);
+      return;
+    }
 
     this._startedStepIds.add(stepId);
     const projectPath = this.configManager.getProjectPath() || '';
