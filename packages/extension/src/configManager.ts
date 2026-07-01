@@ -101,11 +101,11 @@ export class ConfigManager {
   public async listBundledDefaults(): Promise<Array<{ kind: BundledKind; filename: string; name: string; description: string; tags?: string[]; installed: boolean; hasUpdate: boolean }>> {
     if (!this.extensionPath) return [];
     const result: Array<{ kind: BundledKind; filename: string; name: string; description: string; tags?: string[]; installed: boolean; hasUpdate: boolean }> = [];
+    // Only agents & skills are browsable in the Default Library UI. Reviews/validators are
+    // backend infra installed with the bundled defaults, not user-facing catalog items.
     const KINDS: Array<{ kind: BundledKind; exts: string[] }> = [
       { kind: 'agents', exts: ['.md'] },
       { kind: 'skills', exts: ['.md'] },
-      { kind: 'reviews', exts: ['.md'] },
-      { kind: 'validators', exts: ['.mjs', '.js'] },
     ];
     for (const { kind, exts } of KINDS) {
       const srcDir = path.join(this.extensionPath, 'resources', 'defaults', kind);

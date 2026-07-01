@@ -557,14 +557,12 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
 
   let defaultItemsData = [];
   let libQuery = '';
-  let libActiveTab = 'agents'; // 'agents' | 'skills' | 'reviews' | 'validators'
+  let libActiveTab = 'agents'; // 'agents' | 'skills'
   let libActiveTags = new Set(); // currently selected tag filters
   const libPendingOps = new Map(); // filename → 'installing' | 'updating' | 'removing'
   const LIB_TABS = [
-    { key: 'agents',     label: 'Agents' },
-    { key: 'skills',     label: 'Skills' },
-    { key: 'reviews',    label: 'Reviews' },
-    { key: 'validators', label: 'Validators' },
+    { key: 'agents', label: 'Agents' },
+    { key: 'skills', label: 'Skills' },
   ];
 
   function renderDefaults(items) {
