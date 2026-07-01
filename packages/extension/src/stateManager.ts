@@ -93,12 +93,16 @@ export class StateManager {
     }
   }
 
-  /** Deletes audit log entries for a flow. If runId is provided, only entries for that run are removed. */
-  public async clearAuditLog(flowId: string, runId?: string): Promise<void> {
+  /**
+   * Deletes audit log entries for a flow. If runId is provided, only entries for that run are
+   * removed; if stepIds is also provided, only entries for those steps within that run are removed
+   * (used to reset a single wedged step without wiping the rest of the run's history).
+   */
+  public async clearAuditLog(flowId: string, runId?: string, stepIds?: string[]): Promise<void> {
     const dir = await this.getLocalStorageDir();
     if (!dir) return;
     const logFile = path.join(dir, 'audit-logs', `${flowId}.jsonl`);
-    
+
     if (!runId) {
       try {
         await fs.unlink(logFile);
@@ -108,13 +112,15 @@ export class StateManager {
       return;
     }
 
+    const stepFilter = stepIds ? new Set(stepIds) : null;
     try {
       const content = await fs.readFile(logFile, 'utf8');
       const lines = content.trim().split('\n');
       const filtered = lines.filter(line => {
         try {
           const entry = JSON.parse(line);
-          return entry.runId !== runId;
+          if (entry.runId !== runId) return true;
+          return stepFilter ? !stepFilter.has(entry.stepId) : false;
         } catch {
           return true;
         }

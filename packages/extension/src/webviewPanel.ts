@@ -225,9 +225,28 @@ export class CockpitPanel {
       case 'markStepDone':
         await this._runner.markStepDone(message.stepId);
         return;
-      case 'resetRun':
+      case 'resetRun': {
+        const choice = await vscode.window.showWarningMessage(
+          'Reset all steps to their initial state? This discards every step\'s output, review decisions and history for this run.',
+          { modal: true },
+          'Reset All'
+        );
+        if (choice !== 'Reset All') return;
         await this._runner.resetRun();
         return;
+      }
+      case 'resetStep': {
+        const step = this._runner.currentFlow?.steps.find(s => s.id === message.stepId);
+        const label = step?.title || step?.id || message.stepId;
+        const choice = await vscode.window.showWarningMessage(
+          `Reset step '${label}' to its initial state? This discards its output, review decision and history (and resets any dependent steps) so you can run it again.`,
+          { modal: true },
+          'Reset Step'
+        );
+        if (choice !== 'Reset Step') return;
+        await this._runner.resetStep(message.stepId);
+        return;
+      }
       case 'closeRun':
         await this._runner.closeRun(message.finalize);
         await this._sendAllData();

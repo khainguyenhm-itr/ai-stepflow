@@ -186,11 +186,19 @@ export const useAppLogic = () => {
       case 'resetAuditLog':
         runState.setRunState(currentRun => {
           if (currentRun) {
-            const oldRunId = currentRun.runId;
+            // Targeted per-step reset carries runId + stepIds; a full run reset carries neither
+            // and clears every entry for the current run.
+            const runId = message.runId ?? currentRun.runId;
+            const stepIds = message.stepIds ? new Set(message.stepIds) : null;
             libState.setAuditLogs(prev => {
               const flowId = message.flowId;
               if (!prev[flowId]) return prev;
-              return { ...prev, [flowId]: prev[flowId].filter(e => e.runId !== oldRunId) };
+              return {
+                ...prev,
+                [flowId]: prev[flowId].filter(e =>
+                  e.runId !== runId ? true : stepIds ? !stepIds.has(e.stepId) : false
+                )
+              };
             });
           }
           return currentRun;

@@ -462,6 +462,34 @@ export class RunOrchestrator {
   }
 
   /**
+   * Reset a single wedged step (and everything downstream) to its fresh initial state so it can be
+   * re-run. Terminates any in-flight process/terminal for that step, drops its audit-log entries,
+   * then broadcasts the fresh state.
+   */
+  async resetStep(stepId: string): Promise<void> {
+    if (!this._currentFlow || !this._runState) return;
+    const flow = this._currentFlow;
+    const runId = this._runState.runId;
+    const ids = [stepId, ...machine.dependentStepIds(flow, stepId)];
+
+    // Kill any in-flight run for the affected steps before the state flips, so their completion
+    // handlers become no-ops.
+    for (const id of ids) {
+      this._cancelledStepIds.add(id);
+      const child = this._runChildrenByStep.get(id);
+      if (child) child.kill();
+      this.terminals.cancelStep(id);
+    }
+
+    await this.stateManager.clearAuditLog(flow.id, runId, ids);
+    this.post({ type: 'resetAuditLog', flowId: flow.id, runId, stepIds: ids });
+    await this._setRunState(s => machine.resetStep(s, flow, stepId));
+    this.post({ type: 'restoreRun', flow, runState: this._runState });
+    // Clear stale cancelled IDs so the re-run is not silently skipped.
+    for (const id of ids) this._cancelledStepIds.delete(id);
+  }
+
+  /**
    * Run `claude` headless with stream-json output. The child process is tracked in `_activeRuns`
    * (killed on dispose) and, when a `stepId` is provided, in `_runChildrenByStep` so the user's
    * "Cancel" can kill exactly that run. A per-run timeout config bounds a hung run. Public so the

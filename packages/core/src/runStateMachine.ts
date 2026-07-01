@@ -79,7 +79,7 @@ function patchStep(
   return { ...state, steps: applyDependencyLocks(flow, steps) };
 }
 
-function dependentStepIds(flow: Flow, stepId: string): Set<string> {
+export function dependentStepIds(flow: Flow, stepId: string): Set<string> {
   const dependents = new Map<string, string[]>();
   for (const step of flow.steps) {
     for (const dep of step.dependsOn ?? []) {
@@ -214,6 +214,29 @@ export function applyHumanReview(state: FlowRunState, flow: Flow, stepId: string
 
 export function markDone(state: FlowRunState, flow: Flow, stepId: string): FlowRunState {
   return patchStep(state, flow, stepId, { completionStatus: 'done' }, { status: 'done' });
+}
+
+/**
+ * Reset a single step (and everything downstream of it) to its fresh initial state, as if the
+ * run had just started for those steps: output, review decisions, metrics and history are all
+ * discarded so the step can be re-run from scratch. Used to recover a step that has wedged in a
+ * state with no valid action (e.g. no Finish button available). Dependents are reset too because
+ * their artifacts may have been derived from this step's now-discarded output.
+ */
+export function resetStep(state: FlowRunState, flow: Flow, stepId: string): FlowRunState {
+  const ids = new Set([stepId, ...dependentStepIds(flow, stepId)]);
+  const steps: Record<string, StepRunState> = { ...state.steps };
+  for (const id of ids) {
+    const step = flow.steps.find(s => s.id === id);
+    if (!step) continue;
+    steps[id] = {
+      executionStatus: 'ready',
+      reviewStatus: step.review.required ? 'pending' : 'not_required',
+      completionStatus: 'not_ready',
+      output: ''
+    };
+  }
+  return { ...state, steps: applyDependencyLocks(flow, steps) };
 }
 
 /**

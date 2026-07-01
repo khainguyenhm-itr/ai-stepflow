@@ -160,6 +160,13 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
     s => s.executionStatus !== 'ready' && s.executionStatus !== 'locked'
   );
 
+  // A single step can be reset once it has left its pristine initial state (ready/locked with no
+  // history) — the escape hatch for a step wedged in a state with no valid action (e.g. no Finish).
+  const canResetStep = !isFinalized && !!activeStepState && !(
+    (activeStepState.executionStatus === 'ready' || activeStepState.executionStatus === 'locked')
+    && (activeStepState.history?.length ?? 0) === 0
+  );
+
   return (
     <div className="runner">
       <div className="runner-head">
@@ -306,6 +313,11 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
                   </button>
                 )}
                 {stepActions.isLocked && <button className="btn" disabled title="Complete the steps this one depends on first">Locked</button>}
+                {canResetStep && (
+                  <button className="btn" title="Reset this step to its initial state so it can be run again" onClick={() => sendToVSCode('resetStep', { stepId: activeStepId! })}>
+                    <span className="btn-glyph"><Icon.RotateCw size={14} /></span>Reset Step
+                  </button>
+                )}
               </>
             )}
           </div>

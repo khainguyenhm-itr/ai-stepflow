@@ -42,7 +42,7 @@ export type HostMessage =
   | { type: 'stepUpdate'; stepId: string; output: string; append?: boolean }
   | { type: 'aiReviewUpdate'; stepId: string; output: string; append?: boolean }
   | { type: 'runStateChanged'; runState: FlowRunState; historyEvent?: HistoryEvent }
-  | { type: 'resetAuditLog'; flowId: string }
+  | { type: 'resetAuditLog'; flowId: string; runId?: string; stepIds?: string[] }
   | { type: 'runDeleted'; flowId: string; runId: string }
   | { type: 'fileImported'; kind: 'agent'; item: { name: string; description: string; model: string; tools: string; systemPrompt: string } }
   | { type: 'fileImported'; kind: 'skill'; item: { name: string; description: string; instructions: string } }
@@ -73,6 +73,7 @@ export type WebviewMessage =
   | { type: 'reviewStep'; stepId: string; decision: 'approved' | 'rejected' }
   | { type: 'markStepDone'; stepId: string; historyEvent?: { timestamp: string; status: string; message?: string } }
   | { type: 'resetRun' }
+  | { type: 'resetStep'; stepId: string }
   | { type: 'closeRun', finalize?: boolean }
   | { type: 'deleteRun' }
   | { type: 'verifyRun' }
@@ -106,6 +107,7 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   importAgentFile: () => true,
   importSkillFile: () => true,
   resetRun: () => true,
+  resetStep: m => isString(m.stepId),
   closeRun: m => m.finalize === undefined || typeof m.finalize === 'boolean',
   deleteRun: () => true,
   verifyRun: () => true,

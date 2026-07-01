@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   Flow,
   initRunState, markRunning, markCompleted, markFailed, markCancelled,
-  applyHumanReview, markDone, doneStepIds, lockStatesEqual
+  applyHumanReview, markDone, doneStepIds, lockStatesEqual, resetStep
 } from '@ai-stepflow/core';
 
 function step(id: string, extra: Record<string, unknown> = {}) {
@@ -128,6 +128,39 @@ test('rerunning a done step invalidates dependent steps', () => {
   assert.equal(st.steps.b.completionStatus, 'not_ready');
   assert.equal(st.steps.c.executionStatus, 'locked');
   assert.equal(st.steps.c.completionStatus, 'not_ready');
+});
+
+test('resetStep returns a wedged step (and dependents) to initial state', () => {
+  const threeStepFlow: Flow = {
+    id: 'f3', name: 'f3', description: '', inputs: {}, sourcePath: '/f3.yaml',
+    steps: [
+      step('a'),
+      step('b', { dependsOn: ['a'], review: { required: true, type: 'human' } }),
+      step('c', { dependsOn: ['b'] })
+    ]
+  };
+  let st = initRunState(threeStepFlow, { runId: 'r1' });
+  st = markCompleted(markRunning(st, threeStepFlow, 'a'), threeStepFlow, 'a');
+  st = markCompleted(markRunning(st, threeStepFlow, 'b'), threeStepFlow, 'b');
+  st = applyHumanReview(st, threeStepFlow, 'b', { decision: 'approved' });
+  st = markDone(st, threeStepFlow, 'b');
+  st = markCompleted(markRunning(st, threeStepFlow, 'c'), threeStepFlow, 'c');
+  assert.deepEqual([...doneStepIds(st)].sort(), ['a', 'b', 'c']);
+
+  // Reset the middle step: it and its dependent 'c' return to initial; 'a' is untouched.
+  st = resetStep(st, threeStepFlow, 'b');
+  assert.equal(st.steps.a.completionStatus, 'done');
+  assert.equal(st.steps.b.executionStatus, 'ready');
+  assert.equal(st.steps.b.reviewStatus, 'pending');
+  assert.equal(st.steps.b.completionStatus, 'not_ready');
+  assert.equal(st.steps.b.output, '');
+  assert.equal(st.steps.b.history, undefined);
+  // Dependent 'c' is invalidated and re-locked because 'b' is no longer done.
+  assert.equal(st.steps.c.executionStatus, 'locked');
+  assert.equal(st.steps.c.completionStatus, 'not_ready');
+  // The reset step is immediately re-runnable.
+  st = markRunning(st, threeStepFlow, 'b');
+  assert.equal(st.steps.b.executionStatus, 'running');
 });
 
 test('human review records the decision and comment in history', () => {
