@@ -16,6 +16,7 @@ import {
   runValidator,
   renderVerifyReportMarkdown, verifyRun,
   resolveMaxTurns, resolveTimeoutMs, buildHeadlessMcpConfig,
+  runOutputSlug,
   StepRunState
 } from '@ai-stepflow/core';
 import * as machine from '@ai-stepflow/core';
@@ -561,7 +562,7 @@ export class RunOrchestrator {
     // Read the review kit + artifacts first so we only flip to the transient "review running"
     // state when an actual LLM call is going to happen.
     const reviewKit = deep ? machine.loadReviewKit(projectPath) : '';
-    const artifacts = deep ? machine.readProducedArtifacts(step, projectPath, this._runState.inputs || {}, flow.name) : { text: '', count: 0 };
+    const artifacts = deep ? machine.readProducedArtifacts(step, projectPath, this._runState.inputs || {}, flow.name, this._runSlug()) : { text: '', count: 0 };
     if (deep && reviewKit && artifacts.count > 0) {
       await this._setRunState(s => machine.applyAiReview(s, flow, stepId, 'ai_review_running', ''));
     }
@@ -649,13 +650,18 @@ export class RunOrchestrator {
     });
   }
 
+  /** Per-run output subfolder slug, so each run's artifacts stay separate. */
+  private _runSlug(): string {
+    return runOutputSlug(this._runState?.runName, this._runState?.runId);
+  }
+
   private _validateRequires(step: FlowStep): { ok: boolean; message?: string } {
-    return validateRequires(step, this.configManager.getProjectPath() || '', this._runState?.inputs || {}, this._currentFlow?.name || '');
+    return validateRequires(step, this.configManager.getProjectPath() || '', this._runState?.inputs || {}, this._currentFlow?.name || '', this._runSlug());
   }
 
   /** Deterministic gate: the step's declared `produces`/review files must exist on disk. */
   private _validateProduces(step: FlowStep): { ok: boolean; message?: string } {
-    return validateProducesFiles(step, this.configManager.getProjectPath() || '', this._runState?.inputs || {}, this._currentFlow?.name || '');
+    return validateProducesFiles(step, this.configManager.getProjectPath() || '', this._runState?.inputs || {}, this._currentFlow?.name || '', this._runSlug());
   }
 
   /**
@@ -669,7 +675,9 @@ export class RunOrchestrator {
       this.configManager.getProjectPath() || '',
       this._runState?.inputs || {},
       this._currentFlow?.name || '',
-      opts => this._spawnClaudeStreaming({ ...opts, maxTurns: 1 })
+      opts => this._spawnClaudeStreaming({ ...opts, maxTurns: 1 }),
+      undefined,
+      this._runSlug()
     );
   }
 

@@ -16,7 +16,7 @@ import { FlowRunState, FlowStep } from './types.js';
 import { StepRunner } from './claudeRunner.js';
 import { runValidator } from './validatorRunner.js';
 import { parseVerdict } from './runUtils.js';
-import { resolveTemplates, resolveFlowPath } from './pathTemplates.js';
+import { resolveTemplates, resolveFlowPath, runOutputSlug } from './pathTemplates.js';
 
 /** Layer-1 validator applied to AI reviews that don't name their own `validatorPath`. */
 export const DEFAULT_REVIEW_VALIDATOR = 'aisf-produces-complete.mjs';
@@ -60,11 +60,12 @@ export function readProducedArtifacts(
   step: FlowStep,
   workspaceRoot: string,
   inputs: Record<string, string>,
-  flowName = ''
+  flowName = '',
+  runSlug = ''
 ): { text: string; count: number } {
   const reviewPath = step.review.filePath ? [step.review.filePath] : [];
   const paths = resolveTemplates([...reviewPath, ...(step.produces ?? [])], inputs)
-    .map(p => resolveFlowPath(p, flowName, workspaceRoot));
+    .map(p => resolveFlowPath(p, flowName, workspaceRoot, runSlug));
   const seen = new Set<string>();
   const parts: string[] = [];
   let total = 0;
@@ -139,7 +140,7 @@ export async function reviewStepArtifacts(opts: ReviewOptions): Promise<ReviewRe
 
   // Layer 2 — deep LLM review.
   const reviewKit = opts.reviewKit ?? loadReviewKit(workspaceRoot);
-  const artifacts = opts.artifacts ?? readProducedArtifacts(step, workspaceRoot, runState.inputs || {});
+  const artifacts = opts.artifacts ?? readProducedArtifacts(step, workspaceRoot, runState.inputs || {}, runState.flowName || '', runOutputSlug(runState.runName, runState.runId));
   if (!reviewKit || artifacts.count === 0) {
     const reason = !reviewKit ? 'review kit not installed' : 'no produced artifacts to read';
     return { status: 'waiting_human', note: `Deep review could not run: ${reason}.`, source: 'review-setup' };

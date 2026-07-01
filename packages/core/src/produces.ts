@@ -16,28 +16,28 @@ export interface RequiresValidationResult {
 }
 
 /** Verify a step's declared `requires` files exist before work continues. */
-export function validateRequires(step: FlowStep, projectPath: string, inputs: Record<string, string> = {}, flowName = ''): RequiresValidationResult {
+export function validateRequires(step: FlowStep, projectPath: string, inputs: Record<string, string> = {}, flowName = '', runSlug = ''): RequiresValidationResult {
   const requires = resolveTemplates(step.requires, inputs);
   if (requires.length === 0) return { ok: true };
   // Skip entries that are flow input keys (not file artifacts) — they are validated at flow start.
   const fileRequires = requires.filter(r => !(r in inputs));
   if (fileRequires.length === 0) return { ok: true };
-  const resolved = fileRequires.map(p => resolveFlowPath(p, flowName, projectPath));
+  const resolved = fileRequires.map(p => resolveFlowPath(p, flowName, projectPath, runSlug));
   const missing = resolved.filter(p => !fs.existsSync(p));
   if (missing.length === 0) return { ok: true };
   return { ok: false, message: `missing required file(s): ${missing.map(p => path.relative(projectPath, p) || p).join(', ')}` };
 }
 
 /** Resolve a step's declared `produces` + review-file paths to absolute, de-duplicated paths. */
-function resolveProducedPaths(step: FlowStep, projectPath: string, inputs: Record<string, string>, flowName: string): string[] {
+function resolveProducedPaths(step: FlowStep, projectPath: string, inputs: Record<string, string>, flowName: string, runSlug: string): string[] {
   const reviewPath = step.review.filePath ? [step.review.filePath] : [];
   const produces = resolveTemplates([...(step.produces ?? []), ...reviewPath], inputs);
-  return [...new Set(produces.map(p => resolveFlowPath(p, flowName, projectPath)))];
+  return [...new Set(produces.map(p => resolveFlowPath(p, flowName, projectPath, runSlug)))];
 }
 
 /** Verify a step's declared `produces`/review files exist on disk (existence only — no content check). */
-export function validateProducesFiles(step: FlowStep, projectPath: string, inputs: Record<string, string> = {}, flowName = ''): ProducesValidationResult {
-  const resolved = resolveProducedPaths(step, projectPath, inputs, flowName);
+export function validateProducesFiles(step: FlowStep, projectPath: string, inputs: Record<string, string> = {}, flowName = '', runSlug = ''): ProducesValidationResult {
+  const resolved = resolveProducedPaths(step, projectPath, inputs, flowName, runSlug);
   if (resolved.length === 0) return { ok: true };
   const missing = resolved.filter(p => !fs.existsSync(p));
   if (missing.length) {
@@ -47,21 +47,21 @@ export function validateProducesFiles(step: FlowStep, projectPath: string, input
 }
 
 /** Read the produced files' combined contents (skipping unreadable ones). */
-function readProducedContents(step: FlowStep, projectPath: string, inputs: Record<string, string>, flowName: string): string {
+function readProducedContents(step: FlowStep, projectPath: string, inputs: Record<string, string>, flowName: string, runSlug: string): string {
   let contents = '';
-  for (const p of resolveProducedPaths(step, projectPath, inputs, flowName)) {
+  for (const p of resolveProducedPaths(step, projectPath, inputs, flowName, runSlug)) {
     try { contents += fs.readFileSync(p, 'utf8') + '\n'; } catch { /* read failure surfaces as a missing marker */ }
   }
   return contents;
 }
 
 /** Verify a step's declared `produces` files exist and contain any required markers (verbatim substring). */
-export function validateProduces(step: FlowStep, projectPath: string, inputs: Record<string, string> = {}, flowName = ''): ProducesValidationResult {
-  const files = validateProducesFiles(step, projectPath, inputs, flowName);
+export function validateProduces(step: FlowStep, projectPath: string, inputs: Record<string, string> = {}, flowName = '', runSlug = ''): ProducesValidationResult {
+  const files = validateProducesFiles(step, projectPath, inputs, flowName, runSlug);
   if (!files.ok) return files;
   const markers = step.producesContains ?? [];
   if (markers.length === 0) return { ok: true };
-  const missingContent = missingMarkers(readProducedContents(step, projectPath, inputs, flowName), markers);
+  const missingContent = missingMarkers(readProducedContents(step, projectPath, inputs, flowName, runSlug), markers);
   if (missingContent.length) return { ok: false, message: `missing required content: ${missingContent.join(', ')}` };
   return { ok: true };
 }
@@ -83,12 +83,13 @@ export async function verifyProducesContent(
   inputs: Record<string, string> = {},
   flowName = '',
   runner: StepRunner,
-  model?: string
+  model?: string,
+  runSlug = ''
 ): Promise<ProducesValidationResult> {
   const markers = step.producesContains ?? [];
   if (markers.length === 0) return { ok: true };
 
-  const contents = readProducedContents(step, projectPath, inputs, flowName);
+  const contents = readProducedContents(step, projectPath, inputs, flowName, runSlug);
   const unverified = missingMarkers(contents, markers); // fast path: verbatim hits need no judging
   if (unverified.length === 0) return { ok: true };
   if (!contents.trim()) return { ok: false, message: `missing required content: ${unverified.join(', ')}` };

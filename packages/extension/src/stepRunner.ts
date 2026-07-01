@@ -12,7 +12,7 @@ import type { TerminalManager } from './terminalManager.js';
 import type { HostMessage } from './messages.js';
 import type { FlowRunState, Flow, FlowStep, Agent, Skill } from '@ai-stepflow/core';
 import {
-  resolveTemplate, resolveTemplates, resolveFlowRelativePath,
+  resolveTemplate, resolveTemplates, resolveFlowRelativePath, runOutputSlug,
   composeInteractiveMessage,
   ClaudeStreamingRunOptions, ClaudeStreamingRunResult,
 } from '@ai-stepflow/core';
@@ -75,11 +75,12 @@ export async function runInteractiveStep(
 ): Promise<void> {
   const { flow, step, stepId, agent, stepSkillNames, projectPath, description } = ctx;
   const runInputs = ctx.runState.inputs || {};
+  const runSlug = runOutputSlug(ctx.runState.runName, ctx.runState.runId);
 
   const resolvedProduces = resolveTemplates(step.produces, runInputs)
-    .map(p => resolveFlowRelativePath(p, flow.name));
+    .map(p => resolveFlowRelativePath(p, flow.name, runSlug));
   const resolvedRequires = resolveTemplates(step.requires, runInputs)
-    .map(p => resolveFlowRelativePath(p, flow.name));
+    .map(p => resolveFlowRelativePath(p, flow.name, runSlug));
 
   const primarySkill = stepSkillNames[0];
   const desc = resolveTemplate(

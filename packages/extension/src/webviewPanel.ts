@@ -8,7 +8,7 @@ import { TerminalManager } from './terminalManager.js';
 import { RunOrchestrator } from './runOrchestrator.js';
 import { validateMessage, WebviewMessage, HostMessage } from './messages.js';
 import { listConnectedMcpServers, addMcpServer } from './mcp.js';
-import { Agent, Flow, FlowStep, Skill, extractJsonObject, sanitizeFlowName } from '@ai-stepflow/core';
+import { Agent, Flow, FlowStep, Skill, extractJsonObject } from '@ai-stepflow/core';
 
 export class CockpitPanel {
   public static currentPanel: CockpitPanel | undefined;
@@ -436,7 +436,7 @@ export class CockpitPanel {
           name: flowName,
           description: typeof generated.description === 'string' ? generated.description : currentFlow?.description || '',
           inputs: this._normalizeFlowInputs(generated.inputs),
-          steps: this._resolveStepPaths(this._normalizeGeneratedSteps(generated.steps, agentNames, skillNames), flowName),
+          steps: this._normalizeGeneratedSteps(generated.steps, agentNames, skillNames),
           aiConversation: history ? [...history, { role: 'assistant', content: aiReply }] : undefined
         };
         this.postMessage({ type: 'flowGenerated', flow, reply: aiReply });
@@ -494,20 +494,6 @@ export class CockpitPanel {
         completion: { requireMarkDone: completion.requireMarkDone !== false }
       };
     });
-  }
-
-  /**
-   * Resolve plain filenames in produces/requires to the flow's output folder.
-   * Paths that already contain "/" are left as-is (explicit paths).
-   */
-  private _resolveStepPaths(steps: FlowStep[], flowName: string): FlowStep[] {
-    const folder = `.ai-stepflow/output/${sanitizeFlowName(flowName)}`;
-    const resolve = (p: string) => (p.includes('/') || p.includes('\\') ? p : `${folder}/${p}`);
-    return steps.map(step => ({
-      ...step,
-      produces: step.produces?.map(resolve),
-      requires: step.requires?.map(resolve)
-    }));
   }
 
   public async refreshData(): Promise<void> {

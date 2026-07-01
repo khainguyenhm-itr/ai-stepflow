@@ -204,7 +204,8 @@ async function runFlow(projectPath: string, flowRef: string, inputs: Record<stri
   if (!flow) throw new Error(`Flow not found: ${flowRef}`);
   const [agents, skills] = await Promise.all([loadAgents({ projectPath }), loadSkills({ projectPath })]);
   let runState = machine.initRunState(flow, { runId: new Date().toISOString(), projectPath, inputs });
-  
+  const runSlug = machine.runOutputSlug(runState.runName, runState.runId);
+
   const orch = new machine.FlowOrchestrator(flow, runState);
 
   for (;;) {
@@ -218,7 +219,7 @@ async function runFlow(projectPath: string, flowRef: string, inputs: Record<stri
     const stepState = runState.steps[next.id];
     if (!stepState || stepState.completionStatus === 'done') continue;
 
-    const req = validateRequires(next, projectPath, runState.inputs);
+    const req = validateRequires(next, projectPath, runState.inputs, flow.name, runSlug);
     if (!req.ok) {
       runState = machine.markFailed(runState, flow, next.id, { output: `[requires check failed: ${req.message}]` });
       await saveRun(projectPath, runState);
@@ -266,7 +267,7 @@ async function runFlow(projectPath: string, flowRef: string, inputs: Record<stri
       return 1;
     }
 
-    const prod = validateProduces(next, projectPath, runState.inputs);
+    const prod = validateProduces(next, projectPath, runState.inputs, flow.name, runSlug);
     if (!prod.ok) {
       const why = `produces check failed: ${prod.message}`;
       runState = machine.markFailed(runState, flow, next.id, { ...metrics, error: why, output: `${output}\n[${why}]\n` });
@@ -350,9 +351,10 @@ async function markStepDoneFromFiles(projectPath: string, flowRef: string, runFi
   const step = flow.steps.find(s => s.id === stepId);
   if (!step) { process.stderr.write(`Step not found: ${stepId}\n`); return 1; }
   let runState = await loadRunFile(runFile);
-  const req = validateRequires(step, projectPath, runState.inputs);
+  const runSlug = machine.runOutputSlug(runState.runName, runState.runId);
+  const req = validateRequires(step, projectPath, runState.inputs, flow.name, runSlug);
   if (!req.ok) { process.stderr.write(`Cannot mark done — requires check failed: ${req.message}\n`); return 1; }
-  const prod = validateProduces(step, projectPath, runState.inputs);
+  const prod = validateProduces(step, projectPath, runState.inputs, flow.name, runSlug);
   if (!prod.ok) { process.stderr.write(`Cannot mark done — produces check failed: ${prod.message}\n`); return 1; }
   runState = machine.markDone(runState, flow, stepId);
   await fs.writeFile(runFile, JSON.stringify(runState, null, 2), 'utf8');

@@ -220,7 +220,16 @@ export const useAppLogic = () => {
           libState.setAuditLogs(prev => ({ ...prev, [flowId]: [...(prev[flowId] || []), newEvent] }));
         }
         if (runState.activeFlowRef.current) {
-          runState.setActiveStepId(curr => curr ?? getDefaultActiveStepId(runState.activeFlowRef.current!, message.runState));
+          const flow = runState.activeFlowRef.current;
+          runState.setActiveStepId(curr => {
+            // No step selected yet → pick the default.
+            if (!curr) return getDefaultActiveStepId(flow, message.runState);
+            // Active step just finished → auto-advance to the next unfinished step.
+            if (message.runState.steps[curr]?.completionStatus === 'done') {
+              return getDefaultActiveStepId(flow, message.runState);
+            }
+            return curr;
+          });
         }
         break;
       case 'fileImported':

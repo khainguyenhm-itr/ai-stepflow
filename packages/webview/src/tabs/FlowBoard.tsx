@@ -206,11 +206,24 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
                   }}
                 >
                   <option value="" disabled>Select run...</option>
-                  {runSummaries.map(s => (
-                    <option key={s.runId} value={s.runId}>
-                      {s.isClosed ? '✓ ' : ''}{s.runName || s.runId.split('T')[0]} ({s.completedSteps}/{s.totalSteps})
-                    </option>
-                  ))}
+                  {runSummaries.some(s => !s.isClosed) && (
+                    <optgroup label="In progress">
+                      {runSummaries.filter(s => !s.isClosed).map(s => (
+                        <option key={s.runId} value={s.runId}>
+                          {s.runName || s.runId.split('T')[0]} ({s.completedSteps}/{s.totalSteps})
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {runSummaries.some(s => s.isClosed) && (
+                    <optgroup label="Done">
+                      {runSummaries.filter(s => s.isClosed).map(s => (
+                        <option key={s.runId} value={s.runId}>
+                          ✓ {s.runName || s.runId.split('T')[0]} ({s.completedSteps}/{s.totalSteps})
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
               </div>
             )}
