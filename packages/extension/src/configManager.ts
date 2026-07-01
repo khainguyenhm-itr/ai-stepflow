@@ -520,17 +520,23 @@ export class ConfigManager {
       await fs.rm(previous, { force: true });
     }
 
+    // The extension itself just changed the library on disk — refresh the cache now instead of
+    // waiting on the (debounced, and unreliable outside the workspace) file-system watcher, so the
+    // immediately-following _sendAllData() reflects the new flow without a VS Code restart.
+    this.invalidateLibraryCache();
     return filePath;
   }
 
   public async deleteFlow(sourcePath: string): Promise<void> {
     this.assertManagedPath(sourcePath);
     await fs.rm(sourcePath, { force: true });
+    this.invalidateLibraryCache();
   }
 
   public async deleteAgent(sourcePath: string): Promise<void> {
     this.assertManagedPath(sourcePath);
     await fs.rm(sourcePath, { force: true });
+    this.invalidateLibraryCache();
   }
 
   /** Folder-based skills include resources; flat-file skills only remove their markdown file. */
@@ -542,6 +548,7 @@ export class ConfigManager {
     const target = path.basename(sourcePath) === 'SKILL.md' && !isFlatFile ? parent : sourcePath;
     this.assertManagedPath(target);
     await fs.rm(target, { recursive: true, force: true });
+    this.invalidateLibraryCache();
   }
 
   public async saveAgent(agent: AgentInput, isGlobal: boolean = false): Promise<string> {
@@ -560,6 +567,7 @@ export class ConfigManager {
     });
 
     await fs.writeFile(filePath, frontmatter, 'utf8');
+    this.invalidateLibraryCache();
     return filePath;
   }
 
@@ -576,6 +584,7 @@ export class ConfigManager {
     });
 
     await fs.writeFile(filePath, frontmatter, 'utf8');
+    this.invalidateLibraryCache();
     return filePath;
   }
 

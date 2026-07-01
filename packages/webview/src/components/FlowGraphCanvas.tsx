@@ -13,12 +13,18 @@ export const FlowGraphCanvas: React.FC<FlowGraphCanvasProps> = ({ steps, contain
 
   useEffect(() => {
     const draw = () => {
-      if (!containerRef.current || !svgRef.current) return;
-      const containerRect = containerRef.current.getBoundingClientRect();
+      const root = containerRef.current;
+      if (!root || !svgRef.current) return;
+      const containerRect = root.getBoundingClientRect();
       const newPaths: { id: string; d: string }[] = [];
 
+      // Scope node lookups to THIS flow's canvas. Step ids are only unique within a flow, so a
+      // document-wide getElementById would resolve to a same-id node in another flow's board
+      // (drawing edges that shoot off toward the wrong flow).
+      const findNode = (stepId: string) => root.querySelector(`[id="step-node-${stepId}"]`);
+
       steps.forEach(step => {
-        const targetEl = document.getElementById(`step-node-${step.id}`);
+        const targetEl = findNode(step.id);
         if (!targetEl) return;
         const targetRect = targetEl.getBoundingClientRect();
 
@@ -26,7 +32,7 @@ export const FlowGraphCanvas: React.FC<FlowGraphCanvasProps> = ({ steps, contain
         const targetY = targetRect.top - containerRect.top + targetRect.height / 2;
 
         (step.dependsOn || []).forEach(depId => {
-          const sourceEl = document.getElementById(`step-node-${depId}`);
+          const sourceEl = findNode(depId);
           if (!sourceEl) return;
           const sourceRect = sourceEl.getBoundingClientRect();
 
