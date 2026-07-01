@@ -203,6 +203,11 @@ export class CockpitPanel {
         if (run && flow) {
           this._runner.setFlowAndRunState(flow, run);
           this.postMessage({ type: 'restoreRun', flow, runState: run });
+        } else {
+          // Don't fail silently — the dropdown offered this run, so if it can't be opened the run
+          // file is missing/corrupt or its workflow no longer exists. Tell the user why.
+          const why = !flow ? 'its workflow could not be found' : 'the run file is missing or corrupt';
+          vscode.window.showWarningMessage(`AI StepFlow: could not open that run — ${why}.`);
         }
         return;
       }

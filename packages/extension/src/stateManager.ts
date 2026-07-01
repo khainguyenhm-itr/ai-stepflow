@@ -39,7 +39,12 @@ export class StateManager {
 
     const filePath = path.join(runsDir, `${this.runFileBase(run)}.json`);
 
-    await fs.writeFile(filePath, JSON.stringify(run, null, 2), 'utf8');
+    // Write atomically: a plain writeFile truncates the target first, so a crash or kill mid-write
+    // leaves a 0-byte / partial run file that later fails to load (a silently un-resumable run).
+    // Writing to a temp file and renaming makes the swap atomic — the real file is never truncated.
+    const tmpPath = `${filePath}.tmp`;
+    await fs.writeFile(tmpPath, JSON.stringify(run, null, 2), 'utf8');
+    await fs.rename(tmpPath, filePath);
   }
 
   /** Save a generated markdown report inside the repo so it can be shared or committed. */
@@ -157,7 +162,9 @@ export class StateManager {
       const filePath = path.join(runsDir, file);
       try {
         const stat = await fs.stat(filePath);
-        const run = JSON.parse(await fs.readFile(filePath, 'utf8')) as FlowRunState;
+        const content = await fs.readFile(filePath, 'utf8');
+        if (!content.trim()) continue; // skip 0-byte / blank files from an interrupted write
+        const run = JSON.parse(content) as FlowRunState;
         if (run.isClosed) continue; // Skip finalized runs
         const unfinished = Object.values(run.steps || {}).some(step => step.completionStatus !== 'done');
         if (unfinished && (!bestUnfinished || stat.mtimeMs > bestUnfinished.mtimeMs)) {
@@ -197,7 +204,9 @@ export class StateManager {
       const filePath = path.join(runsDir, file);
       try {
         const stat = await fs.stat(filePath);
-        const run = JSON.parse(await fs.readFile(filePath, 'utf8')) as FlowRunState;
+        const content = await fs.readFile(filePath, 'utf8');
+        if (!content.trim()) continue; // skip 0-byte / blank files from an interrupted write
+        const run = JSON.parse(content) as FlowRunState;
         const steps = Object.values(run.steps || {});
         result.push({
           flowId: run.flowId,
@@ -233,6 +242,7 @@ export class StateManager {
     for (const file of files) {
       try {
         const content = await fs.readFile(path.join(runsDir, file), 'utf8');
+        if (!content.trim()) continue; // skip 0-byte / blank files from an interrupted write
         runs.push(JSON.parse(content));
       } catch (e) {
         console.error(`Error loading run file ${file}:`, e);
