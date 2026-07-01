@@ -80,7 +80,7 @@ export type WebviewMessage =
   | { type: 'importAgentFile' }
   | { type: 'importSkillFile' }
   | { type: 'generateDraft'; kind: 'agent' | 'skill'; prompt: string; history?: { role: 'user' | 'assistant'; content: string }[] }
-  | { type: 'savePref'; key: string; value: string }
+  | { type: 'savePref'; key: string; value: string; global?: boolean }
   | { type: 'generateFlow'; description: string; flow?: Flow; history?: { role: 'user' | 'assistant'; content: string }[] }
   | { type: 'connectMcpServer'; config: { name: string; scope: 'global' | 'local'; command: string; args: string[]; env?: Record<string, string> } }
   | { type: 'alert'; text: string };

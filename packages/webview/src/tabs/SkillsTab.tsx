@@ -7,6 +7,8 @@ import { sendToVSCode } from '../vscode';
 import { useScopeFilter } from '../hooks/useScopeFilter';
 import { useViewFilter } from '../hooks/useViewFilter';
 import { useSortOrder } from '../hooks/useSortOrder';
+import { GroupBy, groupByTag } from '../tagUtils';
+import { GroupByToggle } from '../components/GroupByToggle';
 
 interface SkillsTabProps {
   skills: Skill[];
@@ -24,6 +26,8 @@ interface SkillsTabProps {
   onViewFilterChange: (v: ViewFilter) => void;
   initialSortOrder: SortOrder;
   onSortOrderChange: (v: SortOrder) => void;
+  initialGroupBy: GroupBy;
+  onGroupByChange: (v: GroupBy) => void;
 }
 
 export const SkillsTab: React.FC<SkillsTabProps> = ({
@@ -41,11 +45,16 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
   onViewFilterChange,
   initialSortOrder,
   onSortOrderChange,
+  initialGroupBy,
+  onGroupByChange,
 }) => {
   const [filter, setFilter] = useScopeFilter(initialFilter, onScopeFilterChange);
   const [viewFilter, setViewFilter] = useViewFilter(initialViewFilter, onViewFilterChange);
   const [sortOrder, setSortOrder] = useSortOrder(initialSortOrder, onSortOrderChange);
   const [search, setSearch] = useState('');
+  const [groupBy, setGroupBy] = useState<GroupBy>(initialGroupBy);
+  React.useEffect(() => { setGroupBy(initialGroupBy); }, [initialGroupBy]);
+  const changeGroupBy = (v: GroupBy) => { setGroupBy(v); onGroupByChange(v); };
 
   const getItemScope = (sourcePath: string): SaveScope => {
     if (globalPath && sourcePath.startsWith(globalPath)) return 'global';
@@ -77,6 +86,33 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
     return <span className="badge scope">{scope === 'global' ? 'global' : 'repo'}</span>;
   };
 
+  const renderCard = (skill: Skill) => {
+    const parts = skill.sourcePath.split('/');
+    const basename = parts[parts.length - 1] ?? '';
+    const fileTitle = basename.toUpperCase() === 'SKILL.MD'
+      ? (parts[parts.length - 2] ?? skill.name)
+      : basename.replace(/\.md$/i, '') || skill.name;
+    return (
+      <ResourceCard
+        key={skill.sourcePath || skill.name}
+        title={fileTitle}
+        subtitle={skill.name}
+        description={skill.description}
+        scopeBadge={renderScopeBadge(skill.sourcePath)}
+        badge={skill.builtIn ? <span className="badge built-in">Build-in</span> : undefined}
+        onEdit={() => onOpenEditor(skill)}
+        bookmarked={isBookmarked(skill)}
+        onToggleBookmark={() => onToggleBookmark(skill)}
+        actions={
+          <button className="btn primary" onClick={() => onRun(skill)}>
+            <span className="btn-glyph"><Icon.Play size={14} /></span>Run
+          </button>
+        }
+        onDetail={() => onDetail(skill)}
+      />
+    );
+  };
+
   return (
     <div className="page">
       <div className="page-head">
@@ -92,6 +128,7 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
               onChange={e => setSearch(e.target.value)}
             />
           </div>
+          <GroupByToggle value={groupBy} onChange={changeGroupBy} />
           <UnifiedFilterPanel
             scope={filter}
             view={viewFilter}
@@ -111,35 +148,15 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
       </div>
       {visibleSkills.length === 0 ? (
         <EmptyState title="No skills found" text={q ? `No skills match "${search}"` : 'Create reusable skills that agents can use across different steps.'} icon={<Icon.Zap size={24} />} />
+      ) : groupBy === 'tag' ? (
+        groupByTag(visibleSkills).map(group => (
+          <section key={group.tag} className="tag-group">
+            <h3 className="tag-group-title">{group.tag}<span className="sec-count">{group.items.length}</span></h3>
+            <div className="card-grid">{group.items.map(renderCard)}</div>
+          </section>
+        ))
       ) : (
-        <div className="card-grid">
-          {visibleSkills.map(skill => {
-            const parts = skill.sourcePath.split('/');
-            const basename = parts[parts.length - 1] ?? '';
-            const fileTitle = basename.toUpperCase() === 'SKILL.MD'
-              ? (parts[parts.length - 2] ?? skill.name)
-              : basename.replace(/\.md$/i, '') || skill.name;
-            return (
-            <ResourceCard
-              key={skill.name}
-              title={fileTitle}
-              subtitle={skill.name}
-              description={skill.description}
-              scopeBadge={renderScopeBadge(skill.sourcePath)}
-              badge={skill.builtIn ? <span className="badge built-in">Build-in</span> : undefined}
-              onEdit={() => onOpenEditor(skill)}
-              bookmarked={isBookmarked(skill)}
-              onToggleBookmark={() => onToggleBookmark(skill)}
-              actions={
-                <button className="btn primary" onClick={() => onRun(skill)}>
-                  <span className="btn-glyph"><Icon.Play size={14} /></span>Run
-                </button>
-              }
-              onDetail={() => onDetail(skill)}
-            />
-          );
-          })}
-        </div>
+        <div className="card-grid">{visibleSkills.map(renderCard)}</div>
       )}
     </div>
   );

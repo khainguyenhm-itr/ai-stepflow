@@ -18,8 +18,8 @@ export const useBuilderState = () => {
   const [editingSkillSource, setEditingSkillSource] = useState<string | null>(null);
   const [editingAgentSource, setEditingAgentSource] = useState<string | null>(null);
 
-  const emptyAgentForm = { name: '', description: '', model: 'claude-sonnet-4-6', tools: [] as string[], systemPrompt: '', scope: 'project' as SaveScope, maxTurns: undefined as number | undefined };
-  const emptySkillForm = { name: '', description: '', instructions: '', scope: 'project' as SaveScope };
+  const emptyAgentForm = { name: '', description: '', model: 'claude-sonnet-4-6', tools: [] as string[], systemPrompt: '', scope: 'project' as SaveScope, maxTurns: undefined as number | undefined, tags: [] as string[] };
+  const emptySkillForm = { name: '', description: '', instructions: '', scope: 'project' as SaveScope, tags: [] as string[] };
   
   const [agentForm, setAgentForm] = useState(emptyAgentForm);
   const [skillForm, setSkillForm] = useState(emptySkillForm);

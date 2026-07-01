@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Flow, Agent, Skill } from '@ai-stepflow/core/types';
 import { isVSCodeWebview, sendToVSCode } from '../../vscode';
 import { Tab, SaveScope, ScopeFilter, ViewFilter, SortOrder } from './types';
+import { GroupBy } from '../../tagUtils';
 
 type ResourceBookmarks = Record<string, boolean>;
 
@@ -20,6 +21,7 @@ export const useLibraryState = () => {
   const [scopeFilters, setScopeFilters] = useState<{ flows: ScopeFilter; agents: ScopeFilter; skills: ScopeFilter }>({ flows: 'all', agents: 'all', skills: 'all' });
   const [viewFilters, setViewFilters] = useState<{ flows: ViewFilter; agents: ViewFilter; skills: ViewFilter }>({ flows: [], agents: [], skills: [] });
   const [sortOrders, setSortOrders] = useState<{ flows: SortOrder; agents: SortOrder; skills: SortOrder }>({ flows: 'asc', agents: 'asc', skills: 'asc' });
+  const [groupBys, setGroupBys] = useState<{ agents: GroupBy; skills: GroupBy }>({ agents: 'list', skills: 'list' });
 
   const [detailItem, setDetailItem] = useState<{
     type: 'Flow' | 'Agent' | 'Skill';
@@ -72,6 +74,7 @@ export const useLibraryState = () => {
     connectedMcpServers, setConnectedMcpServers,
     runSummaries, setRunSummaries,
     scopeFilters, setScopeFilters,
+    groupBys, setGroupBys,
     viewFilters, setViewFilters,
     sortOrders, setSortOrders,
     detailItem, setDetailItem,

@@ -1764,3 +1764,28 @@ textarea.input {
   min-width: 32px;
   text-align: right;
 }
+
+/* ── Group-by segmented toggle (Agents/Skills view mode) — matches .btn styling ── */
+.segmented { display: inline-flex; border: 1px solid var(--btn-outline); border-radius: 2px; overflow: hidden; }
+.segmented-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 11px; font-family: inherit; font-size: inherit; line-height: 1.4;
+  background: transparent; color: var(--btn-2-fg); border: none; cursor: pointer;
+  white-space: nowrap; transition: background .1s, color .1s;
+}
+.segmented-btn + .segmented-btn { border-left: 1px solid var(--btn-outline); }
+.segmented-btn:hover:not(.active) { background: var(--hover); color: var(--fg); }
+.segmented-btn.active { background: var(--btn-bg); color: var(--btn-fg); }
+
+/* ── Tag groups (grouped view) ── */
+.tag-group { margin-bottom: 18px; }
+.tag-group-title {
+  display: flex; align-items: center; gap: 6px;
+  margin: 0 0 8px; padding-bottom: 4px;
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--muted); border-bottom: 1px solid var(--border);
+}
+.tag-group-title .sec-count {
+  font-size: 10px; font-weight: 600; text-transform: none;
+  padding: 0 6px; border-radius: 8px; background: var(--badge-bg); color: var(--badge-fg);
+}

@@ -7,6 +7,8 @@ import { sendToVSCode } from '../vscode';
 import { useScopeFilter } from '../hooks/useScopeFilter';
 import { useViewFilter } from '../hooks/useViewFilter';
 import { useSortOrder } from '../hooks/useSortOrder';
+import { GroupBy, groupByTag } from '../tagUtils';
+import { GroupByToggle } from '../components/GroupByToggle';
 
 interface AgentsTabProps {
   agents: Agent[];
@@ -24,6 +26,8 @@ interface AgentsTabProps {
   onViewFilterChange: (v: ViewFilter) => void;
   initialSortOrder: SortOrder;
   onSortOrderChange: (v: SortOrder) => void;
+  initialGroupBy: GroupBy;
+  onGroupByChange: (v: GroupBy) => void;
 }
 
 export const AgentsTab: React.FC<AgentsTabProps> = ({
@@ -41,11 +45,16 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
   onViewFilterChange,
   initialSortOrder,
   onSortOrderChange,
+  initialGroupBy,
+  onGroupByChange,
 }) => {
   const [filter, setFilter] = useScopeFilter(initialFilter, onScopeFilterChange);
   const [viewFilter, setViewFilter] = useViewFilter(initialViewFilter, onViewFilterChange);
   const [sortOrder, setSortOrder] = useSortOrder(initialSortOrder, onSortOrderChange);
   const [search, setSearch] = useState('');
+  const [groupBy, setGroupBy] = useState<GroupBy>(initialGroupBy);
+  React.useEffect(() => { setGroupBy(initialGroupBy); }, [initialGroupBy]);
+  const changeGroupBy = (v: GroupBy) => { setGroupBy(v); onGroupByChange(v); };
 
   const getItemScope = (sourcePath: string): SaveScope => {
     if (globalPath && sourcePath.startsWith(globalPath)) return 'global';
@@ -77,6 +86,27 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
     return <span className="badge scope">{scope === 'global' ? 'global' : 'repo'}</span>;
   };
 
+  const renderCard = (agent: Agent) => (
+    <ResourceCard
+      key={agent.sourcePath || agent.name}
+      title={agent.sourcePath.split('/').pop()?.replace(/\.md$/i, '') ?? agent.name}
+      subtitle={agent.name}
+      description={agent.description}
+      scopeBadge={renderScopeBadge(agent.sourcePath)}
+      badge={agent.builtIn ? <span className="badge built-in">Build-in</span> : undefined}
+      meta={<span className="muted small mono">model: {agent.model}</span>}
+      onEdit={() => onOpenEditor(agent)}
+      bookmarked={isBookmarked(agent)}
+      onToggleBookmark={() => onToggleBookmark(agent)}
+      actions={
+        <button className="btn primary" onClick={() => onRun(agent)}>
+          <span className="btn-glyph"><Icon.Play size={14} /></span>Run
+        </button>
+      }
+      onDetail={() => onDetail(agent)}
+    />
+  );
+
   return (
     <div className="page">
       <div className="page-head">
@@ -92,6 +122,7 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
               onChange={e => setSearch(e.target.value)}
             />
           </div>
+          <GroupByToggle value={groupBy} onChange={changeGroupBy} />
           <UnifiedFilterPanel
             scope={filter}
             view={viewFilter}
@@ -111,29 +142,15 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
       </div>
       {visibleAgents.length === 0 ? (
         <EmptyState title="No agents found" text={q ? `No agents match "${search}"` : 'Define a specialized AI agent with a custom system prompt and tools.'} icon={<Icon.User size={24} />} />
+      ) : groupBy === 'tag' ? (
+        groupByTag(visibleAgents).map(group => (
+          <section key={group.tag} className="tag-group">
+            <h3 className="tag-group-title">{group.tag}<span className="sec-count">{group.items.length}</span></h3>
+            <div className="card-grid">{group.items.map(renderCard)}</div>
+          </section>
+        ))
       ) : (
-        <div className="card-grid">
-          {visibleAgents.map(agent => (
-            <ResourceCard
-              key={agent.name}
-              title={agent.sourcePath.split('/').pop()?.replace(/\.md$/i, '') ?? agent.name}
-              subtitle={agent.name}
-              description={agent.description}
-              scopeBadge={renderScopeBadge(agent.sourcePath)}
-              badge={agent.builtIn ? <span className="badge built-in">Build-in</span> : undefined}
-              meta={<span className="muted small mono">model: {agent.model}</span>}
-              onEdit={() => onOpenEditor(agent)}
-              bookmarked={isBookmarked(agent)}
-              onToggleBookmark={() => onToggleBookmark(agent)}
-              actions={
-                <button className="btn primary" onClick={() => onRun(agent)}>
-                  <span className="btn-glyph"><Icon.Play size={14} /></span>Run
-                </button>
-              }
-              onDetail={() => onDetail(agent)}
-            />
-          ))}
-        </div>
+        <div className="card-grid">{visibleAgents.map(renderCard)}</div>
       )}
     </div>
   );

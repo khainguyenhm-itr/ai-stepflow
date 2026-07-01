@@ -124,6 +124,11 @@ export const useAppLogic = () => {
             agents: parseSortOrder(message.uiPrefs['sortOrder:agents']),
             skills: parseSortOrder(message.uiPrefs['sortOrder:skills']),
           });
+          const parseGroupBy = (v: string | undefined): 'list' | 'tag' => (v === 'tag' ? 'tag' : 'list');
+          libState.setGroupBys({
+            agents: parseGroupBy(message.uiPrefs['groupBy:agents']),
+            skills: parseGroupBy(message.uiPrefs['groupBy:skills']),
+          });
           const savedTab = message.uiPrefs['activeTab'];
           if (savedTab === 'flows' || savedTab === 'agents' || savedTab === 'skills') {
             libState.setActiveTab(savedTab);
@@ -292,7 +297,8 @@ export const useAppLogic = () => {
         tools: buildState.agentForm.tools,
         systemPrompt: buildState.agentForm.systemPrompt || 'You are a helpful AI agent.',
         sourcePath: `/preview/.claude/agents/${buildState.agentForm.name.trim()}.md`,
-        ...(buildState.agentForm.maxTurns != null ? { maxTurns: buildState.agentForm.maxTurns } : {})
+        ...(buildState.agentForm.maxTurns != null ? { maxTurns: buildState.agentForm.maxTurns } : {}),
+        ...(buildState.agentForm.tags?.length ? { tags: buildState.agentForm.tags } : {})
       };
       libState.setAgents(prev => [
         ...prev.filter(item => item.name !== agent.name && item.sourcePath !== buildState.editingAgentSource),
@@ -311,6 +317,7 @@ export const useAppLogic = () => {
         tools: buildState.agentForm.tools,
         systemPrompt: buildState.agentForm.systemPrompt || '',
         ...(buildState.agentForm.maxTurns != null ? { maxTurns: buildState.agentForm.maxTurns } : {}),
+        ...(buildState.agentForm.tags?.length ? { tags: buildState.agentForm.tags } : {}),
         ...(chatState.agentAiMessages.length ? { aiConversation: chatState.agentAiMessages } : {})
       },
       originalSourcePath: buildState.editingAgentSource,
@@ -330,7 +337,8 @@ export const useAppLogic = () => {
         tools: agent.tools || [],
         systemPrompt: agent.systemPrompt,
         scope: libState.getItemScope(agent.sourcePath),
-        maxTurns: agent.maxTurns
+        maxTurns: agent.maxTurns,
+        tags: agent.tags || []
       });
       buildState.setEditingAgentSource(agent.sourcePath);
     } else {
@@ -354,7 +362,8 @@ export const useAppLogic = () => {
         name: buildState.skillForm.name.trim(),
         description: buildState.skillForm.description || '',
         instructions: buildState.skillForm.instructions || '',
-        sourcePath: `/preview/.claude/skills/${buildState.skillForm.name.trim()}`
+        sourcePath: `/preview/.claude/skills/${buildState.skillForm.name.trim()}`,
+        ...(buildState.skillForm.tags?.length ? { tags: buildState.skillForm.tags } : {})
       };
       libState.setSkills(prev => [
         ...prev.filter(item => item.name !== skill.name && item.sourcePath !== buildState.editingSkillSource),
@@ -370,6 +379,7 @@ export const useAppLogic = () => {
         name: buildState.skillForm.name.trim(),
         description: buildState.skillForm.description || '',
         instructions: buildState.skillForm.instructions || '',
+        ...(buildState.skillForm.tags?.length ? { tags: buildState.skillForm.tags } : {}),
         ...(chatState.skillAiMessages.length ? { aiConversation: chatState.skillAiMessages } : {})
       },
       originalSourcePath: buildState.editingSkillSource,
@@ -386,7 +396,8 @@ export const useAppLogic = () => {
         name: skill.name,
         description: skill.description,
         instructions: skill.instructions,
-        scope: libState.getItemScope(skill.sourcePath)
+        scope: libState.getItemScope(skill.sourcePath),
+        tags: skill.tags || []
       });
       buildState.setEditingSkillSource(skill.sourcePath);
     } else {

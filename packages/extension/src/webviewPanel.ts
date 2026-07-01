@@ -260,7 +260,11 @@ export class CockpitPanel {
         await this._handleImportFile('skill');
         return;
       case 'savePref':
-        await this.configManager.saveUiPref(message.key, message.value);
+        if (message.global) {
+          await this.configManager.saveGlobalUiPref(message.key, message.value);
+        } else {
+          await this.configManager.saveUiPref(message.key, message.value);
+        }
         return;
       case 'generateDraft':
         await this._handleGenerateDraft(message.kind, message.prompt, message.history);

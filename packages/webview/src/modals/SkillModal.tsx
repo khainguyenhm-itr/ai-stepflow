@@ -2,6 +2,7 @@ import React from 'react';
 import { SkillInput } from '@ai-stepflow/core';
 import { Modal, Field, Icon } from '../components/primitives';
 import { SaveScope, SaveScopeSelect } from '../components/ScopeControls';
+import { parseTagsInput } from '../tagUtils';
 
 interface SkillModalProps {
   open: boolean;
@@ -31,7 +32,12 @@ export const SkillModal: React.FC<SkillModalProps> = ({
   onSubmit,
   onAiPromptChange,
   onGenerateSkill
-}) => (
+}) => {
+  // Local raw text for the tags input so separators can be typed freely; re-synced per opened skill.
+  const [tagsText, setTagsText] = React.useState((form.tags || []).join(', '));
+  React.useEffect(() => { setTagsText((form.tags || []).join(', ')); }, [editingSource, open]);
+
+  return (
   <Modal
     title={editingSource ? 'Edit Skill' : 'New Skill'}
     open={open}
@@ -95,9 +101,13 @@ export const SkillModal: React.FC<SkillModalProps> = ({
       <Field label="Description">
         <input className="input" placeholder="Creates an implementation plan" value={form.description} onChange={e => onChange({ description: e.target.value })} />
       </Field>
+      <Field label="Groups / tags" hint="comma-separated — used to group skills (e.g. research, docs)">
+        <input className="input" placeholder="research, docs" value={tagsText} onChange={e => { setTagsText(e.target.value); onChange({ tags: parseTagsInput(e.target.value) }); }} />
+      </Field>
       <Field label="Instructions">
         <textarea className="input" rows={8} placeholder="Write the reusable skill instructions." value={form.instructions} onChange={e => onChange({ instructions: e.target.value })} />
       </Field>
     </div>
   </Modal>
-);
+  );
+};

@@ -2,6 +2,7 @@ import React from 'react';
 import { AgentInput } from '@ai-stepflow/core';
 import { Modal, Field, Icon } from '../components/primitives';
 import { SaveScope, SaveScopeSelect } from '../components/ScopeControls';
+import { parseTagsInput } from '../tagUtils';
 
 // Aliases resolve to the latest model for each tier — the CLI maps them at run
 // time, so this list never goes stale when Anthropic ships a new model.
@@ -56,6 +57,11 @@ export const AgentModal: React.FC<AgentModalProps> = ({
   onAiPromptChange,
   onGenerateAgent
 }) => {
+  // Local raw text for the tags input so the user can type separators freely; re-synced from the
+  // form whenever a different agent is opened. onChange parses into the form's tags array.
+  const [tagsText, setTagsText] = React.useState((form.tags || []).join(', '));
+  React.useEffect(() => { setTagsText((form.tags || []).join(', ')); }, [editingSource, open]);
+
   const connected = new Set(connectedMcpServers.map(name => name.toLowerCase()));
   const standardValues = new Set(standardCapabilities.map(capability => capability.value));
   const knownValues = new Set([...standardValues, ...connected]);
@@ -139,6 +145,9 @@ export const AgentModal: React.FC<AgentModalProps> = ({
       </Field>
       <Field label="Description">
         <input className="input" placeholder="Reviews generated internal documentation" value={form.description} onChange={e => onChange({ description: e.target.value })} />
+      </Field>
+      <Field label="Groups / tags" hint="comma-separated — used to group agents (e.g. research, security)">
+        <input className="input" placeholder="research, docs" value={tagsText} onChange={e => { setTagsText(e.target.value); onChange({ tags: parseTagsInput(e.target.value) }); }} />
       </Field>
       <Field label="Model">
         <select className="select" value={form.model} onChange={e => onChange({ model: e.target.value })}>
