@@ -119,7 +119,6 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     /* ── section ── */
     .sec { margin-top: 8px; }
     .sec-hdr { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
-    #lib-hdr { padding: 9px 8px; }
     .sec-label { flex: 1; font-size: 12px; font-weight: 700; color: var(--fg); }
     .sec-count { display: inline-flex; align-items: center; height: 15px; padding: 0 5px; border-radius: 9px; font-size: 9px; font-weight: 700; color: var(--badge-fg); background: var(--badge); }
     .sec-count:empty { display: none; }
@@ -260,10 +259,6 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
 
     <!-- library stats -->
     <section class="sec">
-      <div class="sec-hdr" id="lib-hdr">
-        <span class="sec-label">Library</span>
-        <span class="sec-count" id="lib-count"></span>
-      </div>
       <div class="stats" id="stats"></div>
       <div id="defaults-toggle"></div>
       <div id="defaults-panel" style="display:none"></div>
@@ -468,7 +463,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     let toggle, sec, panel, caret;
     if (key === 'lib') {
       toggle = document.getElementById('lib-toggle-btn');
-      sec    = document.getElementById('lib-hdr') && document.getElementById('lib-hdr').closest('.sec');
+      sec    = document.getElementById('defaults-toggle') && document.getElementById('defaults-toggle').closest('.sec');
       panel  = document.getElementById('defaults-panel');
       caret  = toggle && toggle.querySelector('.lib-caret');
       if (sec) sec.classList.toggle('expanded', open);
@@ -551,8 +546,6 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     document.querySelectorAll('.stat').forEach(n => {
       n.onclick = () => vscode.postMessage({ type: 'openOverview', tab: n.getAttribute('data-tab') });
     });
-    const total = (s.flows || 0) + (s.agents || 0) + (s.skills || 0);
-    document.getElementById('lib-count').textContent = total ? String(total) : '';
   }
 
   let defaultItemsData = [];
