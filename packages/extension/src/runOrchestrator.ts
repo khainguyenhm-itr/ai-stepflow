@@ -208,10 +208,10 @@ export class RunOrchestrator {
       setStepStartTime: (sid, t) => this._stepStartTimes.set(sid, t),
     };
 
-    // All steps run in the interactive terminal. AI-reviewed steps auto-enter so they run 
-    // without clicking, and are auto-verified in onDidEndRunningStep.
-    const hasAiReview = !!step.review?.required && (step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai'));
-    await runInteractiveStep(ctx, this.terminals, hasAiReview);
+    // All steps run in the interactive terminal and auto-submit (like an agent/skill run) so
+    // pressing "Run Step" actually executes; AI-reviewed steps are auto-verified in
+    // onDidEndRunningStep.
+    await runInteractiveStep(ctx, this.terminals, true);
   }
 
   /** Approve/reject a step from the webview's human-review buttons. */

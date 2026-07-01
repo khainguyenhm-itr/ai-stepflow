@@ -64,20 +64,32 @@ export class TerminalManager {
    * Open (or reuse) the interactive `claude` terminal for an ad-hoc or step run.
    * When `submit` is false the prompt is typed into the chat box but NOT sent, so the
    * user can review the agent/skill/model context and press Enter to start the run.
+   *
+   * Terminal lifecycle for a flow step run (a call carrying `stepId`): every "Run Step" gets a
+   * brand-new terminal, except a Re-run whose step is still live in the current terminal, which
+   * continues in place. Ad-hoc agent/skill runs (no `stepId`) keep the shared session and only
+   * relaunch when the agent changes.
    */
   public async runInTerminal(prompt: string, projectPath: string, agent?: Agent | string, submit = true, stepId?: string, sessionId?: string): Promise<void> {
+    const agentName = typeof agent === 'string' ? agent : agent?.name;
+
+    const continueLiveStep = !!stepId && this._running && this._currentStepId === stepId;
+    const adHocSwitch = !stepId && this._running && agentName !== this._currentAgentName;
+    const needFreshTerminal = (!!stepId && !continueLiveStep) || adHocSwitch;
+
+    if (needFreshTerminal && this._terminal) {
+      this._terminal.dispose();
+      this._terminal = undefined;
+      this._execution = undefined;
+      this._running = false;
+    }
+
     const terminal = this._getTerminal(projectPath);
     terminal.show();
 
-    const agentName = typeof agent === 'string' ? agent : agent?.name;
-    if (this._running && (agentName !== this._currentAgentName || (stepId && stepId !== this._currentStepId))) {
-      this._terminal?.dispose();
-      this._terminal = undefined;
-      this._running = false;
-      return this.runInTerminal(prompt, projectPath, agent, submit, stepId, sessionId);
-    }
-
     if (this._running) {
+      // Continue in the live terminal: a Re-run of the running step, or an ad-hoc follow-up
+      // prompt for the same agent.
       if (prompt) terminal.sendText(prompt, submit);
       return;
     }
