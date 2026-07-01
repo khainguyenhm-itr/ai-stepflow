@@ -155,12 +155,25 @@ export class ConfigManager {
     return '';
   }
 
+  /**
+   * Relative location (under a `.claude` root) of a bundled item.
+   * Skills must live in `<name>/SKILL.md` folders so Claude Code registers them as
+   * `/skill-name` slash commands; all other kinds are flat files. This keeps single-item
+   * installs consistent with the bulk installer ({@link installBundledDefaults}) and {@link saveSkill}.
+   */
+  private bundledItemRelPath(kind: BundledKind, filename: string): string {
+    if (kind === 'skills' && filename.endsWith('.md')) {
+      return path.join(kind, path.basename(filename, '.md'), 'SKILL.md');
+    }
+    return path.join(kind, filename);
+  }
+
   private async _isBundledItemInstalled(kind: BundledKind, filename: string): Promise<boolean> {
     const roots = [this.globalPath];
     if (this.projectPath) roots.push(path.join(this.projectPath, '.claude'));
     for (const base of roots) {
       try {
-        const content = await fs.readFile(path.join(base, kind, filename), 'utf8');
+        const content = await fs.readFile(path.join(base, this.bundledItemRelPath(kind, filename)), 'utf8');
         if (content.includes(ConfigManager.BUILT_IN_MARKER)) return true;
       } catch { /* not present */ }
     }
@@ -172,7 +185,7 @@ export class ConfigManager {
     if (this.projectPath) roots.push(path.join(this.projectPath, '.claude'));
     for (const base of roots) {
       try {
-        const content = await fs.readFile(path.join(base, kind, filename), 'utf8');
+        const content = await fs.readFile(path.join(base, this.bundledItemRelPath(kind, filename)), 'utf8');
         if (content.includes(ConfigManager.BUILT_IN_MARKER)) return content;
       } catch { /* not present */ }
     }
@@ -185,23 +198,35 @@ export class ConfigManager {
     const srcPath = path.join(this.extensionPath, 'resources', 'defaults', kind, filename);
     const targetBase = isGlobal ? this.globalPath : path.join(this.projectPath || '', '.claude');
     if (!isGlobal && !this.projectPath) return;
-    const destPath = path.join(targetBase, kind, filename);
+    const destPath = path.join(targetBase, this.bundledItemRelPath(kind, filename));
     await fs.mkdir(path.dirname(destPath), { recursive: true });
     const existing = await fs.readFile(destPath, 'utf8').catch(() => undefined);
     if (existing !== undefined && !existing.includes(ConfigManager.BUILT_IN_MARKER)) return;
+    // Migration: drop the legacy flat `skills/<name>.md` file if we installed it, so a skill
+    // isn't registered twice (flat + folder).
+    if (kind === 'skills') {
+      const oldFlat = path.join(targetBase, kind, filename);
+      const flat = await fs.readFile(oldFlat, 'utf8').catch(() => undefined);
+      if (flat !== undefined && flat.includes(ConfigManager.BUILT_IN_MARKER)) {
+        await fs.rm(oldFlat, { force: true });
+      }
+    }
     const content = await fs.readFile(srcPath, 'utf8');
     await fs.writeFile(destPath, content, 'utf8');
   }
 
-  /** Remove a single bundled default item from all scopes (only files we installed). */
+  /** Remove a single bundled default item from all scopes (only items we installed). */
   public async uninstallBundledItem(kind: BundledKind, filename: string): Promise<void> {
     const roots = [this.globalPath];
     if (this.projectPath) roots.push(path.join(this.projectPath, '.claude'));
     for (const base of roots) {
-      const destPath = path.join(base, kind, filename);
+      const destPath = path.join(base, this.bundledItemRelPath(kind, filename));
       try {
         const content = await fs.readFile(destPath, 'utf8');
-        if (content.includes(ConfigManager.BUILT_IN_MARKER)) await fs.unlink(destPath);
+        if (!content.includes(ConfigManager.BUILT_IN_MARKER)) continue;
+        // For skills, remove the whole `<name>/` folder (SKILL.md + any resources), not just SKILL.md.
+        const target = kind === 'skills' && path.basename(destPath) === 'SKILL.md' ? path.dirname(destPath) : destPath;
+        await fs.rm(target, { recursive: true, force: true });
       } catch { /* not present */ }
     }
   }
