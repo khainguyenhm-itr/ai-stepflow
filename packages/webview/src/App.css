@@ -1273,6 +1273,21 @@ textarea.input {
   flex: 0 0 auto;
 }
 
+.more-menu { position: relative; display: inline-flex; }
+.more-menu-list {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 200; min-width: 170px;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 8px 28px rgba(0,0,0,.45); overflow: hidden; padding: 4px;
+}
+.more-menu-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px;
+  border: 0; border-radius: 4px; background: transparent; color: var(--fg);
+  font-size: 12px; font-family: inherit; cursor: pointer; text-align: left; transition: background .1s;
+}
+.more-menu-item:hover { background: var(--hover); }
+.more-menu-item.danger { color: var(--error); }
+.more-menu-sep { height: 1px; background: var(--border); margin: 4px 0; }
+
 .runner-strip {
   display: flex;
   align-items: center;

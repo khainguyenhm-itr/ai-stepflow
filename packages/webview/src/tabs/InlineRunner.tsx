@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Flow, FlowRunState, StepRunState } from '@ai-stepflow/core/types';
 import { Icon, metaValue } from '../components/primitives';
 import { formatRunTime, getStepSkills } from '../flowUtils';
@@ -167,6 +167,19 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
     && (activeStepState.history?.length ?? 0) === 0
   );
 
+  // Secondary run actions (Reset / Verify / Report / Delete) collapse into a single "more" menu
+  // to keep the header uncluttered.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [menuOpen]);
+
   return (
     <div className="runner">
       <div className="runner-head">
@@ -193,25 +206,47 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
         </div>
         <div className="runner-head-actions">
           {!isFinalized && isFlowDone && (
-            <button 
-              className="btn success" 
-              title="Finalize flow and clear active status" 
+            <button
+              className="btn success"
+              title="Finalize flow and clear active status"
               onClick={() => sendToVSCode('closeRun', { finalize: true })}
             >
               <Icon.Check size={14} style={{ marginRight: 4 }} />
               Done Run
             </button>
           )}
-          {!isFinalized && !isFlowDone && canResetRun && (
-            <button className="btn" title="Reset all steps to initial state" onClick={() => sendToVSCode('resetRun', {})}>Reset</button>
-          )}
           {!isFinalized && (
-            <>
-              <button className="btn" onClick={() => sendToVSCode('verifyRun', {})}>Verify</button>
-              <button className="btn" onClick={() => sendToVSCode('exportRunReport', {})}>Report</button>
-            </>
+            <div className="more-menu" ref={menuRef}>
+              <button
+                className="icon-btn"
+                title="More actions"
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen(open => !open)}
+              >
+                <Icon.More size={16} />
+              </button>
+              {menuOpen && (
+                <div className="more-menu-list" role="menu">
+                  {!isFlowDone && canResetRun && (
+                    <button className="more-menu-item" role="menuitem" onClick={() => { setMenuOpen(false); sendToVSCode('resetRun', {}); }}>
+                      <Icon.RotateCw size={14} />Reset all steps
+                    </button>
+                  )}
+                  <button className="more-menu-item" role="menuitem" onClick={() => { setMenuOpen(false); sendToVSCode('verifyRun', {}); }}>
+                    <Icon.Check size={14} />Verify
+                  </button>
+                  <button className="more-menu-item" role="menuitem" onClick={() => { setMenuOpen(false); sendToVSCode('exportRunReport', {}); }}>
+                    <Icon.Copy size={14} />Report
+                  </button>
+                  <div className="more-menu-sep" />
+                  <button className="more-menu-item danger" role="menuitem" onClick={() => { setMenuOpen(false); sendToVSCode('deleteRun', {}); }}>
+                    <Icon.Trash2 size={14} />Delete run
+                  </button>
+                </div>
+              )}
+            </div>
           )}
-          <div style={{ width: 1, height: 16, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
           <button
             className="icon-btn"
             title="Close runner view (keep run data)"
@@ -219,15 +254,6 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
           >
             <Icon.X size={14} />
           </button>
-          {!isFinalized && (
-            <button
-              className="icon-btn danger"
-              title="Delete this run and all its data"
-              onClick={() => sendToVSCode('deleteRun', {})}
-            >
-              <Icon.Trash2 size={14} />
-            </button>
-          )}
         </div>
       </div>
       <div className="runner-strip">
