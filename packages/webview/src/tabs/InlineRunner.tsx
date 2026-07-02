@@ -180,6 +180,14 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [menuOpen]);
 
+  // Approve/Reject/Finish can wait on a real Claude call (semantic produces check, AI review)
+  // before the extension replies, so spin the clicked button until that step's state actually
+  // changes (success) or an error is posted back (failure) — both replace `activeStepState`.
+  const [pendingAction, setPendingAction] = useState<'approve' | 'reject' | 'finish' | null>(null);
+  useEffect(() => {
+    setPendingAction(null);
+  }, [activeStepId, activeStepState]);
+
   return (
     <div className="runner">
       <div className="runner-head">
@@ -315,22 +323,29 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
                     {activeStep?.review.filePath && (
                       <button className="btn" title={activeStep.review.filePath} onClick={() => onOpenFile(activeStep.review.filePath!)}>Open review file</button>
                     )}
-                    <button className="btn success" title="Approve this step" onClick={() => sendToVSCode('reviewStep', {
-                      stepId: activeStepId!,
-                      decision: 'approved'
-                    })}>Approve</button>
-                    <button className="btn error" title="Reject this step" onClick={() => sendToVSCode('reviewStep', {
-                      stepId: activeStepId!,
-                      decision: 'rejected'
-                    })}>Reject</button>
+                    <button className="btn success" title="Approve this step" disabled={pendingAction !== null} onClick={() => {
+                      setPendingAction('approve');
+                      sendToVSCode('reviewStep', { stepId: activeStepId!, decision: 'approved' });
+                    }}>
+                      {pendingAction === 'approve' && <span className="btn-glyph"><Icon.RotateCw size={14} className="spin" /></span>}Approve
+                    </button>
+                    <button className="btn error" title="Reject this step" disabled={pendingAction !== null} onClick={() => {
+                      setPendingAction('reject');
+                      sendToVSCode('reviewStep', { stepId: activeStepId!, decision: 'rejected' });
+                    }}>
+                      {pendingAction === 'reject' && <span className="btn-glyph"><Icon.RotateCw size={14} className="spin" /></span>}Reject
+                    </button>
                   </>
                 )}
                 {stepActions.showFinish && (
-                  <button className="btn primary" title="Complete this step" onClick={() => sendToVSCode('markStepDone', {
-                    stepId: activeStepId!,
-                    historyEvent: { timestamp: new Date().toISOString(), status: 'completed', message: 'Marked done by user' }
-                  })}>
-                    <span className="btn-glyph"><Icon.Check size={14} /></span>Finish
+                  <button className="btn primary" title="Complete this step" disabled={pendingAction !== null} onClick={() => {
+                    setPendingAction('finish');
+                    sendToVSCode('markStepDone', {
+                      stepId: activeStepId!,
+                      historyEvent: { timestamp: new Date().toISOString(), status: 'completed', message: 'Marked done by user' }
+                    });
+                  }}>
+                    <span className="btn-glyph">{pendingAction === 'finish' ? <Icon.RotateCw size={14} className="spin" /> : <Icon.Check size={14} />}</span>Finish
                   </button>
                 )}
                 {stepActions.showRerun && (
