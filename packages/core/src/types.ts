@@ -153,6 +153,8 @@ export interface StepRunState {
   };
   startedAt?: string;
   completedAt?: string;
+  /** When the review phase ended (human/AI decision recorded). Review time = reviewCompletedAt − completedAt. */
+  reviewCompletedAt?: string;
   /** Usage stats of the last execution; unset until the runner reports them. */
   tokensUsed?: number;
   modelUsed?: string;

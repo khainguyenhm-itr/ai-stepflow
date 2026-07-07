@@ -4,6 +4,25 @@ import { Icon, metaValue } from '../components/primitives';
 import { formatRunTime, getStepSkills } from '../flowUtils';
 import { sendToVSCode } from '../vscode';
 
+/** ms between two ISO timestamps, or 0 if either is missing/invalid. */
+function spanMs(from?: string, to?: string): number {
+  if (!from || !to) return 0;
+  const ms = new Date(to).getTime() - new Date(from).getTime();
+  return Number.isFinite(ms) && ms > 0 ? ms : 0;
+}
+
+/** Human-readable duration: "450ms", "12s", "1m 23s", "2h 5m". */
+function formatDuration(ms: number): string {
+  if (ms <= 0) return '—';
+  if (ms < 1000) return `${ms}ms`;
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+
 interface InlineRunnerProps {
   flow: Flow;
   runState: FlowRunState;
@@ -41,11 +60,15 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
       state: runState.steps[step.id],
       costUsd: runState.steps[step.id]?.costUsd ?? 0,
       tokensUsed: runState.steps[step.id]?.tokensUsed ?? 0,
+      taskMs: spanMs(runState.steps[step.id]?.startedAt, runState.steps[step.id]?.completedAt),
+      reviewMs: spanMs(runState.steps[step.id]?.completedAt, runState.steps[step.id]?.reviewCompletedAt),
       isHeadless
     };
   });
   const totalCostUsd = stepCosts.reduce((sum, item) => sum + item.costUsd, 0);
   const totalTokens = stepCosts.reduce((sum, item) => sum + item.tokensUsed, 0);
+  const totalTaskMs = stepCosts.reduce((sum, item) => sum + item.taskMs, 0);
+  const totalReviewMs = stepCosts.reduce((sum, item) => sum + item.reviewMs, 0);
   const hasAnyHeadlessStep = false; // All steps run interactively now
   const reviewStatus = activeStepState?.reviewStatus;
   const reviewRequired = !!activeStep?.review.required;
@@ -391,6 +414,8 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
             {metaValue(activeStepState?.tokensUsed != null ? activeStepState.tokensUsed.toLocaleString() : '', 'not reported yet', true)}
             <span className="muted small">cost</span>
             {metaValue(activeStepState?.costUsd != null ? `$${activeStepState.costUsd.toFixed(4)}` : '', 'not reported yet', true)}
+            <span className="muted small">task time</span>
+            {metaValue(spanMs(activeStepState?.startedAt, activeStepState?.completedAt) > 0 ? formatDuration(spanMs(activeStepState?.startedAt, activeStepState?.completedAt)) : '', 'not reported yet', true)}
           </div>
         </div>
         <div className="console-wrap">
@@ -471,6 +496,8 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
                   : hasAnyHeadlessStep
                     ? 'Cost data available after AI-executed steps complete'
                     : 'Interactive steps — no token tracking'}
+              {totalTaskMs > 0 && ` · task ${formatDuration(totalTaskMs)}`}
+              {totalReviewMs > 0 && ` · review ${formatDuration(totalReviewMs)}`}
             </div>
           </div>
           <table className="runner-cost-table">
@@ -481,11 +508,12 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
                 <th>Model</th>
                 <th>Tokens</th>
                 <th>Cost</th>
+                <th>Task Time</th>
                 <th>Share</th>
               </tr>
             </thead>
             <tbody>
-              {stepCosts.map(({ step, state, costUsd, tokensUsed, isHeadless }) => {
+              {stepCosts.map(({ step, state, costUsd, tokensUsed, taskMs, isHeadless }) => {
                 const share = totalCostUsd > 0 ? (costUsd / totalCostUsd) * 100 : 0;
                 const hasRun = state?.executionStatus !== 'ready' && state?.executionStatus !== 'locked' && state?.executionStatus != null;
                 const isRunning = state?.executionStatus === 'running';
@@ -498,6 +526,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
                     <td className={!state?.modelUsed && hasRun && !isHeadless ? 'muted' : ''}>{modelLabel}</td>
                     <td>{tokensUsed > 0 ? tokensUsed.toLocaleString() : isRunning ? '…' : '—'}</td>
                     <td>{costUsd > 0 ? `$${costUsd.toFixed(4)}` : isRunning ? '…' : '—'}</td>
+                    <td>{taskMs > 0 ? formatDuration(taskMs) : isRunning ? '…' : '—'}</td>
                     <td style={{ minWidth: '100px' }}>
                       {costUsd > 0 ? (
                         <div className="cost-bar-wrapper" title={`${share.toFixed(1)}%`}>

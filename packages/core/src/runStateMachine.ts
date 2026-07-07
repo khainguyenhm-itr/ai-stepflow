@@ -118,7 +118,8 @@ function invalidateForRerun(state: FlowRunState, flow: Flow, stepId: string): Fl
       completionStatus: 'not_ready',
       error: undefined,
       aiReviewOutput: undefined,
-      humanReview: undefined
+      humanReview: undefined,
+      reviewCompletedAt: undefined
     };
   }
   return { ...state, steps: applyDependencyLocks(flow, steps) };
@@ -129,7 +130,7 @@ export function markRunning(state: FlowRunState, flow: Flow, stepId: string): Fl
   const baseState = rerunDoneStep ? invalidateForRerun(state, flow, stepId) : state;
   const step = flow.steps.find(s => s.id === stepId);
   const revision = (baseState.steps[stepId]?.revision ?? 0) + 1;
-  const patch: Partial<StepRunState> = { executionStatus: 'running', completionStatus: 'not_ready', output: '', error: undefined, startedAt: new Date().toISOString(), revision, tokensUsed: undefined, costUsd: undefined, modelUsed: undefined };
+  const patch: Partial<StepRunState> = { executionStatus: 'running', completionStatus: 'not_ready', output: '', error: undefined, startedAt: new Date().toISOString(), completedAt: undefined, reviewCompletedAt: undefined, revision, tokensUsed: undefined, costUsd: undefined, modelUsed: undefined };
   if (step?.review.required) {
     patch.reviewStatus = 'pending';
     patch.aiReviewOutput = '';
@@ -189,9 +190,11 @@ export function applyAiReview(
   if (status === 'approved') {
     // AI Approved: go to 'done' unless manual confirmation is requested.
     patch.completionStatus = step?.completion?.requireMarkDone ? 'ready_to_mark_done' : 'done';
+    patch.reviewCompletedAt = new Date().toISOString();
   } else if (status === 'rejected') {
     patch.completionStatus = 'not_ready';
     patch.executionStatus = 'ready';
+    patch.reviewCompletedAt = new Date().toISOString();
   }
 
   const event = status === 'ai_review_running' ? undefined : { status: `ai-review ${status}` };
@@ -205,6 +208,7 @@ export function applyHumanReview(state: FlowRunState, flow: Flow, stepId: string
   const patch: Partial<StepRunState> = {
     humanReview: review,
     reviewStatus: approved ? 'approved' : 'rejected',
+    reviewCompletedAt: new Date().toISOString(),
     completionStatus: approved ? (step?.completion?.requireMarkDone ? 'ready_to_mark_done' : 'done') : 'not_ready',
     ...(approved ? {} : { executionStatus: 'ready' as const })
   };
