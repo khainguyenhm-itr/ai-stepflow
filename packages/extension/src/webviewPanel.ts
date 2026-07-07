@@ -8,7 +8,7 @@ import { TerminalManager } from './terminalManager.js';
 import { RunOrchestrator } from './runOrchestrator.js';
 import { validateMessage, WebviewMessage, HostMessage } from './messages.js';
 import { listConnectedMcpServers, addMcpServer } from './mcp.js';
-import { Agent, Flow, FlowStep, Skill, extractJsonObject } from '@ai-stepflow/core';
+import { Agent, ClaudeStreamingRunResult, Flow, FlowStep, Skill, extractJsonObject } from '@ai-stepflow/core';
 
 export class CockpitPanel {
   public static currentPanel: CockpitPanel | undefined;
@@ -341,6 +341,35 @@ export class CockpitPanel {
     }
   }
 
+  /**
+   * Run a one-shot generation prompt (max-turns 1, no MCP context). These calls have no side
+   * effects, so on a transient CLI failure (non-zero exit that isn't a timeout) we retry once
+   * automatically before giving up — this is the same class of blip ("run it again and it
+   * works") users were otherwise hitting manually. On final failure the message includes the
+   * real captured output (stdout+stderr) instead of a bare exit code, so the actual cause
+   * (auth, rate limit, network) is visible instead of swallowed.
+   */
+  private async _runGenerationPrompt(projectPath: string, userMessage: string): Promise<{ result: ClaudeStreamingRunResult; text: string; why?: string }> {
+    const attempt = async () => {
+      let text = '';
+      const result = await this._runner.spawnClaudeStreaming({ systemPrompt: '', userMessage, projectPath, maxTurns: 1, onText: chunk => { text += chunk; } });
+      return { result, text };
+    };
+
+    let outcome = await attempt();
+    if (!outcome.result.success && !outcome.result.timedOut) {
+      console.error('AI StepFlow: generation attempt failed, retrying once —', `claude exited ${outcome.result.exitCode}`, outcome.text.slice(-500));
+      outcome = await attempt();
+    }
+
+    if (outcome.result.success) return outcome;
+    const detail = outcome.text.trim().slice(-500);
+    const why = outcome.result.timedOut
+      ? 'run timed out'
+      : `claude exited ${outcome.result.exitCode}${detail ? ` — ${detail}` : ''}`;
+    return { ...outcome, why };
+  }
+
   private async _handleGenerateDraft(kind: 'agent' | 'skill', prompt: string, history?: { role: 'user' | 'assistant'; content: string }[]): Promise<void> {
     const projectPath = this.configManager.getProjectPath() || '';
     const contentField = kind === 'agent' ? 'systemPrompt' : 'instructions';
@@ -371,10 +400,8 @@ export class CockpitPanel {
     ].filter(Boolean).join('\n');
 
     await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Generating ${kind}...` }, async () => {
-      let text = '';
-      const result = await this._runner.spawnClaudeStreaming({ systemPrompt: '', userMessage: metaPrompt, projectPath, maxTurns: 1, onText: chunk => { text += chunk; } });
-      if (!result.success) {
-        const why = result.timedOut ? 'run timed out' : `claude exited ${result.exitCode}`;
+      const { result, text, why } = await this._runGenerationPrompt(projectPath, metaPrompt);
+      if (why) {
         console.error('AI StepFlow: draft generation failed —', why);
         this.postMessage({ type: 'draftGenerated', kind, error: why });
         return;
@@ -439,10 +466,8 @@ export class CockpitPanel {
     ].filter(Boolean).join('\n');
 
     await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Generating workflow...' }, async () => {
-      let text = '';
-      const result = await this._runner.spawnClaudeStreaming({ systemPrompt: '', userMessage: metaPrompt, projectPath, maxTurns: 1, onText: chunk => { text += chunk; } });
-      if (!result.success) {
-        const why = result.timedOut ? 'run timed out' : `claude exited ${result.exitCode}`;
+      const { result, text, why } = await this._runGenerationPrompt(projectPath, metaPrompt);
+      if (why) {
         console.error('AI StepFlow: flow generation failed —', why);
         this.postMessage({ type: 'flowGenerated', error: why });
         return;
