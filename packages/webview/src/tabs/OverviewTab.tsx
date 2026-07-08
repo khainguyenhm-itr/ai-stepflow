@@ -29,8 +29,9 @@ interface RecentWorkspace { path: string; name: string; lastOpenedMs: number }
 
 interface RunTotals { runs: number; completed: number; inProgress: number; costUsd: number; tokensUsed: number; taskTimeMs: number; reviewTimeMs: number }
 
-interface DayPoint { date: string; runs: number; costUsd: number; tokensUsed: number }
+interface DayPoint { date: string; runs: number; completed: number; inProgress: number; costUsd: number; tokensUsed: number; taskTimeMs: number }
 type TrendMetric = 'costUsd' | 'tokensUsed' | 'runs';
+type RangeKey = 'all' | '1d' | '7d' | '14d' | '1m';
 
 interface OverviewTabProps {
   flows: Flow[];
@@ -50,6 +51,8 @@ interface OverviewTabProps {
   onConnectMcp: () => void;
   onRunCommand: (command: RunnableCommand) => void;
   onOpenWorkspace: (path: string) => void;
+  onRevealPath: (path: string) => void;
+  onInstallGitnexus: () => void;
 }
 
 const fmtUsd = (n: number) => `$${n < 0.01 && n > 0 ? n.toFixed(4) : n.toFixed(2)}`;
@@ -88,21 +91,52 @@ const SCOPES: { key: ScopeFilter; label: string }[] = [
   { key: 'global', label: 'Global' }
 ];
 
-/** Bucket run summaries into the last 14 UTC days — mirrors StateManager.computeRunStats for the current repo. */
-const buildRepoTrend = (runs: { mtimeMs: number; costUsd?: number; tokensUsed?: number }[]): DayPoint[] => {
+const TREND_WINDOW_DAYS = 90;
+
+/** Bucket the current repo's run summaries into the last {@link TREND_WINDOW_DAYS} UTC days — mirrors StateManager.computeRunStats. */
+const buildRepoSeries = (runs: RunSummary[]): DayPoint[] => {
   const dayMs = 86_400_000;
   const today = Date.now();
   const buckets = new Map<string, DayPoint>();
-  for (let i = 13; i >= 0; i--) {
+  for (let i = TREND_WINDOW_DAYS - 1; i >= 0; i--) {
     const date = new Date(today - i * dayMs).toISOString().slice(0, 10);
-    buckets.set(date, { date, runs: 0, costUsd: 0, tokensUsed: 0 });
+    buckets.set(date, { date, runs: 0, completed: 0, inProgress: 0, costUsd: 0, tokensUsed: 0, taskTimeMs: 0 });
   }
   for (const r of runs) {
     const b = buckets.get(new Date(r.mtimeMs).toISOString().slice(0, 10));
-    if (b) { b.runs++; b.costUsd += r.costUsd || 0; b.tokensUsed += r.tokensUsed || 0; }
+    if (!b) continue;
+    const completed = r.totalSteps > 0 && r.completedSteps >= r.totalSteps;
+    b.runs++;
+    if (completed) b.completed++;
+    else if (!r.isClosed) b.inProgress++;
+    b.costUsd += r.costUsd || 0;
+    b.tokensUsed += r.tokensUsed || 0;
+    b.taskTimeMs += r.taskTimeMs || 0;
   }
   return [...buckets.values()];
 };
+
+const RANGES: { key: RangeKey; label: string; days: number }[] = [
+  { key: 'all', label: 'All', days: 0 },
+  { key: '1d', label: '1D', days: 1 },
+  { key: '7d', label: '7D', days: 7 },
+  { key: '14d', label: '14D', days: 14 },
+  { key: '1m', label: '1M', days: 30 }
+];
+
+/** UTC `YYYY-MM-DD`, `offsetDays` before today. */
+const dayStr = (offsetDays = 0) => new Date(Date.now() - offsetDays * 86_400_000).toISOString().slice(0, 10);
+
+const emptyTotals: RunTotals = { runs: 0, completed: 0, inProgress: 0, costUsd: 0, tokensUsed: 0, taskTimeMs: 0, reviewTimeMs: 0 };
+const sumDays = (days: DayPoint[]): RunTotals => days.reduce((t, d) => ({
+  runs: t.runs + d.runs,
+  completed: t.completed + d.completed,
+  inProgress: t.inProgress + d.inProgress,
+  costUsd: t.costUsd + d.costUsd,
+  tokensUsed: t.tokensUsed + d.tokensUsed,
+  taskTimeMs: t.taskTimeMs + d.taskTimeMs,
+  reviewTimeMs: 0
+}), { ...emptyTotals });
 
 const TREND_METRICS: { key: TrendMetric; label: string }[] = [
   { key: 'costUsd', label: 'Cost' },
@@ -133,9 +167,11 @@ const TrendChart: React.FC<{ trend: DayPoint[]; metric: TrendMetric }> = ({ tren
 
 export const OverviewTab: React.FC<OverviewTabProps> = ({
   flows, agents, skills, runSummaries, connectedMcpServers, defaultLibraryInstalled, recentWorkspaces, runTotalsAll, runTrendAll,
-  globalPath, projectPath, scope, onScopeChange, onNavigate, onConnectMcp, onRunCommand, onOpenWorkspace
+  globalPath, projectPath, scope, onScopeChange, onNavigate, onConnectMcp, onRunCommand, onOpenWorkspace, onRevealPath, onInstallGitnexus
 }) => {
   const [trendMetric, setTrendMetric] = React.useState<TrendMetric>('costUsd');
+  const [recentQuery, setRecentQuery] = React.useState('');
+  const [range, setRange] = React.useState<RangeKey>('14d');
   const isGlobal = (sourcePath: string) => !!globalPath && sourcePath.startsWith(globalPath);
   const inScope = (sourcePath: string) =>
     scope === 'all' ? true : scope === 'global' ? isGlobal(sourcePath) : !isGlobal(sourcePath);
@@ -159,9 +195,27 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     taskTimeMs: t.taskTimeMs + (r.taskTimeMs || 0),
     reviewTimeMs: t.reviewTimeMs + (r.reviewTimeMs || 0)
   }), { runs: 0, completed: 0, inProgress: 0, costUsd: 0, tokensUsed: 0, taskTimeMs: 0, reviewTimeMs: 0 } as RunTotals);
-  const totals = scope === 'all' ? runTotalsAll : repoTotals;
+
+  // Enriched daily series for the current scope; the selected range sums a sub-window of it.
+  const series = scope === 'all' ? runTrendAll : buildRepoSeries(runSummaries);
+  const preset = RANGES.find(r => r.key === range);
+  let from: string | null = null, to: string | null = null;
+  if (range !== 'all') {
+    from = dayStr((preset?.days ?? 1) - 1);
+    to = dayStr(0);
+  }
+  const rangedDays = from === null || to === null ? series : series.filter(d => d.date >= from! && d.date <= to!);
+
+  const allTimeTotals = scope === 'all' ? runTotalsAll : repoTotals;
+  const totals = range === 'all' ? allTimeTotals : sumDays(rangedDays);
+  // All-time keeps the compact 14-bar chart; a dated range shows exactly its window.
+  const trend = range === 'all' ? series.slice(-14) : rangedDays;
   const runsHint = scope === 'all' ? `across ${recentWorkspaces.length || 1} workspace(s)` : 'in this repo';
-  const trend = scope === 'all' ? runTrendAll : buildRepoTrend(runSummaries);
+  const rangeLabel = range === 'all' ? 'all time'
+    : range === '1d' ? 'today'
+    : `last ${preset?.days} days`;
+  // The 'all' chart still shows the last 14 daily bars, so label the Trend section by what it actually plots.
+  const trendLabel = range === 'all' ? 'last 14 days' : rangeLabel;
 
   const gitnexusConnected = connectedMcpServers.some(s => /gitnexus|ast-graph/i.test(s));
 
@@ -198,7 +252,22 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       </section>
 
       <section className="ov-section">
-        <div className="ov-section-title">Runs</div>
+        <div className="ov-section-head">
+          <div className="ov-section-title">Runs<span className="muted small"> · {rangeLabel}</span></div>
+          {scope !== 'global' && (
+            <div className="ov-filter">
+              <div className="ov-scope-switch">
+                {RANGES.map(r => (
+                  <button
+                    key={r.key}
+                    className={`ov-scope-btn${range === r.key ? ' active' : ''}`}
+                    onClick={() => setRange(r.key)}
+                  >{r.label}</button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
         {scope === 'global' ? (
           <div className="ov-note muted small">Runs are tracked per repository — switch to “Repo” or “All” to see run statistics.</div>
         ) : (
@@ -207,7 +276,6 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             <Stat label="Total cost" value={fmtUsd(totals.costUsd)} hint={runsHint} />
             <Stat label="Tokens" value={fmtTokens(totals.tokensUsed)} hint="input + output + cache" />
             <Stat label="Execution time" value={fmtDuration(totals.taskTimeMs)} hint="steps running" />
-            <Stat label="Review time" value={fmtDuration(totals.reviewTimeMs)} hint="human / AI review" />
           </div>
         )}
       </section>
@@ -215,7 +283,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       {scope !== 'global' && (
         <section className="ov-section">
           <div className="ov-section-head">
-            <div className="ov-section-title">Trend · last 14 days</div>
+            <div className="ov-section-title">Trend · {trendLabel}</div>
             <div className="ov-scope-switch">
               {TREND_METRICS.map(m => (
                 <button
@@ -228,7 +296,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </div>
           {trend.some(d => d.runs > 0)
             ? <TrendChart trend={trend} metric={trendMetric} />
-            : <div className="ov-note muted small">No run activity in the last 14 days.</div>}
+            : <div className="ov-note muted small">No run activity in {trendLabel}.</div>}
         </section>
       )}
 
@@ -237,9 +305,25 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         <div className="ov-section-title">Recent workspaces</div>
         {recentWorkspaces.length === 0 ? (
           <div className="ov-note muted small">No recent workspaces yet.</div>
-        ) : (
+        ) : (() => {
+          const q = recentQuery.trim().toLowerCase();
+          const filtered = q
+            ? recentWorkspaces.filter(w => w.name.toLowerCase().includes(q) || w.path.toLowerCase().includes(q))
+            : recentWorkspaces;
+          return (
+          <>
+            <input
+              className="ov-recent-search"
+              type="text"
+              placeholder="Search workspaces…"
+              value={recentQuery}
+              onChange={e => setRecentQuery(e.target.value)}
+            />
+            {filtered.length === 0 ? (
+              <div className="ov-note muted small">No workspaces match “{recentQuery}”.</div>
+            ) : (
           <div className="ov-recents">
-            {recentWorkspaces.map(w => {
+            {filtered.map(w => {
               const current = !!projectPath && w.path === projectPath;
               return (
                 <button
@@ -257,7 +341,10 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               );
             })}
           </div>
-        )}
+            )}
+          </>
+          );
+        })()}
       </section>
 
       <section className="ov-section">
@@ -283,6 +370,23 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             </button>
           </div>
 
+          {!gitnexusConnected && (
+            <div className="ov-setting-row">
+              <div className="ov-setting-main">
+                <div className="ov-setting-name">
+                  <span className="btn-glyph"><Icon.Zap size={14} /></span>GitNexus code intelligence
+                </div>
+                <div className="muted small">
+                  <span className="ov-warn">Not connected</span>
+                  {' · code-graph CLI for impact analysis & symbol search — if it isn’t installed yet, install it globally via npm'}
+                </div>
+              </div>
+              <button className="btn primary" onClick={onInstallGitnexus} title="Open a terminal and run: npm install -g gitnexus">
+                <span className="btn-glyph"><Icon.Terminal size={14} /></span>Install
+              </button>
+            </div>
+          )}
+
           <div className="ov-setting-row">
             <div className="ov-setting-main">
               <div className="ov-setting-name">
@@ -295,9 +399,14 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 {' · bundled SDLC agents, skills and engineering rules'}
               </div>
             </div>
-            <button className="btn" onClick={() => onRunCommand('ai-stepflow.installDefaults')}>
-              <span className="btn-glyph"><Icon.Sparkles size={14} /></span>{defaultLibraryInstalled ? 'Repair' : 'Install'}
-            </button>
+            <div className="btn-group">
+              <button className="btn" onClick={() => onRevealPath(globalPath)} disabled={!globalPath} title="Open ~/.claude in file explorer">
+                <span className="btn-glyph"><Icon.FolderOpen size={14} /></span>Open folder
+              </button>
+              <button className="btn" onClick={() => onRunCommand('ai-stepflow.installDefaults')}>
+                <span className="btn-glyph"><Icon.Sparkles size={14} /></span>{defaultLibraryInstalled ? 'Repair' : 'Install'}
+              </button>
+            </div>
           </div>
 
           <div className="ov-setting-row">

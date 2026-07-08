@@ -42,8 +42,8 @@ export type HostMessage =
       recentWorkspaces: { path: string; name: string; lastOpenedMs: number }[];
       /** Run metrics summed across all recent workspaces (current repo included), for the Overview "All" scope. */
       runTotalsAll: { runs: number; completed: number; inProgress: number; costUsd: number; tokensUsed: number; taskTimeMs: number; reviewTimeMs: number };
-      /** Daily run activity (last 14 days) across all recent workspaces, for the Overview "All" trend chart. */
-      runTrendAll: { date: string; runs: number; costUsd: number; tokensUsed: number }[];
+      /** Daily run activity (last 90 days) across all recent workspaces, for the Overview "All" trend chart and date-range filtering. */
+      runTrendAll: { date: string; runs: number; completed: number; inProgress: number; costUsd: number; tokensUsed: number; taskTimeMs: number }[];
     }
   | { type: 'mcpServers'; connectedMcpServers: string[] }
   | { type: 'restoreRun'; flow: Flow; runState: FlowRunState }
@@ -95,6 +95,8 @@ export type WebviewMessage =
   | { type: 'connectMcpServer'; config: { name: string; scope: 'global' | 'local'; command: string; args: string[]; env?: Record<string, string> } }
   | { type: 'runCommand'; command: RunnableCommand }
   | { type: 'openWorkspace'; path: string }
+  | { type: 'revealPath'; path: string }
+  | { type: 'installGitnexus' }
   | { type: 'alert'; text: string };
 
 /** VS Code command ids the Overview quick-settings panel is allowed to trigger. Whitelisted to keep the webview from invoking arbitrary commands. */
@@ -161,6 +163,8 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   connectMcpServer: m => isObject(m.config) && isString(m.config.name) && isString(m.config.command),
   runCommand: m => isString(m.command) && (RUNNABLE_COMMANDS as readonly string[]).includes(m.command),
   openWorkspace: m => isString(m.path),
+  revealPath: m => isString(m.path),
+  installGitnexus: () => true,
   savePref: m => isString(m.key) && isString(m.value),
   alert: m => isString(m.text)
 };

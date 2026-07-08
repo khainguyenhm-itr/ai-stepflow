@@ -1851,9 +1851,11 @@ textarea.input {
 .ov-warn { color: var(--warn); }
 
 /* Overview — scope switch */
-.ov-scope-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+.ov-scope-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 2px; overflow: hidden; }
 .ov-scope-btn {
-  padding: 4px 12px; font-size: 12px; background: transparent; color: var(--fg);
+  display: inline-flex; align-items: center;
+  padding: 4px 12px; font-size: inherit; line-height: 1.4; font-family: inherit;
+  background: transparent; color: var(--fg);
   border: none; border-right: 1px solid var(--border); cursor: pointer;
 }
 .ov-scope-btn:last-child { border-right: none; }
@@ -1862,17 +1864,39 @@ textarea.input {
 
 /* Overview — notes & recents */
 .ov-note { padding: 10px 12px; border: 1px dashed var(--border); border-radius: 3px; }
-.ov-recents { display: flex; flex-direction: column; gap: 4px; }
+.ov-recent-search {
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: var(--fg);
+  background: var(--input-bg, var(--panel));
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+.ov-recent-search:focus { outline: none; border-color: var(--focus, var(--accent)); }
+.ov-recents { display: flex; flex-direction: column; gap: 4px; max-height: 420px; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; }
+.ov-recents::-webkit-scrollbar { width: 0; height: 0; }
 .ov-recent-row {
   display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
   padding: 8px 12px; border: 1px solid var(--border); border-radius: 3px;
   background: var(--panel); color: var(--fg); cursor: pointer;
 }
 .ov-recent-row:hover:not(:disabled) { background: var(--hover); }
-.ov-recent-row.current { cursor: default; opacity: 0.85; }
+.ov-recent-row.current {
+  cursor: default;
+  border-color: var(--focus, var(--accent));
+  border-left: 3px solid var(--focus, var(--accent));
+  background: color-mix(in srgb, var(--focus, var(--accent)) 12%, var(--panel));
+}
 .ov-recent-name { font-size: 13px; font-weight: 600; flex-shrink: 0; }
 .ov-recent-path { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ov-recent-meta { flex-shrink: 0; }
+.ov-recent-row.current .ov-recent-meta {
+  color: var(--focus, var(--accent));
+  font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+}
 
 /* Overview — two-column layout for recents + settings */
 .ov-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
@@ -1880,11 +1904,11 @@ textarea.input {
 @media (max-width: 900px) { .ov-columns { grid-template-columns: 1fr; } }
 
 /* Overview — trend chart */
-.ov-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.ov-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; margin-bottom: 8px; flex-wrap: wrap; }
 .ov-section-head .ov-section-title { margin-bottom: 0; }
 .ov-chart {
   position: relative; display: flex; align-items: flex-end; gap: 4px;
-  height: 120px; padding: 8px 12px 0;
+  height: 160px; padding: 8px 12px 0;
   border: 1px solid var(--border); border-radius: 3px; background: var(--panel);
 }
 .ov-chart-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; height: 100%; }
@@ -1893,3 +1917,6 @@ textarea.input {
 .ov-chart-col:hover .ov-chart-bar { opacity: 0.8; }
 .ov-chart-x { font-size: 9px; white-space: nowrap; transform: rotate(-45deg); transform-origin: center; }
 .ov-chart-max { position: absolute; top: 4px; right: 8px; }
+
+/* Overview — date-range filter */
+.ov-filter { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }

@@ -132,6 +132,8 @@ const App: React.FC = () => {
           onConnectMcp={() => setConnectMcpModalOpen(true)}
           onRunCommand={command => sendToVSCode('runCommand', { command })}
           onOpenWorkspace={path => sendToVSCode('openWorkspace', { path })}
+          onRevealPath={path => sendToVSCode('revealPath', { path })}
+          onInstallGitnexus={() => sendToVSCode('installGitnexus', {})}
         />
       )}
 

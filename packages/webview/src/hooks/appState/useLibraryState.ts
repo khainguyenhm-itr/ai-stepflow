@@ -7,7 +7,7 @@ import { GroupBy } from '../../tagUtils';
 type ResourceBookmarks = Record<string, boolean>;
 
 export const useLibraryState = () => {
-  const [activeTab, setActiveTab] = useState<Tab>('flows');
+  const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [flows, setFlows] = useState<Flow[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
@@ -20,7 +20,7 @@ export const useLibraryState = () => {
   const [recentWorkspaces, setRecentWorkspaces] = useState<{ path: string; name: string; lastOpenedMs: number }[]>([]);
   const [overviewScope, setOverviewScope] = useState<ScopeFilter>('all');
   const [runTotalsAll, setRunTotalsAll] = useState<{ runs: number; completed: number; inProgress: number; costUsd: number; tokensUsed: number; taskTimeMs: number; reviewTimeMs: number }>({ runs: 0, completed: 0, inProgress: 0, costUsd: 0, tokensUsed: 0, taskTimeMs: 0, reviewTimeMs: 0 });
-  const [runTrendAll, setRunTrendAll] = useState<{ date: string; runs: number; costUsd: number; tokensUsed: number }[]>([]);
+  const [runTrendAll, setRunTrendAll] = useState<{ date: string; runs: number; completed: number; inProgress: number; costUsd: number; tokensUsed: number; taskTimeMs: number }[]>([]);
   const [runSummaries, setRunSummaries] = useState<{ flowId: string; runId: string; runName?: string; completedSteps: number; totalSteps: number; mtimeMs: number; isClosed: boolean; costUsd?: number; tokensUsed?: number; taskTimeMs?: number; reviewTimeMs?: number }[]>([]);
 
   const [scopeFilters, setScopeFilters] = useState<{ flows: ScopeFilter; agents: ScopeFilter; skills: ScopeFilter }>({ flows: 'all', agents: 'all', skills: 'all' });

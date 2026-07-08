@@ -34,13 +34,16 @@ export interface RunTotals {
   reviewTimeMs: number;
 }
 
-/** One day's run activity, for the Overview trend chart. */
+/** One day's run activity, for the Overview trend chart and date-range filtering. */
 export interface DayPoint {
   /** UTC date, `YYYY-MM-DD`. */
   date: string;
   runs: number;
+  completed: number;
+  inProgress: number;
   costUsd: number;
   tokensUsed: number;
+  taskTimeMs: number;
 }
 
 export class StateManager {
@@ -304,23 +307,26 @@ export class StateManager {
    * Sum run metrics across many workspace roots (each `<root>/.ai-stepflow/runs`), deduped,
    * plus a daily trend for the last {@link trendDays} days. Used for the Overview "All" scope.
    */
-  public async computeRunStats(workspaceRoots: string[], trendDays = 14): Promise<{ totals: RunTotals; trend: DayPoint[] }> {
+  public async computeRunStats(workspaceRoots: string[], trendDays = 90): Promise<{ totals: RunTotals; trend: DayPoint[] }> {
     const totals: RunTotals = { runs: 0, completed: 0, inProgress: 0, costUsd: 0, tokensUsed: 0, taskTimeMs: 0, reviewTimeMs: 0 };
-    // Pre-seed the last `trendDays` day buckets (oldest → newest) so the chart has a stable x-axis.
+    // Pre-seed the last `trendDays` day buckets (oldest → newest) so the chart has a stable x-axis
+    // and the webview can sum any date sub-range client-side.
     const dayMs = 86_400_000;
     const today = Date.now();
     const buckets = new Map<string, DayPoint>();
     for (let i = trendDays - 1; i >= 0; i--) {
       const date = new Date(today - i * dayMs).toISOString().slice(0, 10);
-      buckets.set(date, { date, runs: 0, costUsd: 0, tokensUsed: 0 });
+      buckets.set(date, { date, runs: 0, completed: 0, inProgress: 0, costUsd: 0, tokensUsed: 0, taskTimeMs: 0 });
     }
 
     const roots = [...new Set(workspaceRoots.filter(Boolean))];
     for (const root of roots) {
       const runs = await this.readRunsFromDir(path.join(root, '.ai-stepflow', 'runs'));
       for (const r of runs) {
+        const completed = r.totalSteps > 0 && r.completedSteps >= r.totalSteps;
+        const inProgress = !completed && !r.isClosed;
         totals.runs++;
-        if (r.totalSteps > 0 && r.completedSteps >= r.totalSteps) totals.completed++;
+        if (completed) totals.completed++;
         else if (!r.isClosed) totals.inProgress++;
         totals.costUsd += r.costUsd;
         totals.tokensUsed += r.tokensUsed;
@@ -329,7 +335,14 @@ export class StateManager {
 
         const day = new Date(r.mtimeMs).toISOString().slice(0, 10);
         const bucket = buckets.get(day);
-        if (bucket) { bucket.runs++; bucket.costUsd += r.costUsd; bucket.tokensUsed += r.tokensUsed; }
+        if (bucket) {
+          bucket.runs++;
+          if (completed) bucket.completed++;
+          if (inProgress) bucket.inProgress++;
+          bucket.costUsd += r.costUsd;
+          bucket.tokensUsed += r.tokensUsed;
+          bucket.taskTimeMs += r.taskTimeMs;
+        }
       }
     }
     return { totals, trend: [...buckets.values()] };

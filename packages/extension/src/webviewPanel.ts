@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
 import { ConfigManager } from './configManager.js';
-import { StateManager } from './stateManager.js';
+import { StateManager, DayPoint } from './stateManager.js';
 import { TerminalManager } from './terminalManager.js';
 import { RunOrchestrator } from './runOrchestrator.js';
 import { validateMessage, WebviewMessage, HostMessage } from './messages.js';
@@ -332,6 +332,19 @@ export class CockpitPanel {
           vscode.window.showErrorMessage(`AI StepFlow: failed to open '${message.path}'. ${e instanceof Error ? e.message : String(e)}`);
         }
         return;
+      case 'revealPath':
+        try {
+          await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(message.path));
+        } catch (e) {
+          vscode.window.showErrorMessage(`AI StepFlow: failed to open '${message.path}'. ${e instanceof Error ? e.message : String(e)}`);
+        }
+        return;
+      case 'installGitnexus': {
+        const terminal = vscode.window.createTerminal({ name: 'Install GitNexus' });
+        terminal.show();
+        terminal.sendText('npm install -g gitnexus', true);
+        return;
+      }
       case 'alert':
         vscode.window.showErrorMessage(message.text);
         return;
@@ -594,7 +607,7 @@ export class CockpitPanel {
       const emptyTotals = { runs: 0, completed: 0, inProgress: 0, costUsd: 0, tokensUsed: 0, taskTimeMs: 0, reviewTimeMs: 0 };
       const runStats = await this.stateManager
         .computeRunStats([projectPath, ...recentWorkspaces.map(w => w.path)])
-        .catch(() => ({ totals: emptyTotals, trend: [] as { date: string; runs: number; costUsd: number; tokensUsed: number }[] }));
+        .catch(() => ({ totals: emptyTotals, trend: [] as DayPoint[] }));
 
       this.postMessage({
         type: 'loadData',

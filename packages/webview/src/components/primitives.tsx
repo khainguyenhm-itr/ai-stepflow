@@ -26,6 +26,7 @@ import {
   Star,
   Search,
   MoreHorizontal,
+  FolderOpen,
 } from 'lucide-react';
 
 /* Small native UI primitives styled after VS Code. */
@@ -110,4 +111,5 @@ export const Icon = {
   Star,
   Search,
   More: MoreHorizontal,
+  FolderOpen,
 };
