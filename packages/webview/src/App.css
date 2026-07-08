@@ -856,6 +856,7 @@ textarea.input {
 }
 .result-banner.success { border: 1px solid var(--success); color: var(--success); }
 .result-banner.error { border: 1px solid var(--error); color: var(--error); }
+.result-banner.warning { border: 1px solid var(--warn); color: var(--warn); }
 
 .console-wrap {
   display: flex;

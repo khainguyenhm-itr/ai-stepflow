@@ -171,7 +171,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 }) => {
   const [trendMetric, setTrendMetric] = React.useState<TrendMetric>('costUsd');
   const [recentQuery, setRecentQuery] = React.useState('');
-  const [range, setRange] = React.useState<RangeKey>('14d');
+  const [range, setRange] = React.useState<RangeKey>('1m');
   const isGlobal = (sourcePath: string) => !!globalPath && sourcePath.startsWith(globalPath);
   const inScope = (sourcePath: string) =>
     scope === 'all' ? true : scope === 'global' ? isGlobal(sourcePath) : !isGlobal(sourcePath);

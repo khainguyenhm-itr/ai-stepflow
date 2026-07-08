@@ -455,6 +455,11 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
             <Icon.X size={13} /> Rejected — fix the issues and re-run the step.
           </div>
         )}
+        {reviewStatus === 'waiting_human' && activeStep?.review.type === 'ai' && (
+          <div className="result-banner warning">
+            <Icon.Info size={13} /> Auto review couldn't decide automatically — approve or reject manually. {activeStepState?.aiReviewOutput ? 'See the AI Review log above for the reason.' : 'Add a `produces` file to the step so the reviewer has something to read, or install the review kit.'}
+          </div>
+        )}
 
         {/* Step-scoped Execution History, grouped per run — lives inside the step detail. */}
         {historyGroups.length > 0 && (
