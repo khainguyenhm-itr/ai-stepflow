@@ -215,6 +215,19 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
     <div className="runner">
       <div className="runner-head">
         <div className="runner-head-info">
+          {!isFinalized && (
+            <label
+              className="auto-review-toggle small mb-4"
+              title="Auto-pilot: run & AI-review every non-human step automatically, then auto-confirm and advance. The run stops only at a human-review gate (which still runs first) or an AI-review rejection."
+            >
+              <input
+                type="checkbox"
+                checked={!!runState.autoReview}
+                onChange={e => sendToVSCode('setAutoReview', { enabled: e.target.checked })}
+              />
+              <span>Auto review</span>
+            </label>
+          )}
           <div className="flex-row items-center gap-8 mb-4">
             <span className="runner-flow-name">
               {runState.runName || runState.runId.split('T')[0]}

@@ -90,6 +90,10 @@ export class RunOrchestrator {
       if (step?.review?.required) {
         await this._setRunState(s => machine.markCompleted(s, this._currentFlow!, stepId, metrics), { stepId, status: 'completed', message: 'Terminal session ended — reviewing' });
         await this._reviewStep(step, stepId);
+      } else if (this._runState.autoReview && step) {
+        // Auto-pilot: an otherwise-unreviewed step still gets an AI review before it auto-confirms.
+        await this._setRunState(s => machine.markCompleted(s, this._currentFlow!, stepId, metrics), { stepId, status: 'completed', message: 'Terminal session ended — auto-reviewing' });
+        await this._runAiReview(step, stepId, this.configManager.getProjectPath() || '');
       } else {
         await this._setRunState(s => machine.markDone(machine.markCompleted(s, this._currentFlow!, stepId, metrics), this._currentFlow!, stepId), { stepId, status: 'completed', message: 'Terminal work done' });
         this._advanceReadySteps();
@@ -272,6 +276,16 @@ export class RunOrchestrator {
     if (decision === 'approved' && this._runState.steps[stepId]?.completionStatus === 'done') {
       this._advanceReadySteps();
     }
+  }
+
+  /**
+   * Toggle auto-pilot for the current run (persisted on the run state). Enabling it immediately
+   * kicks any step that is ready-but-parked so the run resumes without a manual click.
+   */
+  async setAutoReview(enabled: boolean): Promise<void> {
+    if (!this._runState || this._runState.autoReview === enabled) return;
+    await this._setRunState(s => ({ ...s, autoReview: enabled }));
+    if (enabled) this._advanceReadySteps();
   }
 
   /**
@@ -612,6 +626,18 @@ export class RunOrchestrator {
     const reviewMetrics = (result.reviewTokensUsed != null || result.reviewCostUsd != null)
       ? { tokensUsed: result.reviewTokensUsed, costUsd: result.reviewCostUsd }
       : undefined;
+
+    // Forced auto-review (auto-pilot on a step with no configured review): the run must never
+    // stall on a human gate here. If the review couldn't actually run (no artifacts / no kit →
+    // 'waiting_human'), there is nothing to judge, so auto-confirm and advance instead of parking.
+    const forcedAuto = !step.review?.required;
+    if (forcedAuto && result.status === 'waiting_human') {
+      await this._setRunState(s => machine.markDone(s, flow, stepId), { stepId, status: 'completed', message: 'Auto-review: nothing to review — confirmed' });
+      this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[auto-review: ${result.note} — confirmed]\n` });
+      this._advanceReadySteps();
+      return;
+    }
+
     await this._setRunState(s => machine.applyAiReview(s, flow, stepId, result.status, detail, reviewMetrics), { stepId, status: result.status, message: `Review ${result.status}` });
     this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[review (${result.source}): ${result.status} — ${result.note}]\n` });
 
@@ -725,8 +751,10 @@ export class RunOrchestrator {
       if (action.type === 'launch_interactive') {
         const step = this._currentFlow?.steps.find(s => s.id === action.stepId);
         const hasAiReview = !!step?.review?.required && (step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai'));
-        
-        if (hasAiReview) {
+
+        // Auto-pilot runs every ready step itself (human-review steps run too, then halt at their
+        // approval gate). Otherwise only AI-reviewed steps auto-run; the rest park for a manual click.
+        if (hasAiReview || this._runState?.autoReview) {
           void this._run(action.stepId);
         } else {
           if (this._parkedStepIds.has(action.stepId)) continue;

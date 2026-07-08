@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeReadySteps, extractJsonObject, parseVerdict, summarizeUsage, missingMarkers } from '@ai-stepflow/core';
+import { computeReadySteps, seedStartedSteps, extractJsonObject, parseVerdict, summarizeUsage, missingMarkers } from '@ai-stepflow/core';
 
 test('computeReadySteps unlocks a dependent once all its deps are done', () => {
   const steps = [
@@ -21,6 +21,21 @@ test('computeReadySteps never auto-starts root steps or already started/done ste
 test('computeReadySteps waits until every dependency is done', () => {
   const steps = [{ id: 'a' }, { id: 'b' }, { id: 'c', dependsOn: ['a', 'b'] }];
   assert.deepEqual(computeReadySteps(steps, new Set(['a']), new Set(['a'])), []);
+});
+
+test('seedStartedSteps treats a review-rejected step as started so auto-advance never re-runs it', () => {
+  const started = seedStartedSteps({
+    a: { executionStatus: 'completed', reviewStatus: 'approved', completionStatus: 'done' } as any,
+    b: { executionStatus: 'ready', reviewStatus: 'rejected', completionStatus: 'not_ready' } as any,
+    c: { executionStatus: 'ready', reviewStatus: 'pending', completionStatus: 'not_ready' } as any
+  });
+  // a (done) and b (rejected) count as started; only the pristine c stays a candidate.
+  assert.equal(started.has('a'), true);
+  assert.equal(started.has('b'), true);
+  assert.equal(started.has('c'), false);
+  // With b marked started, a parallel sibling finishing can't re-launch it.
+  const steps = [{ id: 'a' }, { id: 'b', dependsOn: ['a'] }, { id: 'd', dependsOn: ['a'] }];
+  assert.deepEqual(computeReadySteps(steps, new Set(['a']), started), ['d']);
 });
 
 test('parseVerdict reads pass/reject and aliases, embedded in prose', () => {

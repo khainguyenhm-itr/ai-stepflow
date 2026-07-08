@@ -176,4 +176,10 @@ export interface FlowRunState {
   steps: Record<string, StepRunState>;
   /** True when the run has been finalized ("Done Flow" or explicitly closed) and should not auto-resume. */
   isClosed?: boolean;
+  /**
+   * When true, the run auto-pilots: every ready non-human step auto-runs, gets an AI review, and
+   * auto-confirms + advances. The run only halts at a human-review gate (which still executes, then
+   * waits for approval) or an AI-review rejection. Off (default) preserves the manual per-step flow.
+   */
+  autoReview?: boolean;
 }

@@ -64,11 +64,18 @@ export function pickAutoAdvanceSteps(
  * Seed the "already started" set when adopting a restored run, so it never auto-re-runs
  * a step that already ran (e.g. one parked at a review gate). A step is treated as
  * started once it has moved past its pristine ready/locked + not_ready state.
+ *
+ * A step whose review was `rejected` is also treated as started even though it falls back to
+ * `executionStatus: 'ready'`: it has already run and been judged, and re-running it needs an
+ * explicit user action (fix + rerun) or the validator auto-retry — never a DAG auto-advance.
+ * Without this, a parallel sibling finishing later would silently re-launch the rejected step.
  */
 export function seedStartedSteps(steps: Record<string, StepRunState>): Set<string> {
   const started = new Set<string>();
   for (const [id, s] of Object.entries(steps)) {
-    const pristine = (s.executionStatus === 'ready' || s.executionStatus === 'locked') && s.completionStatus === 'not_ready';
+    const pristine = (s.executionStatus === 'ready' || s.executionStatus === 'locked')
+      && s.completionStatus === 'not_ready'
+      && s.reviewStatus !== 'rejected';
     if (!pristine) started.add(id);
   }
   return started;

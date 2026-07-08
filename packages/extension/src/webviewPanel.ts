@@ -230,6 +230,9 @@ export class CockpitPanel {
       case 'markStepDone':
         await this._runner.markStepDone(message.stepId);
         return;
+      case 'setAutoReview':
+        await this._runner.setAutoReview(message.enabled);
+        return;
       case 'resetRun': {
         const choice = await vscode.window.showWarningMessage(
           'Reset all steps to their initial state? This discards every step\'s output, review decisions and history for this run.',

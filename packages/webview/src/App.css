@@ -1266,6 +1266,20 @@ textarea.input {
   min-width: 0;
 }
 
+.auto-review-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  align-self: flex-start;
+}
+
+.auto-review-toggle input {
+  margin: 0;
+  cursor: pointer;
+}
+
 .runner-head-actions {
   display: flex;
   align-items: center;

@@ -71,6 +71,7 @@ export type WebviewMessage =
   | { type: 'runAgent'; agent: Agent; description?: string }
   | { type: 'runSkill'; skill: Skill; description?: string }
   | { type: 'reviewStep'; stepId: string; decision: 'approved' | 'rejected' }
+  | { type: 'setAutoReview'; enabled: boolean }
   | { type: 'markStepDone'; stepId: string; historyEvent?: { timestamp: string; status: string; message?: string } }
   | { type: 'resetRun' }
   | { type: 'resetStep'; stepId: string }
@@ -134,6 +135,7 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
     isString(m.stepId) &&
     (m.decision === 'approved' || m.decision === 'rejected'),
   markStepDone: m => isString(m.stepId),
+  setAutoReview: m => typeof m.enabled === 'boolean',
   generateDraft: m => (m.kind === 'agent' || m.kind === 'skill') && isString(m.prompt),
   generateFlow: m => isString(m.description) && (m.flow === undefined || isFlowLike(m.flow)),
   connectMcpServer: m => isObject(m.config) && isString(m.config.name) && isString(m.config.command),
