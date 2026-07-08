@@ -32,10 +32,18 @@ export type HostMessage =
       skills: Skill[];
       connectedMcpServers: string[];
       auditLogs: Record<string, AuditEntry[]>;
-      runSummaries: { flowId: string; runId: string; runName?: string; completedSteps: number; totalSteps: number; mtimeMs: number }[];
+      runSummaries: { flowId: string; runId: string; runName?: string; completedSteps: number; totalSteps: number; mtimeMs: number; costUsd?: number; tokensUsed?: number; taskTimeMs?: number; reviewTimeMs?: number }[];
       globalPath: string;
       projectPath: string;
       uiPrefs: Record<string, string>;
+      /** Whether the bundled default agents/skills library is installed (any scope). */
+      defaultLibraryInstalled: boolean;
+      /** Recently-opened workspaces (machine-global), most-recent first. */
+      recentWorkspaces: { path: string; name: string; lastOpenedMs: number }[];
+      /** Run metrics summed across all recent workspaces (current repo included), for the Overview "All" scope. */
+      runTotalsAll: { runs: number; completed: number; inProgress: number; costUsd: number; tokensUsed: number; taskTimeMs: number; reviewTimeMs: number };
+      /** Daily run activity (last 14 days) across all recent workspaces, for the Overview "All" trend chart. */
+      runTrendAll: { date: string; runs: number; costUsd: number; tokensUsed: number }[];
     }
   | { type: 'mcpServers'; connectedMcpServers: string[] }
   | { type: 'restoreRun'; flow: Flow; runState: FlowRunState }
@@ -48,7 +56,7 @@ export type HostMessage =
   | { type: 'fileImported'; kind: 'skill'; item: { name: string; description: string; instructions: string } }
   | { type: 'draftGenerated'; kind: 'agent' | 'skill'; name?: string; description?: string; content?: string; reply?: string; error?: string }
   | { type: 'flowGenerated'; flow?: Flow; reply?: string; error?: string }
-  | { type: 'navigateToTab'; tab: 'flows' | 'agents' | 'skills' }
+  | { type: 'navigateToTab'; tab: 'flows' | 'agents' | 'skills' | 'overview' }
   | { type: 'runClosed'; flowId?: string; runId?: string; finalized?: boolean };
 
 /** Every message the webview is allowed to send to the extension host. */
@@ -85,7 +93,19 @@ export type WebviewMessage =
   | { type: 'savePref'; key: string; value: string; global?: boolean }
   | { type: 'generateFlow'; description: string; flow?: Flow; history?: { role: 'user' | 'assistant'; content: string }[] }
   | { type: 'connectMcpServer'; config: { name: string; scope: 'global' | 'local'; command: string; args: string[]; env?: Record<string, string> } }
+  | { type: 'runCommand'; command: RunnableCommand }
+  | { type: 'openWorkspace'; path: string }
   | { type: 'alert'; text: string };
+
+/** VS Code command ids the Overview quick-settings panel is allowed to trigger. Whitelisted to keep the webview from invoking arbitrary commands. */
+export const RUNNABLE_COMMANDS = [
+  'ai-stepflow.installDefaults',
+  'ai-stepflow.refreshAll',
+  'ai-stepflow.astGraph.rescan',
+  'ai-stepflow.astGraph.reregisterMcp',
+  'workbench.action.openSettings'
+] as const;
+export type RunnableCommand = (typeof RUNNABLE_COMMANDS)[number];
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -139,6 +159,8 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   generateDraft: m => (m.kind === 'agent' || m.kind === 'skill') && isString(m.prompt),
   generateFlow: m => isString(m.description) && (m.flow === undefined || isFlowLike(m.flow)),
   connectMcpServer: m => isObject(m.config) && isString(m.config.name) && isString(m.config.command),
+  runCommand: m => isString(m.command) && (RUNNABLE_COMMANDS as readonly string[]).includes(m.command),
+  openWorkspace: m => isString(m.path),
   savePref: m => isString(m.key) && isString(m.value),
   alert: m => isString(m.text)
 };

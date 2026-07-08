@@ -1818,3 +1818,78 @@ textarea.input {
   font-size: 10px; font-weight: 600; text-transform: none;
   padding: 0 6px; border-radius: 8px; background: var(--badge-bg); color: var(--badge-fg);
 }
+
+/* Overview tab */
+.ov-title { margin: 0; font-size: 15px; font-weight: 600; }
+.ov-section { margin-top: 18px; }
+.ov-section-title {
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--muted); margin-bottom: 8px;
+}
+.ov-grid {
+  display: grid; gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+.ov-stat {
+  border: 1px solid var(--border); border-radius: 3px;
+  padding: 12px 14px; background: var(--panel);
+}
+.ov-stat.clickable { cursor: pointer; }
+.ov-stat.clickable:hover { background: var(--hover); }
+.ov-stat-value { font-size: 22px; font-weight: 600; line-height: 1.1; }
+.ov-stat-label { font-size: 12px; margin-top: 4px; }
+.ov-stat-hint { margin-top: 2px; }
+.ov-settings { display: flex; flex-direction: column; gap: 8px; }
+.ov-setting-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  border: 1px solid var(--border); border-radius: 3px;
+  padding: 10px 12px; background: var(--panel);
+}
+.ov-setting-main { min-width: 0; }
+.ov-setting-name { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+.ov-ok { color: var(--success); }
+.ov-warn { color: var(--warn); }
+
+/* Overview — scope switch */
+.ov-scope-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+.ov-scope-btn {
+  padding: 4px 12px; font-size: 12px; background: transparent; color: var(--fg);
+  border: none; border-right: 1px solid var(--border); cursor: pointer;
+}
+.ov-scope-btn:last-child { border-right: none; }
+.ov-scope-btn:hover { background: var(--hover); }
+.ov-scope-btn.active { background: var(--active-sel); color: var(--btn-fg); }
+
+/* Overview — notes & recents */
+.ov-note { padding: 10px 12px; border: 1px dashed var(--border); border-radius: 3px; }
+.ov-recents { display: flex; flex-direction: column; gap: 4px; }
+.ov-recent-row {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  padding: 8px 12px; border: 1px solid var(--border); border-radius: 3px;
+  background: var(--panel); color: var(--fg); cursor: pointer;
+}
+.ov-recent-row:hover:not(:disabled) { background: var(--hover); }
+.ov-recent-row.current { cursor: default; opacity: 0.85; }
+.ov-recent-name { font-size: 13px; font-weight: 600; flex-shrink: 0; }
+.ov-recent-path { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-recent-meta { flex-shrink: 0; }
+
+/* Overview — two-column layout for recents + settings */
+.ov-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+.ov-columns .ov-section { margin-top: 18px; min-width: 0; }
+@media (max-width: 900px) { .ov-columns { grid-template-columns: 1fr; } }
+
+/* Overview — trend chart */
+.ov-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.ov-section-head .ov-section-title { margin-bottom: 0; }
+.ov-chart {
+  position: relative; display: flex; align-items: flex-end; gap: 4px;
+  height: 120px; padding: 8px 12px 0;
+  border: 1px solid var(--border); border-radius: 3px; background: var(--panel);
+}
+.ov-chart-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; height: 100%; }
+.ov-chart-bar-track { flex: 1; width: 100%; display: flex; align-items: flex-end; }
+.ov-chart-bar { width: 100%; min-height: 2px; border-radius: 2px 2px 0 0; background: var(--vscode-charts-blue, var(--link)); }
+.ov-chart-col:hover .ov-chart-bar { opacity: 0.8; }
+.ov-chart-x { font-size: 9px; white-space: nowrap; transform: rotate(-45deg); transform-origin: center; }
+.ov-chart-max { position: absolute; top: 4px; right: 8px; }

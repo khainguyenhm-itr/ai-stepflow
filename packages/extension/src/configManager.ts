@@ -743,6 +743,26 @@ export class ConfigManager {
     }
   }
 
+  /** Read the recently-opened workspace list (machine-global), most-recent first. */
+  public async loadRecentWorkspaces(): Promise<{ path: string; name: string; lastOpenedMs: number }[]> {
+    const prefs = await this.loadGlobalUiPrefs();
+    try {
+      const list = JSON.parse(prefs['recentWorkspaces'] || '[]');
+      return Array.isArray(list) ? list.filter(e => e && typeof e.path === 'string') : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** Upsert the current workspace to the front of the machine-global recents list (capped at 8). No-op without a project. */
+  public async recordRecentWorkspace(): Promise<void> {
+    const p = this.getProjectPath();
+    if (!p) return;
+    const list = (await this.loadRecentWorkspaces()).filter(e => e.path !== p);
+    list.unshift({ path: p, name: path.basename(p), lastOpenedMs: Date.now() });
+    await this.saveGlobalUiPref('recentWorkspaces', JSON.stringify(list.slice(0, 8)));
+  }
+
   /**
    * Inject or remove a response-style instruction block in the project CLAUDE.md.
    * 'concise' → upserts the block; 'default' → removes it.

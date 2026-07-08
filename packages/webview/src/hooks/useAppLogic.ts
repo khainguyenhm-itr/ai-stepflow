@@ -101,12 +101,17 @@ export const useAppLogic = () => {
         libState.setGlobalPath(message.globalPath);
         libState.setProjectPath(message.projectPath);
         libState.setConnectedMcpServers(message.connectedMcpServers || []);
+        libState.setDefaultLibraryInstalled(!!message.defaultLibraryInstalled);
+        libState.setRecentWorkspaces(message.recentWorkspaces || []);
+        if (message.runTotalsAll) libState.setRunTotalsAll(message.runTotalsAll);
+        if (message.runTrendAll) libState.setRunTrendAll(message.runTrendAll);
         if (message.uiPrefs) {
           libState.setScopeFilters({
             flows: parseFilter(message.uiPrefs['scopeFilter:flows']),
             agents: parseFilter(message.uiPrefs['scopeFilter:agents']),
             skills: parseFilter(message.uiPrefs['scopeFilter:skills']),
           });
+          libState.setOverviewScope(parseFilter(message.uiPrefs['overviewScope']));
           const parseViewFilter = (v: unknown): ViewFilter => {
             if (Array.isArray(v)) return (v as string[]).filter((x): x is ViewFilterItem => x === 'bookmarked' || x === 'built-in');
             if (v === 'bookmarked' || v === 'built-in') return [v]; // migrate old persisted string
@@ -130,7 +135,7 @@ export const useAppLogic = () => {
             skills: parseGroupBy(message.uiPrefs['groupBy:skills']),
           });
           const savedTab = message.uiPrefs['activeTab'];
-          if (savedTab === 'flows' || savedTab === 'agents' || savedTab === 'skills') {
+          if (savedTab === 'overview' || savedTab === 'flows' || savedTab === 'agents' || savedTab === 'skills') {
             libState.setActiveTab(savedTab);
           }
           try {
@@ -146,7 +151,7 @@ export const useAppLogic = () => {
         libState.setConnectedMcpServers(message.connectedMcpServers || []);
         break;
       case 'navigateToTab':
-        if (message.tab === 'flows' || message.tab === 'agents' || message.tab === 'skills') {
+        if (message.tab === 'overview' || message.tab === 'flows' || message.tab === 'agents' || message.tab === 'skills') {
           libState.setActiveTab(message.tab);
         }
         break;

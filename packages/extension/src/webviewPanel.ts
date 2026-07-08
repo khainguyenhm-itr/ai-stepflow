@@ -107,6 +107,7 @@ export class CockpitPanel {
     switch (message.type) {
       case 'ready':
         this._flushQueue();
+        await this.configManager.recordRecentWorkspace().catch(() => { /* recents are best-effort */ });
         await this._sendAllData();
         await this._runner.restore();
         return;
@@ -314,6 +315,21 @@ export class CockpitPanel {
           }
         } catch (e) {
           vscode.window.showErrorMessage(`AI StepFlow: failed to connect MCP server. ${e instanceof Error ? e.message : String(e)}`);
+        }
+        return;
+      case 'runCommand':
+        try {
+          const arg = message.command === 'workbench.action.openSettings' ? 'ai-stepflow' : undefined;
+          await vscode.commands.executeCommand(message.command, arg);
+        } catch (e) {
+          vscode.window.showErrorMessage(`AI StepFlow: command '${message.command}' failed. ${e instanceof Error ? e.message : String(e)}`);
+        }
+        return;
+      case 'openWorkspace':
+        try {
+          await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(message.path), { forceNewWindow: false });
+        } catch (e) {
+          vscode.window.showErrorMessage(`AI StepFlow: failed to open '${message.path}'. ${e instanceof Error ? e.message : String(e)}`);
         }
         return;
       case 'alert':
@@ -573,6 +589,12 @@ export class CockpitPanel {
       const projectPath = this.configManager.getProjectPath() || '';
       const globalPath = this.configManager.getGlobalPath() || '';
       const uiPrefs = await this.configManager.loadUiPrefs().catch(() => ({} as Record<string, string>));
+      const defaultLibraryInstalled = await this.configManager.isDefaultLibraryInstalled('global').catch(() => false);
+      const recentWorkspaces = await this.configManager.loadRecentWorkspaces().catch(() => []);
+      const emptyTotals = { runs: 0, completed: 0, inProgress: 0, costUsd: 0, tokensUsed: 0, taskTimeMs: 0, reviewTimeMs: 0 };
+      const runStats = await this.stateManager
+        .computeRunStats([projectPath, ...recentWorkspaces.map(w => w.path)])
+        .catch(() => ({ totals: emptyTotals, trend: [] as { date: string; runs: number; costUsd: number; tokensUsed: number }[] }));
 
       this.postMessage({
         type: 'loadData',
@@ -582,7 +604,11 @@ export class CockpitPanel {
         runSummaries,
         globalPath,
         projectPath,
-        uiPrefs
+        uiPrefs,
+        defaultLibraryInstalled,
+        recentWorkspaces,
+        runTotalsAll: runStats.totals,
+        runTrendAll: runStats.trend
       });
 
       if (projectPath) {
@@ -602,7 +628,11 @@ export class CockpitPanel {
         runSummaries: [],
         globalPath: '',
         projectPath: '',
-        uiPrefs: {}
+        uiPrefs: {},
+        defaultLibraryInstalled: false,
+        recentWorkspaces: [],
+        runTotalsAll: { runs: 0, completed: 0, inProgress: 0, costUsd: 0, tokensUsed: 0, taskTimeMs: 0, reviewTimeMs: 0 },
+        runTrendAll: []
       });
     }
   }

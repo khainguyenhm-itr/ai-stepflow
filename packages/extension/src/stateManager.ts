@@ -3,7 +3,50 @@ import * as path from 'path';
 import { promises as fs } from 'fs';
 import { FlowRunState } from '@ai-stepflow/core';
 
+/** Lightweight per-run summary with aggregated metrics, listed for the run picker and Overview stats. */
+export interface RunSummary {
+  flowId: string;
+  runId: string;
+  runName?: string;
+  filePath: string;
+  completedSteps: number;
+  totalSteps: number;
+  mtimeMs: number;
+  isClosed: boolean;
+  /** Sum of every step's cost (USD). */
+  costUsd: number;
+  /** Sum of every step's token usage. */
+  tokensUsed: number;
+  /** Sum of per-step execution time (completedAt − startedAt), in ms. */
+  taskTimeMs: number;
+  /** Sum of per-step review time (reviewCompletedAt − completedAt), in ms. */
+  reviewTimeMs: number;
+}
+
+/** Run metrics summed across one or more workspaces, for the Overview stats. */
+export interface RunTotals {
+  runs: number;
+  completed: number;
+  inProgress: number;
+  costUsd: number;
+  tokensUsed: number;
+  taskTimeMs: number;
+  reviewTimeMs: number;
+}
+
+/** One day's run activity, for the Overview trend chart. */
+export interface DayPoint {
+  /** UTC date, `YYYY-MM-DD`. */
+  date: string;
+  runs: number;
+  costUsd: number;
+  tokensUsed: number;
+}
+
 export class StateManager {
+  /** Per-file summary cache keyed by path; reused while the file's mtime is unchanged. */
+  private runSummaryCache = new Map<string, { mtimeMs: number; summary: RunSummary }>();
+
   constructor(private context?: vscode.ExtensionContext) {}
 
   /** Resolved lazily so workspace folder changes are always picked up. */
@@ -188,10 +231,13 @@ export class StateManager {
    * sidebar to list the files this extension created in the repo without forcing
    * callers to re-derive paths or re-stat each file.
    */
-  public async listRunFiles(): Promise<{ flowId: string; runId: string; runName?: string; filePath: string; completedSteps: number; totalSteps: number; mtimeMs: number; isClosed: boolean }[]> {
+  public async listRunFiles(): Promise<RunSummary[]> {
     if (!this.projectPath) return [];
+    return this.readRunsFromDir(path.join(this.projectPath, '.ai-stepflow', 'runs'));
+  }
 
-    const runsDir = path.join(this.projectPath, '.ai-stepflow', 'runs');
+  /** Read every run file under one `.ai-stepflow/runs` dir into summaries with aggregated metrics. Missing/unreadable dir → []. */
+  private async readRunsFromDir(runsDir: string): Promise<RunSummary[]> {
     let files: string[];
     try {
       files = (await fs.readdir(runsDir)).filter(f => f.endsWith('.json'));
@@ -199,16 +245,37 @@ export class StateManager {
       return [];
     }
 
-    const result: { flowId: string; runId: string; runName?: string; filePath: string; completedSteps: number; totalSteps: number; mtimeMs: number; isClosed: boolean }[] = [];
+    const spanMs = (from?: string, to?: string) => {
+      if (!from || !to) return 0;
+      const ms = new Date(to).getTime() - new Date(from).getTime();
+      return Number.isFinite(ms) && ms > 0 ? ms : 0;
+    };
+
+    const result: RunSummary[] = [];
     for (const file of files) {
       const filePath = path.join(runsDir, file);
       try {
         const stat = await fs.stat(filePath);
+        // Cache hit: an unchanged file (same mtime) reuses its parsed summary, skipping the
+        // expensive readFile + JSON.parse. Historical runs never change, so this is the common path.
+        const cached = this.runSummaryCache.get(filePath);
+        if (cached && cached.mtimeMs === stat.mtimeMs) {
+          result.push(cached.summary);
+          continue;
+        }
         const content = await fs.readFile(filePath, 'utf8');
         if (!content.trim()) continue; // skip 0-byte / blank files from an interrupted write
         const run = JSON.parse(content) as FlowRunState;
         const steps = Object.values(run.steps || {});
-        result.push({
+        // Aggregate metrics from the steps we already parsed — no extra I/O.
+        let costUsd = 0, tokensUsed = 0, taskTimeMs = 0, reviewTimeMs = 0;
+        for (const step of steps) {
+          costUsd += step.costUsd ?? 0;
+          tokensUsed += step.tokensUsed ?? 0;
+          taskTimeMs += spanMs(step.startedAt, step.completedAt);
+          reviewTimeMs += spanMs(step.completedAt, step.reviewCompletedAt);
+        }
+        const summary: RunSummary = {
           flowId: run.flowId,
           runId: run.runId,
           runName: run.runName,
@@ -216,8 +283,14 @@ export class StateManager {
           completedSteps: steps.filter(step => step.completionStatus === 'done').length,
           totalSteps: steps.length,
           mtimeMs: stat.mtimeMs,
-          isClosed: !!run.isClosed
-        });
+          isClosed: !!run.isClosed,
+          costUsd,
+          tokensUsed,
+          taskTimeMs,
+          reviewTimeMs
+        };
+        this.runSummaryCache.set(filePath, { mtimeMs: stat.mtimeMs, summary });
+        result.push(summary);
       } catch (e) {
         console.error(`Error reading run file ${filePath}:`, e);
       }
@@ -225,6 +298,41 @@ export class StateManager {
 
     result.sort((a, b) => b.mtimeMs - a.mtimeMs);
     return result;
+  }
+
+  /**
+   * Sum run metrics across many workspace roots (each `<root>/.ai-stepflow/runs`), deduped,
+   * plus a daily trend for the last {@link trendDays} days. Used for the Overview "All" scope.
+   */
+  public async computeRunStats(workspaceRoots: string[], trendDays = 14): Promise<{ totals: RunTotals; trend: DayPoint[] }> {
+    const totals: RunTotals = { runs: 0, completed: 0, inProgress: 0, costUsd: 0, tokensUsed: 0, taskTimeMs: 0, reviewTimeMs: 0 };
+    // Pre-seed the last `trendDays` day buckets (oldest → newest) so the chart has a stable x-axis.
+    const dayMs = 86_400_000;
+    const today = Date.now();
+    const buckets = new Map<string, DayPoint>();
+    for (let i = trendDays - 1; i >= 0; i--) {
+      const date = new Date(today - i * dayMs).toISOString().slice(0, 10);
+      buckets.set(date, { date, runs: 0, costUsd: 0, tokensUsed: 0 });
+    }
+
+    const roots = [...new Set(workspaceRoots.filter(Boolean))];
+    for (const root of roots) {
+      const runs = await this.readRunsFromDir(path.join(root, '.ai-stepflow', 'runs'));
+      for (const r of runs) {
+        totals.runs++;
+        if (r.totalSteps > 0 && r.completedSteps >= r.totalSteps) totals.completed++;
+        else if (!r.isClosed) totals.inProgress++;
+        totals.costUsd += r.costUsd;
+        totals.tokensUsed += r.tokensUsed;
+        totals.taskTimeMs += r.taskTimeMs;
+        totals.reviewTimeMs += r.reviewTimeMs;
+
+        const day = new Date(r.mtimeMs).toISOString().slice(0, 10);
+        const bucket = buckets.get(day);
+        if (bucket) { bucket.runs++; bucket.costUsd += r.costUsd; bucket.tokensUsed += r.tokensUsed; }
+      }
+    }
+    return { totals, trend: [...buckets.values()] };
   }
 
   public async loadRuns(): Promise<FlowRunState[]> {

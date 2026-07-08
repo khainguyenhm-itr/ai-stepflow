@@ -6,6 +6,7 @@ import { getStepSkills } from './flowUtils';
 import { useVsCodeBridge } from './hooks/useVsCodeBridge';
 import { useAppLogic } from './hooks/useAppLogic';
 
+import { OverviewTab } from './tabs/OverviewTab';
 import { FlowsTab } from './tabs/FlowsTab';
 import { AgentsTab } from './tabs/AgentsTab';
 import { SkillsTab } from './tabs/SkillsTab';
@@ -23,7 +24,8 @@ const App: React.FC = () => {
   const {
     activeTab, setActiveTab,
     flows, agents, skills, auditLogs, runSummaries,
-    globalPath, projectPath, connectedMcpServers,
+    globalPath, projectPath, connectedMcpServers, defaultLibraryInstalled,
+    recentWorkspaces, overviewScope, setOverviewScope, runTotalsAll, runTrendAll,
     activeFlow,
     runState,
     activeStepId, setActiveStepId,
@@ -89,7 +91,8 @@ const App: React.FC = () => {
     return <span className="badge scope">{scope === 'global' ? 'global' : 'repo'}</span>;
   };
 
-  const tabs: { key: typeof activeTab; label: string; count: number }[] = [
+  const tabs: { key: typeof activeTab; label: string; count?: number }[] = [
+    { key: 'overview', label: 'Overview' },
     { key: 'flows', label: 'Workflows', count: flows.length },
     { key: 'agents', label: 'Agents', count: agents.length },
     { key: 'skills', label: 'Skills', count: skills.length }
@@ -105,10 +108,32 @@ const App: React.FC = () => {
             onClick={() => { setActiveTab(tab.key); sendToVSCode('savePref', { key: 'activeTab', value: tab.key }); }}
           >
             {tab.label}
-            <span className="tab-count">{tab.count}</span>
+            {tab.count !== undefined && <span className="tab-count">{tab.count}</span>}
           </button>
         ))}
       </nav>
+
+      {activeTab === 'overview' && (
+        <OverviewTab
+          flows={flows}
+          agents={agents}
+          skills={skills}
+          runSummaries={runSummaries}
+          connectedMcpServers={connectedMcpServers}
+          defaultLibraryInstalled={defaultLibraryInstalled}
+          recentWorkspaces={recentWorkspaces}
+          runTotalsAll={runTotalsAll}
+          runTrendAll={runTrendAll}
+          globalPath={globalPath}
+          projectPath={projectPath}
+          scope={overviewScope}
+          onScopeChange={v => { setOverviewScope(v); sendToVSCode('savePref', { key: 'overviewScope', value: v, global: true }); }}
+          onNavigate={tab => { setActiveTab(tab); sendToVSCode('savePref', { key: 'activeTab', value: tab }); }}
+          onConnectMcp={() => setConnectMcpModalOpen(true)}
+          onRunCommand={command => sendToVSCode('runCommand', { command })}
+          onOpenWorkspace={path => sendToVSCode('openWorkspace', { path })}
+        />
+      )}
 
       {activeTab === 'flows' && (
         <FlowsTab
