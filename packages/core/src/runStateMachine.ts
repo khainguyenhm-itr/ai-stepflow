@@ -133,7 +133,9 @@ export function markRunning(state: FlowRunState, flow: Flow, stepId: string): Fl
 }
 
 /** A finished run: transitions from 'running' to 'completed', then opens the review gate.
- *  Every step is reviewed — AI reviews run automatically, human reviews wait for a decision.
+ *  AI reviews run automatically only when the run's auto-review is on; otherwise (auto-review off,
+ *  or a human-review step) the step waits for a manual decision — "Finish" for an auto step, or
+ *  approve/reject for a human step.
  */
 export function markCompleted(state: FlowRunState, flow: Flow, stepId: string, metrics: StepMetrics = {}): FlowRunState {
   const step = flow.steps.find(s => s.id === stepId);
@@ -141,7 +143,7 @@ export function markCompleted(state: FlowRunState, flow: Flow, stepId: string, m
     executionStatus: 'completed',
     completedAt: new Date().toISOString(),
     completionStatus: 'not_ready',
-    reviewStatus: step?.review.type === 'ai' ? 'ai_review_running' : 'waiting_human',
+    reviewStatus: (step?.review.type === 'ai' && state.autoReview) ? 'ai_review_running' : 'waiting_human',
     ...metrics
   };
   return patchStep(state, flow, stepId, patch, { status: 'completed' });

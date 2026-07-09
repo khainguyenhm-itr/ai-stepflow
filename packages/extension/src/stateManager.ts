@@ -103,6 +103,16 @@ export class StateManager {
     return filePath;
   }
 
+  /** Save a per-step AI review report inside the repo. Returns the absolute path written. */
+  public async saveReviewReport(run: FlowRunState, stepId: string, content: string): Promise<string | undefined> {
+    if (!this.projectPath) return undefined;
+    const dir = path.join(this.projectPath, '.ai-stepflow', 'reports', 'reviews');
+    await fs.mkdir(dir, { recursive: true });
+    const filePath = path.join(dir, `${this.runFileBase(run)}-${this.slugify(stepId)}.md`);
+    await fs.writeFile(filePath, content, 'utf8');
+    return filePath;
+  }
+
   /** Delete the persisted run JSON. Reconstructs the slug filename from the run itself. */
   public async deleteRunFile(run: FlowRunState): Promise<void> {
     if (!this.projectPath) return;

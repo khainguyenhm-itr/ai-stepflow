@@ -175,9 +175,10 @@ export interface FlowRunState {
   /** True when the run has been finalized ("Done Flow" or explicitly closed) and should not auto-resume. */
   isClosed?: boolean;
   /**
-   * When true, the run auto-pilots: every ready non-human step auto-runs, gets an AI review, and
-   * auto-confirms + advances. The run only halts at a human-review gate (which still executes, then
-   * waits for approval) or an AI-review rejection. Off (default) preserves the manual per-step flow.
+   * Master gate for AI review. When true, each completed auto (`review.type: 'ai'`) step is
+   * AI-reviewed: a pass auto-confirms and advances, a rejection halts the run and writes a review
+   * report. When false (default), NO AI review runs — an auto step instead waits for the user to
+   * click "Finish" before advancing. Either way, human-review steps always wait for approve/reject.
    */
   autoReview?: boolean;
 }

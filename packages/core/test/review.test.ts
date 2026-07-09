@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, utimesSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { reviewStepArtifacts, readProducedArtifacts, loadReviewKit, REVIEW_ARTIFACT_CHAR_CAP, REVIEW_TOTAL_CHAR_CAP } from '@ai-stepflow/core';
+import { reviewStepArtifacts, readProducedArtifacts, loadReviewKit, renderReviewReport, findStaleProducedFile, REVIEW_ARTIFACT_CHAR_CAP, REVIEW_TOTAL_CHAR_CAP } from '@ai-stepflow/core';
 import { FlowRunState, FlowStep } from '@ai-stepflow/core';
 
 function step(reviewPatch: Partial<FlowStep['review']> = {}, extra: Partial<FlowStep> = {}): FlowStep {
@@ -140,5 +140,134 @@ test('loadReviewKit prefers a project copy, returns empty when absent', () => {
     mkdirSync(path.join(dir, '.claude', 'reviews'), { recursive: true });
     writeFileSync(path.join(dir, '.claude', 'reviews', 'kit.md'), 'PROJECT KIT', 'utf8');
     assert.equal(loadReviewKit(dir, 'kit.md'), 'PROJECT KIT');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('reviewStepArtifacts surfaces LLM findings on a reject verdict', async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-review-findings-'));
+  try {
+    writeFileSync(path.join(dir, 'out.md'), 'artifact body', 'utf8');
+    const reply = JSON.stringify({
+      decision: 'reject',
+      reason: 'missing acceptance criteria',
+      correct: ['title is clear'],
+      issues: ['no acceptance criteria', 'no edge cases'],
+      suggestions: ['add an AC section'],
+    });
+    const result = await reviewStepArtifacts({
+      workspaceRoot: dir,
+      step: step({}, { produces: ['out.md'] }),
+      runState,
+      deep: true,
+      reviewKit: 'KIT',
+      artifacts: { text: 'artifact body', count: 1 },
+      runner: stubRunner(reply),
+    });
+    assert.equal(result.status, 'rejected');
+    assert.deepEqual(result.issues, ['no acceptance criteria', 'no edge cases']);
+    assert.deepEqual(result.correct, ['title is clear']);
+    assert.deepEqual(result.suggestions, ['add an AC section']);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('renderReviewReport builds a Markdown report with tables and metadata', () => {
+  const md = renderReviewReport({
+    step: step({}, { id: 'draft', title: 'Draft SRS' }),
+    flowName: 'Design Flow',
+    runName: 'run-1',
+    runId: 'r1',
+    source: 'llm',
+    reason: 'missing acceptance criteria',
+    correct: ['title is clear'],
+    issues: ['no acceptance criteria'],
+    suggestions: ['add an AC section'],
+    startedAt: '2026-07-09T00:00:00.000Z',
+    completedAt: '2026-07-09T00:00:05.000Z',
+    reviewCompletedAt: '2026-07-09T00:00:08.000Z',
+    tokensUsed: 1234,
+    costUsd: 0.0021,
+    modelUsed: 'haiku',
+  });
+  assert.match(md, /# AI Review Report — Draft SRS/);
+  assert.match(md, /\| Step \| Draft SRS \(`draft`\) \|/);
+  assert.match(md, /\| Verdict \| ❌ Rejected \|/);
+  assert.match(md, /\| Task time \| 5s \|/);
+  assert.match(md, /\| Review time \| 3s \|/);
+  assert.match(md, /\| Tokens \| 1,234 \|/);
+  assert.match(md, /\| Cost \| \$0\.0021 \|/);
+  assert.match(md, /## Issues found[\s\S]*no acceptance criteria/);
+  assert.match(md, /## Suggested fixes[\s\S]*add an AC section/);
+});
+
+test('renderReviewReport renders placeholders when findings are empty', () => {
+  const md = renderReviewReport({ step: step(), runId: 'r1', source: 'validator', reason: 'file missing' });
+  assert.match(md, /## What's correct\n\n_None reported\._/);
+  assert.match(md, /## Issues found\n\n_None reported\._/);
+  assert.match(md, /\| Model \| — \|/);
+});
+
+// --- freshness (Layer 0) -------------------------------------------------
+
+/** A run state carrying a startedAt for the step under test. */
+function runStateWithStart(startedAt: string): FlowRunState {
+  return { flowId: 'f', runId: 'r', source: '/f.yaml', projectPath: '/tmp', inputs: {}, flowName: 'F', steps: { s: { executionStatus: 'running', reviewStatus: 'pending', completionStatus: 'not_ready', output: '', startedAt } } } as any;
+}
+
+// Path-form produces ('sub/out.md' with a '/') resolve relative to workspaceRoot, so the test
+// file location matches the resolver — a plain filename would resolve into .ai-stepflow/output/.
+test('findStaleProducedFile flags a produces file older than the step start', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-fresh-'));
+  try {
+    const f = path.join(dir, 'sub', 'out.md');
+    mkdirSync(path.dirname(f), { recursive: true });
+    writeFileSync(f, 'body', 'utf8');
+    const old = new Date('2020-01-01T00:00:00.000Z');
+    utimesSync(f, old, old); // set mtime well before startedAt
+    const stale = findStaleProducedFile(step({}, { produces: ['sub/out.md'] }), dir, {}, '2026-07-09T00:00:00.000Z');
+    assert.equal(stale, f);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('findStaleProducedFile returns null for a file written after the step start', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-fresh-'));
+  try {
+    const f = path.join(dir, 'sub', 'out.md');
+    mkdirSync(path.dirname(f), { recursive: true });
+    writeFileSync(f, 'body', 'utf8'); // mtime = now
+    const stale = findStaleProducedFile(step({}, { produces: ['sub/out.md'] }), dir, {}, '2000-01-01T00:00:00.000Z');
+    assert.equal(stale, null);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('findStaleProducedFile ignores missing files (validator reports those) and no-produces steps', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-fresh-'));
+  try {
+    assert.equal(findStaleProducedFile(step({}, { produces: ['sub/nope.md'] }), dir, {}, '2026-07-09T00:00:00.000Z'), null);
+    assert.equal(findStaleProducedFile(step(), dir, {}, '2026-07-09T00:00:00.000Z'), null);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('reviewStepArtifacts rejects a stale artifact (freshness) before the validator or LLM', async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-fresh-'));
+  try {
+    const f = path.join(dir, 'sub', 'out.md');
+    mkdirSync(path.dirname(f), { recursive: true });
+    writeFileSync(f, 'x'.repeat(200), 'utf8');
+    const old = new Date('2020-01-01T00:00:00.000Z');
+    utimesSync(f, old, old);
+    let llmCalled = false;
+    const result = await reviewStepArtifacts({
+      workspaceRoot: dir,
+      step: step({}, { produces: ['sub/out.md'] }),
+      runState: runStateWithStart('2026-07-09T00:00:00.000Z'),
+      deep: true,
+      reviewKit: 'KIT',
+      artifacts: { text: 'x', count: 1 },
+      runner: async () => { llmCalled = true; return { success: true, exitCode: 0, resultText: '{"decision":"pass"}' }; },
+    });
+    assert.equal(result.status, 'rejected');
+    assert.equal(result.source, 'freshness');
+    assert.match(result.note, /stale/);
+    assert.equal(llmCalled, false, 'LLM must not run when the artifact is stale');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

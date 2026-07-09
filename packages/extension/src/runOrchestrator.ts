@@ -297,11 +297,21 @@ export class RunOrchestrator {
     const flow = this._currentFlow;
     const oldSteps = this._runState.steps;
 
+    // Capture this run's artifacts BEFORE the state swap (reset mints a new runId → new slug).
+    const projectPath = this.configManager.getProjectPath() || '';
+    const runArtifacts = this._producedFilePaths(flow.steps.map(s => s.id));
+    const runOutputDir = machine.flowOutputDir(flow.name, projectPath, this._runSlug());
+
     // Mark headless runs cancelled so their completion handlers skip state transitions.
     for (const stepId of this._runChildrenByStep.keys()) {
       this._cancelledStepIds.add(stepId);
     }
     for (const child of this._activeRuns) child.kill();
+
+    // Each run owns its artifacts; reset discards them so a re-run starts from a clean slate.
+    const deleted = this._deleteFiles(runArtifacts);
+    this._deleteRunOutputDir(runOutputDir);
+    vscode.window.showInformationMessage(`AI StepFlow: run reset — cleared this run's artifacts${deleted.length ? ` (${deleted.length} file${deleted.length === 1 ? '' : 's'})` : ''}.`);
 
     // Broadcast fresh state BEFORE disposing the terminal so that when onDidCloseRunningStep
     // fires, _runState is already freshState (step is 'ready') and the handler is a no-op.
@@ -445,10 +455,17 @@ export class RunOrchestrator {
       this.terminals.cancelStep(id);
     }
 
+    // Delete the artifacts this step (and its now-reset dependents) produced, so the re-run
+    // regenerates them instead of an AI review reading a stale file from the previous attempt.
+    const deleted = this._deleteFiles(this._producedFilePaths(ids));
+
     await this.stateManager.clearAuditLog(flow.id, runId, ids);
     this.post({ type: 'resetAuditLog', flowId: flow.id, runId, stepIds: ids });
     await this._setRunState(s => machine.resetStep(s, flow, stepId));
     this.post({ type: 'restoreRun', flow, runState: this._runState });
+    if (deleted.length) {
+      this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[reset — deleted ${deleted.length} produced file${deleted.length === 1 ? '' : 's'}]\n` });
+    }
     // Clear stale cancelled IDs so the re-run is not silently skipped.
     for (const id of ids) this._cancelledStepIds.delete(id);
   }
@@ -469,6 +486,53 @@ export class RunOrchestrator {
   }
 
   // --- internals -----------------------------------------------------------
+
+  /**
+   * Absolute paths of every file the given steps declare in `produces`, resolved for the CURRENT
+   * run (flow name + run slug + inputs). Used to delete a run's/step's artifacts on reset.
+   */
+  private _producedFilePaths(stepIds: string[]): string[] {
+    const flow = this._currentFlow;
+    if (!flow || !this._runState) return [];
+    const projectPath = this.configManager.getProjectPath() || '';
+    const inputs = this._runState.inputs || {};
+    const slug = this._runSlug();
+    const paths = new Set<string>();
+    for (const id of stepIds) {
+      const step = flow.steps.find(s => s.id === id);
+      if (!step) continue;
+      for (const p of machine.resolveTemplates(step.produces, inputs)) {
+        paths.add(machine.resolveFlowPath(p, flow.name, projectPath, slug));
+      }
+    }
+    return [...paths];
+  }
+
+  /** Delete the given files, but only those inside the workspace (never touch external paths). Returns the ones removed. */
+  private _deleteFiles(paths: string[]): string[] {
+    const root = this.configManager.getProjectPath() || '';
+    const deleted: string[] = [];
+    for (const p of paths) {
+      try {
+        const rel = root ? path.relative(root, p) : '..';
+        if (!root || rel.startsWith('..') || path.isAbsolute(rel)) continue; // outside workspace — skip
+        if (fs.existsSync(p) && fs.statSync(p).isFile()) {
+          fs.unlinkSync(p);
+          deleted.push(p);
+        }
+      } catch { /* ignore individual delete failures */ }
+    }
+    return deleted;
+  }
+
+  /** Remove a run's dedicated output folder (recursive), guarded to stay under `.ai-stepflow/output`. */
+  private _deleteRunOutputDir(dir: string): void {
+    try {
+      if (fs.existsSync(dir) && dir.includes(path.join('.ai-stepflow', 'output'))) {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    } catch { /* ignore */ }
+  }
 
   /**
    * Commit a new authoritative run state: persist it and broadcast it to the webview, which
@@ -516,10 +580,17 @@ export class RunOrchestrator {
     const flow = this._currentFlow;
     if (!flow || !this._runState) return;
     const projectPath = this.configManager.getProjectPath() || '';
-    const aiReview = step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai');
+    const isAutoStep = step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai');
 
-    if (aiReview) {
-      await this._runAiReview(step, stepId, projectPath);
+    // Auto-review (AI/validator/skill) runs only when the run's auto-review is on. With it off, an
+    // auto-review step does NOT call AI review, open a terminal, or run a skill review — it just
+    // waits for the user to click "Finish" (markCompleted already parked it at 'waiting_human').
+    if (isAutoStep) {
+      if (this._runState.autoReview) {
+        await this._runAiReview(step, stepId, projectPath);
+      } else {
+        this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[auto review off — click "Finish Step" to continue]\n` });
+      }
       return;
     }
     if (step.review.validatorPath) {
@@ -577,14 +648,15 @@ export class RunOrchestrator {
       ? { tokensUsed: result.reviewTokensUsed, costUsd: result.reviewCostUsd }
       : undefined;
 
-    // Auto-pilot must not stall on an undecidable AI review. When the review couldn't actually
-    // run (no artifacts / no kit → 'waiting_human'), there is nothing to judge, so auto-confirm
-    // and advance instead of parking at a human gate — honoring the auto-pilot contract that the
-    // run only halts at a human-review gate or an AI-review rejection.
-    if (this._runState?.autoReview && result.status === 'waiting_human') {
-      await this._setRunState(s => machine.markDone(s, flow, stepId), { stepId, status: 'completed', message: 'Auto-pilot: nothing to review — confirmed' });
-      this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[auto-review: ${result.note} — confirmed]\n` });
-      this._advanceReadySteps();
+    // Auto-review must NEVER silently pass a step it could not actually review — e.g. the step
+    // produced no artifact to read, or the review kit/validator isn't installed ('waiting_human').
+    // Instead of auto-confirming, halt at a human gate and warn the user so they can inspect and
+    // approve/reject deliberately.
+    if (result.status === 'waiting_human') {
+      const warn = `Auto review could not verify "${step.title || step.id}": ${result.note} Approve or reject it manually.`;
+      await this._setRunState(s => machine.applyAiReview(s, flow, stepId, 'waiting_human', `⚠ ${warn}\n`), { stepId, status: 'waiting_human', message: warn });
+      this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[⚠ ${warn}]\n` });
+      vscode.window.showWarningMessage(`AI StepFlow: ${warn}`);
       return;
     }
 
@@ -593,16 +665,52 @@ export class RunOrchestrator {
 
     if (result.status === 'approved') {
       this._advanceReadySteps();
-    } else if (result.status === 'rejected' && result.source === 'validator' && !this._autoRetryStepIds.has(stepId)) {
-      // Auto-retry only for a deterministic layer-1 validator rejection (a concrete, fixable
-      // miss like a missing file or a leftover TODO). A subjective LLM rejection is surfaced to
-      // the user instead, so we don't burn a full re-run + re-review on a verdict a retry is
-      // unlikely to flip.
+    } else if (result.status === 'rejected' && (result.source === 'validator' || result.source === 'freshness') && !this._autoRetryStepIds.has(stepId)) {
+      // Auto-retry only for a deterministic rejection (a concrete, fixable miss: a missing/empty
+      // file, a leftover TODO, or a stale artifact the step didn't regenerate). A subjective LLM
+      // rejection is surfaced to the user instead, so we don't burn a full re-run + re-review on a
+      // verdict a retry is unlikely to flip.
       this._autoRetryStepIds.add(stepId);
-      this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[validator rejected — retrying automatically (1/1)]\n` });
+      this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[${result.source} rejected — retrying automatically (1/1)]\n` });
       await this._run(stepId);
+    } else if (result.status === 'rejected') {
+      // Final rejection (LLM verdict, or a second validator rejection): the flow halts here, so
+      // write a full AI review report file (what's right/wrong, why, and how to fix it).
+      await this._writeReviewReport(step, stepId, result);
     }
-    // LLM rejection, or a second validator rejection: leave in rejected state for the user.
+  }
+
+  /** Render + persist a per-step AI review report for a rejected step; post its path to the webview. */
+  private async _writeReviewReport(step: FlowStep, stepId: string, result: machine.ReviewResult): Promise<void> {
+    if (!this._runState) return;
+    const st = this._runState.steps[stepId];
+    const markdown = machine.renderReviewReport({
+      step,
+      flowName: this._currentFlow?.name,
+      runName: this._runState.runName,
+      runId: this._runState.runId,
+      source: result.source,
+      reason: result.note,
+      correct: result.correct,
+      issues: result.issues,
+      suggestions: result.suggestions,
+      startedAt: st?.startedAt,
+      completedAt: st?.completedAt,
+      reviewCompletedAt: st?.reviewCompletedAt,
+      tokensUsed: st?.tokensUsed,
+      costUsd: st?.costUsd,
+      modelUsed: st?.modelUsed,
+    });
+    try {
+      const filePath = await this.stateManager.saveReviewReport(this._runState, stepId, markdown);
+      if (filePath) {
+        const base = filePath.split(/[\\/]/).pop();
+        this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[AI review report written → .ai-stepflow/reports/reviews/${base}]\n` });
+      }
+    } catch (err) {
+      // A report-write failure must not break the review flow (the rejection is already recorded).
+      this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[could not write AI review report: ${err instanceof Error ? err.message : String(err)}]\n` });
+    }
   }
 
   /** Configured per-run timeout in ms (0 = no limit). */

@@ -34,8 +34,8 @@ test('markRunning transitions status', () => {
 });
 
 test('markCompleted transitions status and applies metrics', () => {
-  let st = initRunState(flow, { runId: 'r1' });
-  st = markRunning(st, flow, 'a');
+  // Auto-review on: an AI step opens the AI-review gate on completion.
+  let st = markRunning({ ...initRunState(flow, { runId: 'r1' }), autoReview: true }, flow, 'a');
   st = markCompleted(st, flow, 'a', { costUsd: 0.1 });
   assert.equal(st.steps.a.executionStatus, 'completed');
   assert.equal(st.steps.a.costUsd, 0.1);
@@ -44,6 +44,15 @@ test('markCompleted transitions status and applies metrics', () => {
   assert.equal(st.steps.a.reviewStatus, 'ai_review_running');
   // 'b' stays locked until 'a' is approved.
   assert.equal(st.steps.b.executionStatus, 'locked');
+});
+
+test('markCompleted parks an AI step at waiting_human when auto-review is off', () => {
+  // Auto-review off: the AI step is NOT auto-reviewed; it waits for the user to Finish.
+  let st = initRunState(flow, { runId: 'r1' });
+  st = markRunning(st, flow, 'a');
+  st = markCompleted(st, flow, 'a');
+  assert.equal(st.steps.a.executionStatus, 'completed');
+  assert.equal(st.steps.a.reviewStatus, 'waiting_human');
 });
 
 test('markFailed transitions status', () => {

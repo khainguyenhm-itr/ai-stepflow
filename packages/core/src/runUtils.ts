@@ -96,6 +96,26 @@ export function parseVerdict(text: string): { decision: 'pass' | 'reject'; reaso
   return undefined;
 }
 
+/**
+ * Extract the optional findings arrays (`correct` / `issues` / `suggestions`) from an automated
+ * reviewer's JSON reply, for building a human-readable review report. Missing or malformed → empty
+ * arrays, so a report always renders. Independent of {@link parseVerdict}, which owns the decision.
+ */
+export function parseReviewFindings(text: string): { correct: string[]; issues: string[]; suggestions: string[] } {
+  const empty = { correct: [] as string[], issues: [] as string[], suggestions: [] as string[] };
+  if (!text) return empty;
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) return empty;
+  try {
+    const obj = JSON.parse(match[0]);
+    const arr = (v: unknown): string[] =>
+      Array.isArray(v) ? v.filter(x => typeof x === 'string').map(x => (x as string).trim()).filter(Boolean) : [];
+    return { correct: arr(obj.correct), issues: arr(obj.issues), suggestions: arr(obj.suggestions) };
+  } catch {
+    return empty;
+  }
+}
+
 /** Total token count from a claude stream-json `usage` object, or undefined if absent. */
 export function summarizeUsage(usage: unknown): number | undefined {
   if (!usage || typeof usage !== 'object') return undefined;

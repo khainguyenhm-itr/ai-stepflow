@@ -53,6 +53,10 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
 }) => {
   const activeStep = flow.steps.find(step => step.id === activeStepId);
   const activeStepState = activeStepId ? runState.steps[activeStepId] : null;
+  // An "auto" step is AI-reviewed; a "human" step waits for approve/reject. When the run's
+  // auto-review is off, an auto step is not AI-reviewed — it waits for a plain "Finish" instead.
+  const activeStepIsAuto = activeStep?.review.type === 'ai' || !!activeStep?.review.reviewers?.some(r => r.type === 'ai');
+  const finishGate = activeStepIsAuto && !runState.autoReview;
   const stepCosts = flow.steps.map(step => {
     const isHeadless = false; // All steps run interactively now
     return {
@@ -80,6 +84,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
       showRun: false,
       showRerun: false,
       showReview: false,
+      showFinish: false,
       showWorking: false,
       showCancel: false,
       isLocked: false
@@ -102,8 +107,10 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
       actions.showWorking = true;
       actions.showCancel = true;
     } else if (reviewStatus === 'waiting_human') {
-      // Terminal closed, explicitly waiting for approval/rejection
-      actions.showReview = true;
+      // Terminal closed, waiting for the user. An auto step with the run's auto-review off just
+      // needs a plain "Finish"; a human-review step gets approve/reject.
+      if (finishGate) actions.showFinish = true;
+      else actions.showReview = true;
       actions.showRerun = true;
     } else {
       // Fallback for terminal states without a review gate (ready, failed, cancelled, rejected)
@@ -240,7 +247,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
                 className={`auto-review-toggle small${autoReviewLocked ? ' is-disabled' : ''}`}
                 title={autoReviewLocked
                   ? 'Auto review is locked once a step has run. Reset the run to change it.'
-                  : 'Auto-pilot: run & AI-review every non-human step automatically, then auto-confirm and advance. The run stops only at a human-review gate (which still runs first) or an AI-review rejection.'}
+                  : 'On: AI reviews each auto step\'s artifact — pass advances automatically, a rejection stops the run and writes a review report. Off: no AI review runs; each auto step waits for you to click "Finish Step". Human-review steps always wait for your approval either way.'}
               >
                 <input
                   type="checkbox"
@@ -366,6 +373,14 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
                     <span className="btn-glyph"><Icon.Play size={14} /></span>Run Step
                   </button>
                 )}
+                {stepActions.showFinish && (
+                  <button className="btn primary" title="Finish this step and continue to the next" disabled={pendingAction !== null} onClick={() => {
+                    setPendingAction('approve');
+                    sendToVSCode('reviewStep', { stepId: activeStepId!, decision: 'approved' });
+                  }}>
+                    {pendingAction === 'approve' ? <span className="btn-glyph"><Icon.RotateCw size={14} className="spin" /></span> : <span className="btn-glyph"><Icon.Check size={14} /></span>}Finish Step
+                  </button>
+                )}
                 {stepActions.showReview && (
                   <>
                     {activeStep?.review.filePath && (
@@ -456,7 +471,12 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
             <Icon.X size={13} /> Rejected — fix the issues and re-run the step.
           </div>
         )}
-        {reviewStatus === 'waiting_human' && activeStep?.review.type === 'ai' && (
+        {reviewStatus === 'waiting_human' && finishGate && (
+          <div className="result-banner warning">
+            <Icon.Info size={13} /> Auto review is off for this run — no AI review ran. Check the artifact, then click Finish Step to continue.
+          </div>
+        )}
+        {reviewStatus === 'waiting_human' && !finishGate && activeStep?.review.type === 'ai' && (
           <div className="result-banner warning">
             <Icon.Info size={13} /> Auto review couldn't decide automatically — approve or reject manually. {activeStepState?.aiReviewOutput ? 'See the AI Review log above for the reason.' : 'Add a `produces` file to the step so the reviewer has something to read, or install the review kit.'}
           </div>
