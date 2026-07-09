@@ -1988,7 +1988,11 @@ textarea.input {
 .dwrap { border: 1px solid var(--border); border-radius: 4px; background: var(--panel); overflow: hidden; }
 .dwrap + .dwrap { margin-top: 10px; }
 .scroll-x { overflow-x: auto; }
-.dtable { width: 100%; border-collapse: collapse; font-size: var(--font-size); }
+.dtable { width: 100%; border-collapse: collapse; font-size: var(--font-size); table-layout: fixed; }
+.dtable td, .dtable th { overflow: hidden; }
+.dtable td.drow-actions-cell { overflow: visible; }
+.dname { max-width: 100%; }
+.dname .dn { min-width: 0; }
 .dtable thead th {
   text-align: left; font-weight: 600; font-size: 11px; letter-spacing: .04em; text-transform: uppercase;
   color: var(--muted); padding: 8px 12px; border-bottom: 1px solid var(--border);
@@ -2006,7 +2010,8 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 
 .dname { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .dname .dn { font-weight: 600; display: flex; align-items: center; gap: 8px; }
-.dname .dsub { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 420px; }
+.dname .dsub { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.dname .dn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dtools { display: flex; gap: 4px; flex-wrap: wrap; }
 .dtool { font-family: var(--mono); font-size: 11px; background: var(--badge-bg); color: var(--badge-fg); border-radius: 3px; padding: 0 6px; line-height: 17px; }
 .dmodel { font-family: var(--mono); color: var(--muted); }
@@ -2025,7 +2030,7 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 
 /* mini pipeline */
 .pipe { display: inline-flex; align-items: center; gap: 3px; }
-.pipe .seg { width: 18px; height: 5px; border-radius: 3px; background: var(--badge-bg); }
+.pipe .seg { width: 14px; height: 5px; border-radius: 3px; background: var(--badge-bg); flex: none; }
 .pipe .seg.done { background: var(--success); }
 .pipe .seg.active { background: var(--running); }
 .pipe .seg.fail { background: var(--error); }
