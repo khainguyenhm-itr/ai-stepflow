@@ -123,7 +123,7 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
   const table = (rows: Skill[]) => (
     <div className="dwrap scroll-x">
       <table className="dtable">
-        <thead><tr><th>Name</th><th style={{ width: 200 }}>Tags</th><th style={{ width: 80 }}>Scope</th><th style={{ width: 140 }} /></tr></thead>
+        <thead><tr><th style={{ width: '46%' }}>Name</th><th style={{ width: '28%' }}>Tags</th><th style={{ width: '12%' }}>Scope</th><th style={{ width: '14%' }} /></tr></thead>
         <tbody>{rows.map(renderRow)}</tbody>
       </table>
     </div>

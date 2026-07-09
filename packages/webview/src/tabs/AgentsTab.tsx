@@ -120,7 +120,7 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
   const table = (rows: Agent[]) => (
     <div className="dwrap scroll-x">
       <table className="dtable">
-        <thead><tr><th>Name</th><th style={{ width: 100 }}>Model</th><th style={{ width: 180 }}>Tools</th><th style={{ width: 80 }}>Scope</th><th style={{ width: 140 }} /></tr></thead>
+        <thead><tr><th style={{ width: '40%' }}>Name</th><th style={{ width: '12%' }}>Model</th><th style={{ width: '25%' }}>Tools</th><th style={{ width: '10%' }}>Scope</th><th style={{ width: '13%' }} /></tr></thead>
         <tbody>{rows.map(renderRow)}</tbody>
       </table>
     </div>
