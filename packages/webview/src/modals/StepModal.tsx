@@ -120,8 +120,7 @@ export const StepModal: React.FC<StepModalProps> = ({
             onChange={e => {
               const value = e.target.value as 'human' | 'ai';
               onChange({
-                review: { ...step.review, required: true, type: value },
-                completion: { requireMarkDone: value === 'human' }
+                review: { ...step.review, required: true, type: value }
               });
             }}
           >

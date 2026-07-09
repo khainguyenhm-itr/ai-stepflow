@@ -21,8 +21,7 @@ function createFixture() {
       skill: 'prd',
       produces: ['docs/prd.md'],
       producesContains: ['## Summary'],
-      review: { required: false },
-      completion: { requireMarkDone: false }
+      review: { required: false }
     }]
   };
   const runState: FlowRunState = {

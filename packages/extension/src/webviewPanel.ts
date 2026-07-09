@@ -486,7 +486,7 @@ export class CockpitPanel {
       `Latest user request: ${description}`,
       '',
       'Return ONLY compact JSON with this shape:',
-      '{"reply":"short summary for the user","flow":{"name":"...","description":"...","inputs":{"name":{"type":"string","required":true,"label":""}},"steps":[{"id":"step-1","title":"...","agent":"existing-agent-name","skills":["existing-skill-name"],"dependsOn":[],"requires":[],"produces":[],"producesContains":[],"review":{"required":false},"completion":{"requireMarkDone":true}}]}}',
+      '{"reply":"short summary for the user","flow":{"name":"...","description":"...","inputs":{"name":{"type":"string","required":true,"label":""}},"steps":[{"id":"step-1","title":"...","agent":"existing-agent-name","skills":["existing-skill-name"],"dependsOn":[],"requires":[],"produces":[],"producesContains":[],"review":{"required":false}}]}}',
       '',
       'Rules:',
       '- Use only the available agent names and skill names exactly as written.',
@@ -560,7 +560,6 @@ export class CockpitPanel {
       const skills = rawSkills.filter((name): name is string => typeof name === 'string' && skillNames.has(name));
       const agent = typeof item.agent === 'string' && agentNames.has(item.agent) ? item.agent : '';
       const review = item.review && typeof item.review === 'object' ? item.review as Record<string, unknown> : {};
-      const completion = item.completion && typeof item.completion === 'object' ? item.completion as Record<string, unknown> : {};
       return {
         id,
         title: typeof item.title === 'string' ? item.title : id,
@@ -571,8 +570,7 @@ export class CockpitPanel {
         requires: Array.isArray(item.requires) ? item.requires.filter((value): value is string => typeof value === 'string') : undefined,
         produces: Array.isArray(item.produces) ? item.produces.filter((value): value is string => typeof value === 'string') : undefined,
         producesContains: Array.isArray(item.producesContains) ? item.producesContains.filter((value): value is string => typeof value === 'string') : undefined,
-        review: { required: !!review.required },
-        completion: { requireMarkDone: completion.requireMarkDone !== false }
+        review: { required: !!review.required }
       };
     });
   }

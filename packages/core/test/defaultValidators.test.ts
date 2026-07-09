@@ -78,7 +78,7 @@ test('runValidator honors an explicit validatorPath override', async () => {
   try {
     mkdirSync(path.join(dir, 'v'), { recursive: true });
     writeFileSync(path.join(dir, 'v', 'pass.mjs'), "export default () => ({ decision: 'pass', reason: 'override ran' });", 'utf8');
-    const step = { id: 's', title: 's', agent: 'a', skill: 's', review: { required: true, type: 'ai' }, completion: { requireMarkDone: false } } as FlowStep;
+    const step = { id: 's', title: 's', agent: 'a', skill: 's', review: { required: true, type: 'ai' } } as FlowStep;
     const verdict = await runValidator({ workspaceRoot: dir, step, runState: { inputs: {} } as FlowRunState, stepOutput: '', validatorPath: 'v/pass.mjs' });
     assert.deepEqual(verdict, { decision: 'pass', reason: 'override ran' });
   } finally {

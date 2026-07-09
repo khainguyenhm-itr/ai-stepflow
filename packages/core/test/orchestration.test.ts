@@ -9,9 +9,8 @@ import {
 function step(id: string, extra: Record<string, any> = {}) {
   return { 
     id, title: id, agent: 'a', skill: 's', 
-    review: { required: false }, 
-    completion: { requireMarkDone: false }, 
-    ...extra 
+    review: { required: false },
+    ...extra
   } as any;
 }
 

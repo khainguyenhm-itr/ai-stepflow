@@ -11,7 +11,7 @@ import {
 
 /** Minimal flow-step factory; cast to the real type without filling every field. */
 const step = (id: string, extra: Record<string, unknown> = {}): any => ({
-  id, title: id, agent: 'a', skill: '', review: { required: false }, completion: { requireMarkDone: false }, ...extra
+  id, title: id, agent: 'a', skill: '', review: { required: false }, ...extra
 });
 const flow = (steps: any[]): any => ({ id: 'f', name: 'f', description: '', inputs: {}, sourcePath: '/f.yaml', steps });
 const runState = (steps: Record<string, any>): any => ({ flowId: 'f', runId: 'r', source: '', projectPath: '', inputs: {}, steps });

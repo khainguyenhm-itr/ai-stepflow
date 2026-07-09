@@ -536,8 +536,7 @@ export const useAppLogic = () => {
         required: true,
         type: reviewType,
         reviewers: reviewType === 'ai' ? step.review.reviewers : undefined
-      },
-      completion: { requireMarkDone: reviewType === 'human' }
+      }
     };
     const newFlow = { ...buildState.editingFlow, steps: newSteps };
 

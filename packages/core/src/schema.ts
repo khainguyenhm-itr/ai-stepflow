@@ -51,8 +51,7 @@ const stepSchema = z.preprocess(
     produces: stringArray,
     producesContains: stringArray,
     input: z.object({ humanRequired: z.boolean().optional(), prompt: z.coerce.string().optional() }).optional(),
-    review: reviewSchema,
-    completion: z.object({ requireMarkDone: z.boolean().default(false) }).default({ requireMarkDone: false })
+    review: reviewSchema
   })
 );
 

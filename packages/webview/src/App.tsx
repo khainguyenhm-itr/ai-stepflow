@@ -195,8 +195,7 @@ const App: React.FC = () => {
               agent: '',
               skill: '',
               dependsOn: previous ? [previous.id] : [],
-              review: { required: false },
-              completion: { requireMarkDone: true }
+              review: { required: true, type: 'ai' }
             };
             setEditingFlow(JSON.parse(JSON.stringify(flow)));
             setEditingStep({ step: newStep, index: flow.steps.length });
@@ -444,8 +443,7 @@ const App: React.FC = () => {
                   skill,
                   skills: skill ? [skill] : [],
                   dependsOn: [],
-                  review: { required: false },
-                  completion: { requireMarkDone: true }
+                  review: { required: true, type: 'ai' }
                 },
                 {
                   id: 'step-2',
@@ -454,8 +452,7 @@ const App: React.FC = () => {
                   skill,
                   skills: skill ? [skill] : [],
                   dependsOn: ['step-1'],
-                  review: { required: false },
-                  completion: { requireMarkDone: true }
+                  review: { required: true, type: 'ai' }
                 }
               ]
             });
@@ -474,8 +471,7 @@ const App: React.FC = () => {
             agent: '',
             skill: '',
             dependsOn: previous ? [previous.id] : [],
-            review: { required: false },
-            completion: { requireMarkDone: true }
+            review: { required: true, type: 'ai' }
           };
           setEditingStep({ step: newStep, index: editingFlow.steps.length });
           setStepIsNew(true);

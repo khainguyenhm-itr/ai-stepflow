@@ -110,9 +110,6 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
       // Terminal closed, explicitly waiting for approval/rejection
       actions.showReview = true;
       actions.showRerun = true;
-    } else if (completionStatus === 'ready_to_mark_done') {
-      // Approved, but requires manual confirmation to finalize
-      actions.showFinish = true;
     } else {
       // Fallback for terminal states without a review gate (ready, failed, cancelled, rejected)
       if (hasRunBefore) actions.showRerun = true;
@@ -131,7 +128,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
     if (completionStatus === 'done') return <span className="badge success"><Icon.Check size={10} style={{ marginRight: 4 }} />done</span>;
     if (executionStatus === 'failed') return <span className="badge error"><Icon.X size={10} style={{ marginRight: 4 }} />failed</span>;
     if (reviewStatus === 'rejected') return <span className="badge error"><Icon.X size={10} style={{ marginRight: 4 }} />rejected</span>;
-    if (reviewStatus === 'approved' || completionStatus === 'ready_to_mark_done') return <span className="badge success"><Icon.Check size={10} style={{ marginRight: 4 }} />approved</span>;
+    if (reviewStatus === 'approved') return <span className="badge success"><Icon.Check size={10} style={{ marginRight: 4 }} />approved</span>;
     if (executionStatus === 'running') return <span className="badge progress"><Icon.Play size={10} style={{ marginRight: 4 }} />running</span>;
     if (reviewStatus === 'ai_review_running') return <span className="badge progress"><Icon.RotateCw size={10} style={{ marginRight: 4 }} className="spin" />reviewing</span>;
     if (reviewStatus === 'waiting_human' || (reviewRequired && executionStatus === 'completed')) return <span className="badge warning"><Icon.Info size={10} style={{ marginRight: 4 }} />waiting review</span>;
@@ -190,6 +187,13 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
     && (activeStepState.history?.length ?? 0) === 0
   );
 
+  // Auto-review is a pre-run policy: lock it the moment any step has started, since a step
+  // already running under one policy can't have that policy flipped mid-flight. "Started" = has
+  // history, or has left its pristine ready/locked execution state.
+  const autoReviewLocked = Object.values(runState.steps).some(
+    s => (s.history?.length ?? 0) > 0 || (s.executionStatus !== 'ready' && s.executionStatus !== 'locked')
+  );
+
   // Secondary run actions (Reset / Verify / Report / Delete) collapse into a single "more" menu
   // to keep the header uncluttered.
   const [menuOpen, setMenuOpen] = useState(false);
@@ -215,19 +219,6 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
     <div className="runner">
       <div className="runner-head">
         <div className="runner-head-info">
-          {!isFinalized && (
-            <label
-              className="auto-review-toggle small mb-4"
-              title="Auto-pilot: run & AI-review every non-human step automatically, then auto-confirm and advance. The run stops only at a human-review gate (which still runs first) or an AI-review rejection."
-            >
-              <input
-                type="checkbox"
-                checked={!!runState.autoReview}
-                onChange={e => sendToVSCode('setAutoReview', { enabled: e.target.checked })}
-              />
-              <span>Auto review</span>
-            </label>
-          )}
           <div className="flex-row items-center gap-8 mb-4">
             <span className="runner-flow-name">
               {runState.runName || runState.runId.split('T')[0]}
@@ -249,6 +240,27 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
           </span>
         </div>
         <div className="runner-head-actions">
+          {!isFinalized && (
+            <>
+              <label
+                className={`auto-review-toggle small${autoReviewLocked ? ' is-disabled' : ''}`}
+                title={autoReviewLocked
+                  ? 'Auto review is locked once a step has run. Reset the run to change it.'
+                  : 'Auto-pilot: run & AI-review every non-human step automatically, then auto-confirm and advance. The run stops only at a human-review gate (which still runs first) or an AI-review rejection.'}
+              >
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={!!runState.autoReview}
+                  disabled={autoReviewLocked}
+                  onChange={e => sendToVSCode('setAutoReview', { enabled: e.target.checked })}
+                />
+                <span className="switch-track" aria-hidden="true" />
+                <span>Auto review</span>
+              </label>
+              <span className="runner-head-divider" aria-hidden="true" />
+            </>
+          )}
           {!isFinalized && isFlowDone && (
             <button
               className="btn success"

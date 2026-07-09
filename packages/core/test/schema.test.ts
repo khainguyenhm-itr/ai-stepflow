@@ -9,7 +9,6 @@ test('parseFlow fills defaults for a minimal hand-written flow', () => {
   assert.equal(flow.sourcePath, '/x/f1.yaml');
   const step = flow.steps[0];
   assert.equal(step.review.required, false);
-  assert.equal(step.completion.requireMarkDone, false);
   assert.deepEqual(step.skills, ['prd']);
 });
 

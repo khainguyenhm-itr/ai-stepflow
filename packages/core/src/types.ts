@@ -2,7 +2,7 @@ export type StepExecutionStatus = "locked" | "ready" | "running" | "completed" |
 
 export type StepReviewStatus = "not_required" | "pending" | "ai_review_running" | "waiting_human" | "approved" | "rejected";
 
-export type StepCompletionStatus = "not_ready" | "ready_to_mark_done" | "done";
+export type StepCompletionStatus = "not_ready" | "done";
 
 export interface Agent {
   name: string;
@@ -101,9 +101,6 @@ export interface FlowStep {
     /** Legacy flag kept so old flow files still parse; it has no effect. */
     approvalRequired?: boolean;
     checklist?: string[];
-  };
-  completion: {
-    requireMarkDone: boolean;
   };
 }
 

@@ -14,8 +14,7 @@ function makeStep(reviewPatch: Partial<FlowStep['review']>): FlowStep {
     skill: 'prd',
     requires: ['docs/{ticket}/brief.md'],
     produces: ['docs/{ticket}/plan.md'],
-    review: { required: true, type: 'ai', ...reviewPatch },
-    completion: { requireMarkDone: false }
+    review: { required: true, type: 'ai', ...reviewPatch }
   };
 }
 

@@ -279,11 +279,16 @@ export class RunOrchestrator {
   }
 
   /**
-   * Toggle auto-pilot for the current run (persisted on the run state). Enabling it immediately
-   * kicks any step that is ready-but-parked so the run resumes without a manual click.
+   * Toggle auto-pilot for the current run (persisted on the run state). Locked once the run has
+   * begun — a step running under one policy can't have the policy flipped mid-flight — so it can
+   * only be changed while every step is still pristine (no history). Reset the run to change it.
    */
   async setAutoReview(enabled: boolean): Promise<void> {
     if (!this._runState || this._runState.autoReview === enabled) return;
+    const anyStepStarted = Object.values(this._runState.steps).some(
+      s => (s.history?.length ?? 0) > 0 || (s.executionStatus !== 'ready' && s.executionStatus !== 'locked')
+    );
+    if (anyStepStarted) return;
     await this._setRunState(s => ({ ...s, autoReview: enabled }));
     if (enabled) this._advanceReadySteps();
   }
@@ -327,7 +332,7 @@ export class RunOrchestrator {
       return;
     }
     // No review gate, or a reviewer already approved → finish and advance.
-    if (!step.review?.required || rs?.reviewStatus === 'approved' || rs?.completionStatus === 'ready_to_mark_done') {
+    if (!step.review?.required || rs?.reviewStatus === 'approved') {
       await this._persistInteractiveMetrics(stepId);
       await this._setRunState(s => machine.markDone(s, flow, stepId), { stepId, status: 'completed', message: 'Marked done' });
       this._advanceReadySteps();

@@ -146,8 +146,8 @@ export function markCompleted(state: FlowRunState, flow: Flow, stepId: string, m
   const patch: Partial<StepRunState> = { executionStatus: 'completed', completedAt: new Date().toISOString(), ...metrics };
   
   if (!step?.review.required) {
-    // No review: go to 'done' unless the user explicitly wants to manually mark it.
-    patch.completionStatus = step?.completion?.requireMarkDone ? 'ready_to_mark_done' : 'done';
+    // No review: go straight to 'done'.
+    patch.completionStatus = 'done';
   } else {
     // Review required: wait for decision.
     patch.completionStatus = 'not_ready';
@@ -174,7 +174,6 @@ export function applyAiReview(
   aiReviewOutput?: string,
   reviewMetrics?: { tokensUsed?: number; costUsd?: number }
 ): FlowRunState {
-  const step = flow.steps.find(s => s.id === stepId);
   const patch: Partial<StepRunState> = { reviewStatus: status };
   if (aiReviewOutput !== undefined) {
     const prev = state.steps[stepId];
@@ -188,8 +187,8 @@ export function applyAiReview(
   }
 
   if (status === 'approved') {
-    // AI Approved: go to 'done' unless manual confirmation is requested.
-    patch.completionStatus = step?.completion?.requireMarkDone ? 'ready_to_mark_done' : 'done';
+    // AI Approved: go straight to 'done'.
+    patch.completionStatus = 'done';
     patch.reviewCompletedAt = new Date().toISOString();
   } else if (status === 'rejected') {
     patch.completionStatus = 'not_ready';
@@ -202,14 +201,13 @@ export function applyAiReview(
 }
 
 export function applyHumanReview(state: FlowRunState, flow: Flow, stepId: string, review: { decision: 'approved' | 'rejected'; comment?: string; checklist?: Record<string, boolean> }): FlowRunState {
-  const step = flow.steps.find(s => s.id === stepId);
   const approved = review.decision === 'approved';
   
   const patch: Partial<StepRunState> = {
     humanReview: review,
     reviewStatus: approved ? 'approved' : 'rejected',
     reviewCompletedAt: new Date().toISOString(),
-    completionStatus: approved ? (step?.completion?.requireMarkDone ? 'ready_to_mark_done' : 'done') : 'not_ready',
+    completionStatus: approved ? 'done' : 'not_ready',
     ...(approved ? {} : { executionStatus: 'ready' as const })
   };
   

@@ -7,7 +7,7 @@ import { reviewStepArtifacts, readProducedArtifacts, loadReviewKit, REVIEW_ARTIF
 import { FlowRunState, FlowStep } from '@ai-stepflow/core';
 
 function step(reviewPatch: Partial<FlowStep['review']> = {}, extra: Partial<FlowStep> = {}): FlowStep {
-  return { id: 's', title: 'Step', agent: 'a', skill: 'k', review: { required: true, type: 'ai', ...reviewPatch }, completion: { requireMarkDone: false }, ...extra } as FlowStep;
+  return { id: 's', title: 'Step', agent: 'a', skill: 'k', review: { required: true, type: 'ai', ...reviewPatch }, ...extra } as FlowStep;
 }
 const runState: FlowRunState = { flowId: 'f', runId: 'r', source: '/f.yaml', projectPath: '/tmp', inputs: {}, steps: {} };
 

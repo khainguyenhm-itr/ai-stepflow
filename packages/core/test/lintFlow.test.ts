@@ -85,7 +85,6 @@ function makeFlow(steps: Partial<FlowStep>[]): Flow {
       requires: s.requires ?? [],
       dependsOn: s.dependsOn ?? [],
       review: s.review ?? { required: false },
-      completion: s.completion ?? { requireMarkDone: false },
     } as FlowStep)),
   } as Flow;
 }
@@ -122,7 +121,7 @@ test('lintFlow: missing agent field emits error', () => {
       agent: '' as unknown as string, // empty string = falsy — matches the !step.agent guard
       skill: 'implement', produces: ['out/x.md'],
       requires: [], dependsOn: [],
-      review: { required: false }, completion: { requireMarkDone: false },
+      review: { required: false },
     } as FlowStep],
   } as Flow;
   const issues = lintFlow(flow, AGENTS, SKILLS);

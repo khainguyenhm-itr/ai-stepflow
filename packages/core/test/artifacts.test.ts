@@ -23,7 +23,6 @@ function makeStep(extra: Partial<FlowStep>): FlowStep {
     agent: 'po',
     skill: 'prd',
     review: { required: false },
-    completion: { requireMarkDone: false },
     ...extra
   };
 }

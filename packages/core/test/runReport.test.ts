@@ -10,7 +10,7 @@ test('renderRunReport includes step table and audit history', () => {
     description: '',
     inputs: { epic: { type: 'string', required: true, label: 'Epic' } },
     sourcePath: '/tmp/flow.yaml',
-    steps: [{ id: 'step-1', title: 'Plan', agent: 'po', skill: 'prd', review: { required: false }, completion: { requireMarkDone: false } }]
+    steps: [{ id: 'step-1', title: 'Plan', agent: 'po', skill: 'prd', review: { required: false } }]
   };
   const runState: FlowRunState = {
     flowId: 'flow',
