@@ -20,23 +20,59 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
   <meta http-equiv="Content-Security-Policy" content="${csp}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
+    /* Palette ported from new-ui.html — light default, dark via prefers-color-scheme
+       (follows the VS Code theme). Legacy sidebar token names kept as aliases. */
     :root {
-      --r: 3px;
-      --r-sm: 2px;
-      --border: var(--vscode-panel-border, #3c3c3c);
-      --panel: var(--vscode-sideBar-background, #252526);
-      --panel-2: var(--vscode-editorWidget-background, #2d2d2d);
-      --hover: var(--vscode-list-hoverBackground, #2a2d2e);
-      --focus: var(--vscode-focusBorder, #007fd4);
-      --btn: var(--vscode-button-background, #0e639c);
-      --btn-fg: var(--vscode-button-foreground, #fff);
-      --btn-h: var(--vscode-button-hoverBackground, #1177bb);
-      --error: var(--vscode-errorForeground, #f48771);
-      --badge: var(--vscode-badge-background, #4d4d4d);
-      --badge-fg: var(--vscode-badge-foreground, #fff);
-      --muted: var(--vscode-descriptionForeground, #9d9d9d);
-      --success: var(--vscode-charts-green, #73c991);
-      --fg: var(--vscode-foreground, #cccccc);
+      --bg: #f7f8fa;
+      --panel: #fff;
+      --panel-2: #fbfcfd;
+      --row-hover: #f2f5f9;
+      --border: #e4e8ee;
+      --border-strong: #d3d9e2;
+      --text: #1c2330;
+      --text-dim: #5c6675;
+      --text-faint: #8a93a3;
+      --accent: #2f7de6;
+      --accent-soft: #e8f1fd;
+      --run: #12925a;
+      --run-soft: #e2f4ec;
+      --blue: #2f7de6;
+      --blue-soft: #e8f1fd;
+      --warn: #b7791f;
+      --warn-soft: #fbf1dc;
+      --fail: #d1442f;
+      --fail-soft: #fbe7e3;
+      --idle: #8a93a3;
+      --idle-soft: #eef1f5;
+      --radius: 8px;
+      --shadow: 0 1px 2px rgba(20, 30, 50, .06), 0 4px 16px rgba(20, 30, 50, .05);
+      --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+      --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      /* legacy aliases */
+      --r: 8px;
+      --r-sm: 6px;
+      --hover: var(--row-hover);
+      --focus: var(--accent);
+      --btn: var(--accent);
+      --btn-fg: #ffffff;
+      --btn-h: var(--accent);
+      --error: var(--fail);
+      --badge: var(--idle-soft);
+      --badge-fg: var(--text-dim);
+      --muted: var(--text-dim);
+      --success: var(--run);
+      --fg: var(--text);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14171c; --panel: #1b1f26; --panel-2: #1f242c; --row-hover: #232935;
+        --border: #2b313b; --border-strong: #384150;
+        --text: #e7ebf1; --text-dim: #9aa4b2; --text-faint: #6c7684;
+        --accent: #57a0f5; --accent-soft: #1c2c42; --blue: #57a0f5; --blue-soft: #1c2c42;
+        --run: #35c07f; --run-soft: #163227; --warn: #e0a94b; --warn-soft: #33290f;
+        --fail: #f0715c; --fail-soft: #3a1f1a; --idle: #6c7684; --idle-soft: #262b34;
+        --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .28);
+      }
     }
     *, *::before, *::after { box-sizing: border-box; }
     html, body { height: 100%; overflow: hidden; margin: 0; padding: 0; }
@@ -47,8 +83,8 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     .shell { display: flex; flex-direction: column; height: 100vh; }
 
     /* header row */
-    .hdr { display: flex; align-items: center; gap: 7px; padding: 10px 12px 0; flex: 0 0 auto; }
-    .mark { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: var(--r); background: var(--btn); color: var(--btn-fg); font-size: 9px; font-weight: 700; flex: 0 0 auto; letter-spacing: .02em; }
+    .hdr { display: flex; align-items: center; gap: 7px; padding: 12px 12px 0; flex: 0 0 auto; }
+    .mark { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg, var(--accent), #7b5cf0); color: #fff; font-size: 9px; font-weight: 800; flex: 0 0 auto; letter-spacing: .02em; }
     .brand-name { flex: 1; font-size: 12.5px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .ver { color: var(--muted); font-size: 10px; flex: 0 0 auto; }
     .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 13px; line-height: 1; }
@@ -58,7 +94,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     #refresh-status.show { opacity: 1; }
 
     /* scrollable content area — flex column so expanded accordion section can grow */
-    .body { flex: 1 1 0; overflow: hidden; display: flex; flex-direction: column; padding: 0 12px 8px; }
+    .body { flex: 1 1 0; overflow: hidden; display: flex; flex-direction: column; padding: 0 12px 12px; }
 
     /* ── accordion: expanded section fills remaining sidebar height ── */
     .sec.expanded { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
@@ -89,7 +125,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     .run-card-title { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); line-height: 1.3; }
     .run-card-sub { font-size: 10px; color: var(--muted); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .run-card-bar { height: 3px; border-radius: 2px; background: rgba(127,127,127,.15); overflow: hidden; margin: 6px 0 5px; }
-    .run-card-bar-fill { height: 100%; border-radius: 2px; background: var(--vscode-progressBar-background, #0e70c0); transition: width .3s ease; }
+    .run-card-bar-fill { height: 100%; border-radius: 2px; background: var(--accent); transition: width .3s ease; }
     .run-card.run-active .run-card-bar-fill { background: var(--btn); }
     .run-card.run-done .run-card-bar-fill { background: var(--success); }
     .run-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
@@ -97,16 +133,16 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     .run-card-acts { flex-shrink: 0; opacity: 1; }
     .run-card:hover .run-card-acts, .run-card.run-active .run-card-acts { opacity: 1; }
     .run-sbadge { display: inline-flex; align-items: center; height: 14px; padding: 0 5px; border-radius: 9px; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; white-space: nowrap; flex-shrink: 0; margin-top: 1px; }
-    .run-sbadge.running { background: var(--vscode-charts-blue, var(--focus)); color: #fff; }
-    .run-sbadge.done { background: var(--success); color: #fff; }
-    .run-sbadge.partial { background: rgba(215,160,0,.18); color: var(--vscode-charts-yellow, #d7ba7d); }
+    .run-sbadge.running { background: var(--blue-soft); color: var(--blue); }
+    .run-sbadge.done { background: var(--run-soft); color: var(--run); }
+    .run-sbadge.partial { background: var(--warn-soft); color: var(--warn); }
     .run-step-row { display: flex; align-items: center; gap: 4px; overflow: hidden; }
     .run-step-name { font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     /* badge */
-    .badge { display: inline-flex; align-items: center; height: 16px; padding: 0 6px; border-radius: 9px; font-size: 9px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--badge-fg); background: var(--badge); white-space: nowrap; flex: 0 0 auto; }
-    .badge.running { background: var(--vscode-charts-blue, var(--focus)); }
-    .badge.completed { background: var(--success); }
+    .badge { display: inline-flex; align-items: center; height: 16px; padding: 0 6px; border-radius: 5px; font-size: 9px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: var(--badge-fg); background: var(--badge); white-space: nowrap; flex: 0 0 auto; }
+    .badge.running { background: var(--blue-soft); color: var(--blue); }
+    .badge.completed { background: var(--run-soft); color: var(--run); }
 
     /* ── settings ── */
     .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; }
@@ -121,7 +157,11 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
 
     /* ── section ── */
     .sec { margin-top: 8px; }
-    .sec-hdr { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
+    /* Stats block and the Default Library header each contribute a 4px bottom margin
+       so every section sits on the same 12px rhythm as the .sec-hdr sections. */
+    .sec-stats { margin-bottom: 4px; }
+    #defaults-toggle { margin-bottom: 2px; }
+    .sec-hdr { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
     .sec-label { flex: 1; font-size: 12px; font-weight: 700; color: var(--fg); }
     .sec-count { display: inline-flex; align-items: center; height: 15px; padding: 0 5px; border-radius: 9px; font-size: 9px; font-weight: 700; color: var(--badge-fg); background: var(--badge); }
     .sec-count:empty { display: none; }
@@ -129,21 +169,21 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     .sec-toggle:hover { background: var(--hover); }
 
     /* ── library stats ── */
-    .stats { display: flex; gap: 5px; }
-    .stat { flex: 1; min-width: 0; padding: 7px 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); cursor: pointer; text-align: center; transition: border-color .1s, background .1s; }
+    .stats { display: flex; gap: 8px; }
+    .stat { flex: 1; min-width: 0; padding: 10px 6px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); cursor: pointer; text-align: center; transition: border-color .1s, background .1s; }
     .stat:hover { border-color: var(--focus); }
     .stat-num { font-size: 18px; font-weight: 700; line-height: 1.1; }
     .stat-lbl { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-top: 2px; }
 
     /* default library expandable */
-    .lib-toggle { display: flex; align-items: center; gap: 7px; margin-top: 6px; padding: 9px 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); cursor: pointer; width: 100%; text-align: left; font-family: inherit; color: var(--fg); transition: background .1s; }
+    .lib-toggle { display: flex; align-items: center; gap: 7px; padding: 9px 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); cursor: pointer; width: 100%; text-align: left; font-family: inherit; color: var(--fg); transition: background .1s; }
     .lib-toggle:hover { background: var(--hover); }
     .lib-caret { font-size: 9px; color: var(--muted); transition: transform .15s; flex: 0 0 auto; }
     .lib-caret.open { transform: rotate(90deg); }
     .lib-toggle-label { flex: 1; font-size: 12px; font-weight: 700; color: var(--fg); }
-    .lib-toggle-badge { display: inline-flex; align-items: center; height: 15px; padding: 0 5px; border-radius: 9px; font-size: 9px; font-weight: 700; color: var(--badge-fg); background: var(--success); flex: 0 0 auto; }
+    .lib-toggle-badge { display: inline-flex; align-items: center; height: 15px; padding: 0 6px; border-radius: 5px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--run); background: var(--run-soft); flex: 0 0 auto; }
     .lib-toggle-badge:empty { display: none; }
-    .lib-panel { margin-top: 2px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
+    .lib-panel { border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
 
     /* ── box (bordered list container) ── */
     .box { border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
@@ -156,9 +196,9 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
 
     /* search row inside box */
     .box-search { padding: 5px 8px; border-bottom: 1px solid var(--border); background: var(--panel); }
-    .search { width: 100%; padding: 3px 7px; border: 1px solid var(--vscode-input-border, var(--border)); border-radius: var(--r-sm); background: var(--vscode-input-background); color: var(--vscode-input-foreground); font-size: 11.5px; font-family: inherit; outline: none; }
+    .search { width: 100%; padding: 5px 9px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--panel); color: var(--text); font-size: 11.5px; font-family: inherit; outline: none; }
     .search:focus { border-color: var(--focus); }
-    .search::placeholder { color: var(--vscode-input-placeholderForeground, #818181); }
+    .search::placeholder { color: var(--text-faint); }
 
     /* ── list items ── */
     .item { position: relative; display: grid; grid-template-columns: 8px minmax(0,1fr) auto; align-items: center; gap: 6px; min-height: 36px; padding: 5px 8px; transition: background .1s; }
@@ -172,9 +212,9 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     .item-acts { display: flex; align-items: center; gap: 3px; opacity: 0; transition: opacity .1s; }
     .item:hover .item-acts, .item.menu-open .item-acts { opacity: 1; }
     .item.has-update .item-acts { opacity: 1; }
-    .update-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--vscode-charts-yellow, #d7ba7d); margin-left: 5px; flex-shrink: 0; vertical-align: middle; }
-    .icon-update { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1px solid transparent; border-radius: var(--r-sm); background: transparent; color: var(--vscode-charts-yellow, #d7ba7d); font-size: 14px; line-height: 1; cursor: pointer; font-family: inherit; }
-    .icon-update:hover { border-color: var(--vscode-charts-yellow, #d7ba7d); background: var(--hover); }
+    .update-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--warn); margin-left: 5px; flex-shrink: 0; vertical-align: middle; }
+    .icon-update { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1px solid transparent; border-radius: var(--r-sm); background: transparent; color: var(--warn); font-size: 14px; line-height: 1; cursor: pointer; font-family: inherit; }
+    .icon-update:hover { border-color: var(--warn); background: var(--hover); }
 
     /* ── pill action buttons ── */
     .pill { display: inline-flex; align-items: center; justify-content: center; height: 22px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--r-sm); background: transparent; color: var(--fg); font-size: 10.5px; font-weight: 600; cursor: pointer; white-space: nowrap; font-family: inherit; transition: background .1s, border-color .1s; }
@@ -196,7 +236,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     .menu > summary::-webkit-details-marker { display: none; }
     .menu-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1px solid transparent; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 14px; font-weight: 700; cursor: pointer; line-height: 1; font-family: inherit; }
     .menu-btn:hover, .menu[open] .menu-btn { color: var(--fg); background: var(--hover); border-color: var(--border); }
-    .menu-pop { position: fixed; z-index: 9999; min-width: 130px; max-width: calc(100vw - 12px); padding: 3px; border: 1px solid var(--border); border-radius: var(--r); background: var(--vscode-dropdown-background, var(--panel-2)); box-shadow: 0 6px 20px rgba(0,0,0,.36); }
+    .menu-pop { position: fixed; z-index: 9999; min-width: 130px; max-width: calc(100vw - 12px); padding: 3px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel); box-shadow: 0 6px 20px rgba(0,0,0,.36); }
     .menu-item { display: flex; align-items: center; width: 100%; min-height: 26px; border: 0; border-radius: var(--r-sm); padding: 4px 8px; background: transparent; color: var(--fg); font-size: 11.5px; font-family: inherit; text-align: left; cursor: pointer; }
     .menu-item:hover { background: var(--hover); }
     .menu-item.danger { color: var(--error); }
@@ -207,7 +247,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     .select-wrap.sm { min-width: 80px; }
     .gx-ctl .select-wrap { flex: 1 1 auto; min-width: 0; display: block; }
     .select-wrap::after { content: ''; position: absolute; right: 9px; top: 50%; transform: translateY(-50%); width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid #aaa; pointer-events: none; }
-    .input { width: 100%; height: 22px; padding: 0 24px 0 8px; border: 1px solid var(--vscode-dropdown-border, var(--border)); border-radius: var(--r); background: var(--panel-2); color: var(--vscode-dropdown-foreground, var(--fg)); font-size: 12px; font-family: inherit; outline: none; appearance: none; -webkit-appearance: none; cursor: pointer; box-shadow: inset 0 1px 2px rgba(0,0,0,.2); }
+    .input { width: 100%; height: 24px; padding: 0 24px 0 9px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--panel); color: var(--fg); font-size: 12px; font-family: inherit; outline: none; appearance: none; -webkit-appearance: none; cursor: pointer; }
     .input.sm { font-size: 11px; }
     .input:focus { border-color: var(--focus); outline: 1px solid var(--focus); }
     .input:hover { border-color: var(--focus); }
@@ -262,8 +302,12 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
   <div class="body">
 
     <!-- library stats -->
-    <section class="sec">
+    <section class="sec sec-stats">
       <div class="stats" id="stats"></div>
+    </section>
+
+    <!-- default library (own section, peer to the others) -->
+    <section class="sec">
       <div id="defaults-toggle"></div>
       <div id="defaults-panel" style="display:none"></div>
     </section>
@@ -723,7 +767,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
 
   const MCP_STATUS = {
     'connected':  { color: 'var(--vscode-charts-green, #73c991)',   label: 'Connected',  rank: 0 },
-    'needs-auth': { color: 'var(--vscode-charts-yellow, #d7a000)',  label: 'Needs auth', rank: 1 },
+    'needs-auth': { color: 'var(--warn)',  label: 'Needs auth', rank: 1 },
     'unknown':    { color: 'var(--muted, #888)',                     label: 'Unknown',    rank: 2 },
     'failed':     { color: 'var(--vscode-charts-red, #f48771)',     label: 'Failed',     rank: 3 }
   };
@@ -772,7 +816,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
       desc.textContent = 'Not indexed — pick group (optional), then Analyze';
     } else if (stale) {
       dot.style.display = 'inline-block';
-      dot.style.background = 'var(--vscode-charts-yellow, #d7a000)';
+      dot.style.background = 'var(--warn)';
       desc.textContent = 'Out of date — re-analyze recommended';
     } else {
       dot.style.display = 'inline-block';

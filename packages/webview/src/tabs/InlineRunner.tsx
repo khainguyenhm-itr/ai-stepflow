@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Flow, FlowRunState, StepRunState } from '@ai-stepflow/core/types';
 import { Icon, metaValue } from '../components/primitives';
-import { formatRunTime, getStepSkills } from '../flowUtils';
+import { formatRunTime, getStepSkills, getFlowColumns } from '../flowUtils';
 import { sendToVSCode } from '../vscode';
+import { FlowGraphCanvas } from '../components/FlowGraphCanvas';
 
 /** ms between two ISO timestamps, or 0 if either is missing/invalid. */
 function spanMs(from?: string, to?: string): number {
@@ -217,29 +218,29 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   }, [activeStepId, activeStepState]);
 
   // Runner content is split into sub-tabs to cut vertical scrolling: the step detail head
-  // (status + actions) stays pinned; Console / Cost / History switch below it.
-  const [rtab, setRtab] = useState<'console' | 'cost' | 'history'>('console');
+  // (status + actions) stays pinned; Graph / Cost analysis / Output / History switch below it.
+  const [rtab, setRtab] = useState<'graph' | 'cost' | 'output' | 'history'>('graph');
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const columns = getFlowColumns(flow);
 
   return (
     <div className="runner">
       <div className="runner-head">
         <div className="runner-head-info">
-          <div className="flex-row items-center gap-8 mb-4">
-            <span className="runner-flow-name">
-              {runState.runName || runState.runId.split('T')[0]}
+          {isFinalized ? (
+            <span className="badge success">
+              <Icon.Check size={10} style={{ marginRight: 4 }} />
+              Finalized
             </span>
-            {isFinalized ? (
-              <span className="badge success">
-                <Icon.Check size={10} style={{ marginRight: 4 }} />
-                Finalized
-              </span>
-            ) : (
-              <span className={`badge ${runStatus.className}`}>
-                <runStatus.Icon size={10} style={{ marginRight: 4 }} />
-                {runStatus.label}
-              </span>
-            )}
-          </div>
+          ) : (
+            <span className={`badge ${runStatus.className}`}>
+              <runStatus.Icon size={10} style={{ marginRight: 4 }} />
+              {runStatus.label}
+            </span>
+          )}
+          <span className="runner-flow-name">
+            {runState.runName || runState.runId.split('T')[0]}
+          </span>
           <span className="small muted">
             {completedSteps}/{flow.steps.length} steps done · {formatRunTime(runState.runId)}
           </span>
@@ -316,27 +317,6 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
             <Icon.X size={14} />
           </button>
         </div>
-      </div>
-      <div className="runner-strip">
-        {flow.steps.map((step, index) => {
-          const stepState = runState.steps[step.id];
-          const isActive = activeStepId === step.id;
-          const isDone = stepState?.completionStatus === 'done';
-          const isStepLocked = stepState?.executionStatus === 'locked';
-          return (
-            <React.Fragment key={step.id}>
-              {index > 0 && <span className="strip-connector" />}
-              <button
-                type="button"
-                className={`strip-step ${isActive ? 'active' : ''} ${isDone ? 'done' : ''} ${isStepLocked ? 'locked' : ''}`}
-                title={step.title || step.id}
-                onClick={() => onSetActiveStep(step.id)}
-              >
-                {isDone ? <Icon.Check size={14} /> : index + 1}
-              </button>
-            </React.Fragment>
-          );
-        })}
       </div>
       <div className="runner-detail">
         <div className="runner-detail-head">
@@ -420,13 +400,73 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
           </div>
         </div>
 
-        <div className="runner-subtabs">
-          <button className={`runner-subtab ${rtab === 'console' ? 'on' : ''}`} onClick={() => setRtab('console')}><Icon.Terminal size={13} /> Console</button>
-          <button className={`runner-subtab ${rtab === 'cost' ? 'on' : ''}`} onClick={() => setRtab('cost')}><Icon.Zap size={13} /> Cost analysis</button>
-          <button className={`runner-subtab ${rtab === 'history' ? 'on' : ''}`} onClick={() => setRtab('history')}><Icon.Info size={13} /> History</button>
+        <div className="subtabs">
+          <button className={`subtab ${rtab === 'graph' ? 'on' : ''}`} onClick={() => setRtab('graph')}><Icon.GraphIcon size={13} /> Graph</button>
+          <button className={`subtab ${rtab === 'cost' ? 'on' : ''}`} onClick={() => setRtab('cost')}><Icon.Chart size={13} /> Cost analysis</button>
+          <button className={`subtab ${rtab === 'output' ? 'on' : ''}`} onClick={() => setRtab('output')}><Icon.Terminal size={13} /> Output</button>
+          <button className={`subtab ${rtab === 'history' ? 'on' : ''}`} onClick={() => setRtab('history')}><Icon.Clock size={13} /> History</button>
         </div>
 
-        {rtab === 'console' && (<>
+        {rtab === 'graph' && (
+          <div className="subpane">
+            <div className="canvas" ref={canvasRef}>
+              <FlowGraphCanvas steps={flow.steps} containerRef={canvasRef} isExpanded={true} />
+              <div className="nodes">
+                {columns.map((column, columnIndex) => (
+                  <div className={`col${column.length > 1 ? ' branch' : ''}`} key={`${flow.id}-rc-${columnIndex}`}>
+                    {column.map((step, rowIndex) => {
+                      const stepNumber = column.length > 1 ? `${columnIndex + 1}.${rowIndex + 1}` : `${columnIndex + 1}`;
+                      const st = runState.steps[step.id];
+                      const isDone = st?.completionStatus === 'done';
+                      const isActive = activeStepId === step.id;
+                      const isRunning = st?.executionStatus === 'running';
+                      const reviewAi = step.review.type === 'ai';
+                      const skills = getStepSkills(step);
+                      const canRerun = !isFinalized && st && st.executionStatus !== 'locked';
+                      const canReset = !isFinalized && !!st && !(
+                        (st.executionStatus === 'ready' || st.executionStatus === 'locked') && (st.history?.length ?? 0) === 0
+                      );
+                      return (
+                        <div
+                          key={step.id}
+                          id={`step-node-${step.id}`}
+                          className={`node${isDone ? ' done' : ''}${isActive ? ' active' : ''}${isRunning ? ' hot' : ''}`}
+                          onClick={() => onSetActiveStep(step.id)}
+                        >
+                          <div className="nt">
+                            <span className="ni">{isDone ? <Icon.Check size={11} /> : stepNumber}</span>
+                            <span className="nn">{step.title || step.id}</span>
+                            <span className={`rv ${reviewAi ? 'ai' : 'human'}`}>{reviewAi ? 'AI' : 'Human'}</span>
+                          </div>
+                          <div className="meta">
+                            <span>{step.agent || 'unassigned'}</span>
+                            <span>{skills.length ? skills.map(s => `/${s}`).join(' ') : '—'}</span>
+                          </div>
+                          <div className="stat">
+                            {st?.tokensUsed ? `${st.tokensUsed.toLocaleString()} · ` : ''}
+                            {st?.costUsd ? `$${st.costUsd.toFixed(2)} · ` : ''}
+                            {st?.executionStatus || 'ready'}
+                          </div>
+                          <div className="acts">
+                            {canRerun && (
+                              <button type="button" className="na reset" title="Re-run this step" onClick={e => { e.stopPropagation(); onRunStep(step.id, ''); }}><Icon.RotateCw size={12} />Re-run</button>
+                            )}
+                            {canReset && (
+                              <button type="button" className="na reset" title="Reset this step" onClick={e => { e.stopPropagation(); sendToVSCode('resetStep', { stepId: step.id }); }}>Reset</button>
+                            )}
+                            <button type="button" className="na" title="Show output" onClick={e => { e.stopPropagation(); onSetActiveStep(step.id); setRtab('output'); }}><Icon.List size={12} /></button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {rtab === 'output' && (<>
         <div className="runner-meta">
           <div className="meta-group">
             <span className="muted small">agent</span>

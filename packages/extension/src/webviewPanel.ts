@@ -195,21 +195,7 @@ export class CockpitPanel {
         await this._runner.adoptRunState(message.runState, message.historyEvent);
         return;
       case 'switchRun': {
-        const [runs, flows] = await Promise.all([
-          this.stateManager.loadRuns(),
-          this.configManager.loadFlows()
-        ]);
-        const run = runs.find(r => r.flowId === message.flowId && r.runId === message.runId);
-        const flow = flows.find(f => f.id === message.flowId);
-        if (run && flow) {
-          this._runner.setFlowAndRunState(flow, run);
-          this.postMessage({ type: 'restoreRun', flow, runState: run });
-        } else {
-          // Don't fail silently — the dropdown offered this run, so if it can't be opened the run
-          // file is missing/corrupt or its workflow no longer exists. Tell the user why.
-          const why = !flow ? 'its workflow could not be found' : 'the run file is missing or corrupt';
-          vscode.window.showWarningMessage(`AI StepFlow: could not open that run — ${why}.`);
-        }
+        await this._switchToRun(message.flowId, message.runId);
         return;
       }
       case 'runStep':
@@ -232,6 +218,7 @@ export class CockpitPanel {
         await this._runner.setAutoReview(message.enabled);
         return;
       case 'resetRun': {
+        if (message.flowId && message.runId && !(await this._ensureActiveRun(message.flowId, message.runId))) return;
         const choice = await vscode.window.showWarningMessage(
           'Reset all steps to their initial state? This discards every step\'s output, review decisions and history for this run, and DELETES the artifact files this run produced.',
           { modal: true },
@@ -258,6 +245,7 @@ export class CockpitPanel {
         await this._sendAllData();
         return;
       case 'deleteRun': {
+        if (message.flowId && message.runId && !(await this._ensureActiveRun(message.flowId, message.runId))) return;
         const runState = this._runner.runState;
         if (!runState) return;
         const label = runState.runName || runState.runId.split('T')[0];
@@ -276,6 +264,7 @@ export class CockpitPanel {
         await this._runner.verify();
         return;
       case 'exportRunReport':
+        if (message.flowId && message.runId && !(await this._ensureActiveRun(message.flowId, message.runId))) return;
         await this._runner.exportReport();
         return;
       case 'importAgentFile':
@@ -346,6 +335,36 @@ export class CockpitPanel {
         vscode.window.showErrorMessage(message.text);
         return;
     }
+  }
+
+  /** Load a run into the runner and push it to the webview. Returns false (with a warning) if missing. */
+  private async _switchToRun(flowId: string, runId: string): Promise<boolean> {
+    const [runs, flows] = await Promise.all([
+      this.stateManager.loadRuns(),
+      this.configManager.loadFlows()
+    ]);
+    const run = runs.find(r => r.flowId === flowId && r.runId === runId);
+    const flow = flows.find(f => f.id === flowId);
+    if (run && flow) {
+      this._runner.setFlowAndRunState(flow, run);
+      this.postMessage({ type: 'restoreRun', flow, runState: run });
+      return true;
+    }
+    // Don't fail silently — the dropdown offered this run, so if it can't be opened the run
+    // file is missing/corrupt or its workflow no longer exists. Tell the user why.
+    const why = !flow ? 'its workflow could not be found' : 'the run file is missing or corrupt';
+    vscode.window.showWarningMessage(`AI StepFlow: could not open that run — ${why}.`);
+    return false;
+  }
+
+  /**
+   * Ensure the given run is the one loaded in the runner before a run-scoped op (reset/delete/export)
+   * acts on it. Per-row action buttons target a specific run, but the ops operate on the runner's
+   * current run — so switch first (awaited) to avoid acting on the wrong run.
+   */
+  private async _ensureActiveRun(flowId: string, runId: string): Promise<boolean> {
+    if (this._runner.runState?.runId === runId) return true;
+    return this._switchToRun(flowId, runId);
   }
 
   private async _handleImportFile(kind: 'agent' | 'skill'): Promise<void> {

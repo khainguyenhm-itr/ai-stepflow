@@ -1,0 +1,3266 @@
+<html>
+<title>AI StepFlow — Table UI</title>
+<style>
+    :root {
+        --bg: #f7f8fa;
+        --panel: #fff;
+        --panel-2: #fbfcfd;
+        --row-hover: #f2f5f9;
+        --sub: #f4f6f9;
+        --border: #e4e8ee;
+        --border-strong: #d3d9e2;
+        --text: #1c2330;
+        --text-dim: #5c6675;
+        --text-faint: #8a93a3;
+        --accent: #2f7de6;
+        --accent-soft: #e8f1fd;
+        --run: #12925a;
+        --run-soft: #e2f4ec;
+        --blue: #2f7de6;
+        --blue-soft: #e8f1fd;
+        --warn: #b7791f;
+        --warn-soft: #fbf1dc;
+        --fail: #d1442f;
+        --fail-soft: #fbe7e3;
+        --idle: #8a93a3;
+        --idle-soft: #eef1f5;
+        --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+        --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        --radius: 8px;
+        --shadow: 0 1px 2px rgba(20, 30, 50, .06), 0 4px 16px rgba(20, 30, 50, .05);
+    }
+
+    @media (prefers-color-scheme:dark) {
+        :root {
+            --bg: #14171c;
+            --panel: #1b1f26;
+            --panel-2: #1f242c;
+            --row-hover: #232935;
+            --sub: #181c22;
+            --border: #2b313b;
+            --border-strong: #384150;
+            --text: #e7ebf1;
+            --text-dim: #9aa4b2;
+            --text-faint: #6c7684;
+            --accent: #57a0f5;
+            --accent-soft: #1c2c42;
+            --blue: #57a0f5;
+            --blue-soft: #1c2c42;
+            --run: #35c07f;
+            --run-soft: #163227;
+            --warn: #e0a94b;
+            --warn-soft: #33290f;
+            --fail: #f0715c;
+            --fail-soft: #3a1f1a;
+            --idle: #6c7684;
+            --idle-soft: #262b34;
+            --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .28);
+        }
+    }
+
+    :root[data-theme="dark"] {
+        --bg: #14171c;
+        --panel: #1b1f26;
+        --panel-2: #1f242c;
+        --row-hover: #232935;
+        --sub: #181c22;
+        --border: #2b313b;
+        --border-strong: #384150;
+        --text: #e7ebf1;
+        --text-dim: #9aa4b2;
+        --text-faint: #6c7684;
+        --accent: #57a0f5;
+        --accent-soft: #1c2c42;
+        --blue: #57a0f5;
+        --blue-soft: #1c2c42;
+        --run: #35c07f;
+        --run-soft: #163227;
+        --warn: #e0a94b;
+        --warn-soft: #33290f;
+        --fail: #f0715c;
+        --fail-soft: #3a1f1a;
+        --idle: #6c7684;
+        --idle-soft: #262b34;
+        --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .28);
+    }
+
+    :root[data-theme="light"] {
+        --bg: #f7f8fa;
+        --panel: #fff;
+        --panel-2: #fbfcfd;
+        --row-hover: #f2f5f9;
+        --sub: #f4f6f9;
+        --border: #e4e8ee;
+        --border-strong: #d3d9e2;
+        --text: #1c2330;
+        --text-dim: #5c6675;
+        --text-faint: #8a93a3;
+        --accent: #2f7de6;
+        --accent-soft: #e8f1fd;
+        --blue: #2f7de6;
+        --blue-soft: #e8f1fd;
+        --run: #12925a;
+        --run-soft: #e2f4ec;
+        --warn: #b7791f;
+        --warn-soft: #fbf1dc;
+        --fail: #d1442f;
+        --fail-soft: #fbe7e3;
+        --idle: #8a93a3;
+        --idle-soft: #eef1f5;
+        --shadow: 0 1px 2px rgba(20, 30, 50, .06), 0 4px 16px rgba(20, 30, 50, .05);
+    }
+
+    * {
+        box-sizing: border-box;
+    }
+
+    body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--sans);
+        font-size: 13px;
+        line-height: 1.45;
+        -webkit-font-smoothing: antialiased;
+    }
+
+    .wrap {
+        max-width: 1240px;
+        margin: 0 auto;
+        padding: 18px 20px 70px;
+    }
+
+    [data-ic] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    [data-ic] svg {
+        width: var(--isz, 14px);
+        height: var(--isz, 14px);
+        stroke-width: 2;
+    }
+
+    h2 {
+        font-size: 16px;
+        margin: 0;
+        letter-spacing: -.01em;
+    }
+
+    h4 {
+        margin: 0;
+        font-size: 11px;
+        letter-spacing: .05em;
+        text-transform: uppercase;
+        color: var(--text-faint);
+    }
+
+    .mono {
+        font-family: var(--mono);
+    }
+
+    .num {
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* topbar + tabs */
+    .topbar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 14px;
+    }
+
+    .brand {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        font-weight: 650;
+        font-size: 14px;
+    }
+
+    .brand .logo {
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        background: linear-gradient(135deg, var(--accent), #7b5cf0);
+        display: grid;
+        place-items: center;
+        color: #fff;
+        font-size: 12px;
+        font-weight: 800;
+    }
+
+    .brand .sub {
+        color: var(--text-faint);
+        font-weight: 500;
+        font-size: 12px;
+    }
+
+    .spacer {
+        flex: 1;
+    }
+
+    .theme-btn {
+        border: 1px solid var(--border-strong);
+        background: var(--panel);
+        color: var(--text-dim);
+        border-radius: 7px;
+        padding: 6px 10px;
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+    }
+
+    .theme-btn:hover {
+        color: var(--text);
+        border-color: var(--accent);
+    }
+
+    .tabs {
+        display: flex;
+        gap: 2px;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 16px;
+    }
+
+    .tab {
+        border: 0;
+        background: none;
+        font: inherit;
+        cursor: pointer;
+        padding: 9px 14px;
+        color: var(--text-dim);
+        font-weight: 550;
+        border-bottom: 2px solid transparent;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        margin-bottom: -1px;
+    }
+
+    .tab:hover {
+        color: var(--text);
+    }
+
+    .tab.active {
+        color: var(--text);
+        border-bottom-color: var(--accent);
+    }
+
+    .tab .cnt {
+        font-size: 11px;
+        background: var(--idle-soft);
+        color: var(--text-dim);
+        border-radius: 20px;
+        padding: 1px 7px;
+    }
+
+    .tab.active .cnt {
+        background: var(--accent-soft);
+        color: var(--accent);
+    }
+
+    /* toolbar */
+    .toolbar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+    }
+
+    .search {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        background: var(--panel);
+        border: 1px solid var(--border-strong);
+        border-radius: 7px;
+        padding: 0 10px;
+        height: 32px;
+        flex: 1;
+        min-width: 190px;
+        max-width: 320px;
+    }
+
+    .search input {
+        border: 0;
+        background: none;
+        outline: none;
+        font: inherit;
+        color: var(--text);
+        width: 100%;
+    }
+
+    .search [data-ic] {
+        color: var(--text-faint);
+    }
+
+    .chips {
+        display: flex;
+        gap: 4px;
+        background: var(--idle-soft);
+        padding: 3px;
+        border-radius: 8px;
+    }
+
+    .chip {
+        border: 0;
+        background: none;
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+        padding: 4px 11px;
+        border-radius: 6px;
+        color: var(--text-dim);
+        font-weight: 550;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .chip.active {
+        background: var(--panel);
+        color: var(--text);
+        box-shadow: var(--shadow);
+    }
+
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        border: 1px solid var(--border-strong);
+        background: var(--panel);
+        color: var(--text);
+        border-radius: 7px;
+        padding: 0 12px;
+        height: 32px;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+
+    .btn:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+    }
+
+    .btn.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+    }
+
+    .btn.primary:hover {
+        filter: brightness(1.06);
+        color: #fff;
+    }
+
+    .btn.green {
+        background: var(--run);
+        border-color: var(--run);
+        color: #fff;
+    }
+
+    .btn.green:hover {
+        filter: brightness(1.06);
+        color: #fff;
+    }
+
+    .btn.sm {
+        height: 28px;
+        padding: 0 9px;
+        font-size: 11.5px;
+    }
+
+    .btn.danger:hover {
+        border-color: var(--fail);
+        color: var(--fail);
+    }
+
+    .btn[disabled] {
+        opacity: .45;
+        cursor: not-allowed;
+    }
+
+    .btn[disabled]:hover {
+        border-color: var(--border-strong);
+        color: var(--text);
+    }
+
+    /* table */
+    .table-wrap {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+    }
+
+    .scroll-x {
+        overflow-x: auto;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+
+    thead th {
+        text-align: left;
+        font-weight: 600;
+        font-size: 11px;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        color: var(--text-faint);
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--border);
+        background: var(--panel-2);
+        white-space: nowrap;
+    }
+
+    tbody tr {
+        border-bottom: 1px solid var(--border);
+    }
+
+    tbody tr:last-child {
+        border-bottom: 0;
+    }
+
+    tbody td {
+        padding: 11px 14px;
+        vertical-align: middle;
+    }
+
+    .row-main {
+        cursor: pointer;
+    }
+
+    .row-main:hover {
+        background: var(--row-hover);
+    }
+
+    .row-main:hover .row-actions {
+        opacity: 1;
+    }
+
+    td.actions-cell {
+        text-align: right;
+        white-space: nowrap;
+    }
+
+    .row-actions {
+        display: inline-flex;
+        gap: 2px;
+        opacity: .4;
+        transition: opacity .12s;
+    }
+
+    .icon-btn {
+        border: 0;
+        background: none;
+        cursor: pointer;
+        color: var(--text-dim);
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        display: grid;
+        place-items: center;
+    }
+
+    .icon-btn:hover {
+        background: var(--idle-soft);
+        color: var(--text);
+    }
+
+    .icon-btn.run:hover {
+        color: var(--run);
+        background: var(--run-soft);
+    }
+
+    .icon-btn.stop:hover,
+    .icon-btn.del:hover {
+        color: var(--fail);
+        background: var(--fail-soft);
+    }
+
+    /* status dot + labels */
+    .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        white-space: nowrap;
+    }
+
+    .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex: none;
+    }
+
+    .dot.run {
+        background: var(--blue);
+        box-shadow: 0 0 0 3px var(--blue-soft);
+        animation: pulse 1.6s ease-in-out infinite;
+    }
+
+    .dot.ok {
+        background: var(--run);
+    }
+
+    .dot.warn {
+        background: var(--warn);
+        box-shadow: 0 0 0 3px var(--warn-soft);
+    }
+
+    .dot.fail {
+        background: var(--fail);
+    }
+
+    .dot.idle {
+        background: var(--idle);
+    }
+
+    @keyframes pulse {
+
+        0%,
+        100% {
+            box-shadow: 0 0 0 3px var(--blue-soft);
+        }
+
+        50% {
+            box-shadow: 0 0 0 5px transparent;
+        }
+    }
+
+    @media (prefers-reduced-motion:reduce) {
+        .dot.run {
+            animation: none;
+        }
+    }
+
+    .status-label {
+        font-size: 12px;
+        color: var(--text-dim);
+        font-weight: 550;
+    }
+
+    .name {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+    }
+
+    .name .n {
+        font-weight: 600;
+        color: var(--text);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .name .d {
+        color: var(--text-faint);
+        font-size: 12px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 360px;
+    }
+
+    .chev {
+        color: var(--text-faint);
+        transition: transform .15s;
+        flex: none;
+    }
+
+    .row-main.graph-on .chev,
+    .run-row.open .rchev {
+        transform: rotate(90deg);
+    }
+
+    .name-cell {
+        cursor: pointer;
+    }
+
+    .row-main.graph-on {
+        background: var(--row-hover);
+    }
+
+    .badge {
+        font-size: 10.5px;
+        font-weight: 650;
+        letter-spacing: .03em;
+        text-transform: uppercase;
+        border-radius: 5px;
+        padding: 2px 7px;
+        white-space: nowrap;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .badge.repo {
+        background: var(--accent-soft);
+        color: var(--accent);
+    }
+
+    .badge.global {
+        background: var(--idle-soft);
+        color: var(--text-dim);
+    }
+
+    .badge.built {
+        background: var(--warn-soft);
+        color: var(--warn);
+    }
+
+    .badge.ok {
+        background: var(--run-soft);
+        color: var(--run);
+    }
+
+    .badge.run {
+        background: var(--blue-soft);
+        color: var(--blue);
+    }
+
+    .badge.warn {
+        background: var(--warn-soft);
+        color: var(--warn);
+    }
+
+    .badge.fail {
+        background: var(--fail-soft);
+        color: var(--fail);
+    }
+
+    .badge.idle {
+        background: var(--idle-soft);
+        color: var(--text-dim);
+    }
+
+    .pipe {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .pipe .seg {
+        width: 20px;
+        height: 5px;
+        border-radius: 3px;
+        background: var(--idle-soft);
+    }
+
+    .pipe .seg.done {
+        background: var(--run);
+    }
+
+    .pipe .seg.active {
+        background: var(--blue);
+    }
+
+    .pipe .seg.fail {
+        background: var(--fail);
+    }
+
+    .pipe-num {
+        color: var(--text-dim);
+        font-size: 12px;
+        margin-left: 4px;
+    }
+
+    .when {
+        color: var(--text-dim);
+        font-size: 12px;
+        white-space: nowrap;
+    }
+
+    .tok-cell {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--text-dim);
+        white-space: nowrap;
+    }
+
+    .tok-cell .cost {
+        color: var(--text-faint);
+        font-size: 11px;
+    }
+
+    .model {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--text-dim);
+    }
+
+    .tools {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+    }
+
+    .tool {
+        font-family: var(--mono);
+        font-size: 11px;
+        background: var(--idle-soft);
+        color: var(--text-dim);
+        border-radius: 4px;
+        padding: 1px 6px;
+    }
+
+    /* expanded detail */
+    .detail-row td {
+        padding: 0;
+        background: var(--sub);
+    }
+
+    .detail {
+        display: none;
+        padding: 16px 18px;
+        border-top: 2px solid var(--accent);
+    }
+
+    .detail-row.show>td>.detail {
+        display: block;
+    }
+
+    .detail-row.runs-dr>td>.detail {
+        border-top-color: var(--run);
+    }
+
+    .pane {
+        display: none;
+    }
+
+    .pane.active {
+        display: block;
+    }
+
+    .caption {
+        color: var(--text-faint);
+        font-size: 12px;
+        margin: 0 0 14px;
+    }
+
+    /* runs sub-table (containers of a flow) */
+    .subhead {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 10px;
+    }
+
+    .subhead .lft {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .runs-tbl {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .runs-tbl table {
+        font-size: 12.5px;
+    }
+
+    .runs-tbl thead th {
+        background: var(--panel-2);
+    }
+
+    .run-row>td {
+        padding: 9px 12px;
+    }
+
+    .run-row:hover {
+        background: var(--row-hover);
+    }
+
+    .run-row.sel {
+        background: var(--accent-soft);
+    }
+
+    .rchev {
+        color: var(--text-faint);
+        transition: transform .15s;
+    }
+
+    .run-detail-row>td {
+        padding: 0;
+        background: var(--panel);
+    }
+
+    .run-detail {
+        display: none;
+        padding: 14px;
+        border-top: 1px dashed var(--border-strong);
+    }
+
+    .run-row.open+.run-detail-row .run-detail {
+        display: block;
+    }
+
+    /* run control bar */
+    .runbar {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+        padding: 8px 10px;
+        background: var(--panel-2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+    }
+
+    .runbar .rt {
+        font-weight: 650;
+    }
+
+    .runbar .rsub {
+        color: var(--text-faint);
+        font-size: 11.5px;
+    }
+
+    .toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 11.5px;
+        font-weight: 600;
+        color: var(--text-dim);
+    }
+
+    .sw {
+        width: 30px;
+        height: 17px;
+        border-radius: 20px;
+        background: var(--run);
+        position: relative;
+        flex: none;
+    }
+
+    .sw::after {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 15px;
+        width: 13px;
+        height: 13px;
+        border-radius: 50%;
+        background: #fff;
+        transition: left .15s;
+    }
+
+    .sw.off {
+        background: var(--idle);
+    }
+
+    .sw.off::after {
+        left: 2px;
+    }
+
+    .lock {
+        color: var(--text-faint);
+    }
+
+    .more-menu {
+        position: relative;
+    }
+
+    .menu {
+        position: absolute;
+        right: 0;
+        top: 34px;
+        background: var(--panel);
+        border: 1px solid var(--border-strong);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        padding: 5px;
+        min-width: 170px;
+        z-index: 20;
+        display: none;
+    }
+
+    .more-menu.open .menu {
+        display: block;
+    }
+
+    .menu button {
+        width: 100%;
+        text-align: left;
+        border: 0;
+        background: none;
+        font: inherit;
+        font-size: 12px;
+        color: var(--text);
+        padding: 7px 9px;
+        border-radius: 6px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+    }
+
+    .menu button:hover {
+        background: var(--idle-soft);
+    }
+
+    .menu button.danger {
+        color: var(--fail);
+    }
+
+    .menu .sep {
+        height: 1px;
+        background: var(--border);
+        margin: 4px 0;
+    }
+
+    /* runner sub-tabs */
+    .subtabs {
+        display: flex;
+        gap: 2px;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 12px;
+    }
+
+    .subtab {
+        border: 0;
+        background: none;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        padding: 7px 12px;
+        color: var(--text-dim);
+        border-bottom: 2px solid transparent;
+        margin-bottom: -1px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .subtab.on {
+        color: var(--text);
+        border-bottom-color: var(--accent);
+    }
+
+    .subpane {
+        display: none;
+    }
+
+    .subpane.on {
+        display: block;
+    }
+
+    /* flow graph canvas */
+    .canvas {
+        position: relative;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        background-image: radial-gradient(var(--border) 1px, transparent 1px);
+        background-size: 18px 18px;
+        padding: 20px;
+        overflow-x: auto;
+    }
+
+    .canvas.collapsed {
+        display: none;
+    }
+
+    .icon-btn.gbtn:hover {
+        color: var(--accent);
+        background: var(--accent-soft);
+    }
+
+    .canvas svg.edges {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        overflow: visible;
+    }
+
+    .flow-edge {
+        fill: none;
+        stroke: var(--border-strong);
+        stroke-width: 1.6;
+        stroke-dasharray: 6 6;
+        animation: dash 1.6s linear infinite;
+    }
+
+    .flow-edge.hot {
+        stroke: var(--blue);
+    }
+
+    @keyframes dash {
+        to {
+            stroke-dashoffset: -24;
+        }
+    }
+
+    @media (prefers-reduced-motion:reduce) {
+        .flow-edge {
+            animation: none;
+        }
+    }
+
+    .nodes {
+        position: relative;
+        display: flex;
+        gap: 46px;
+        align-items: stretch;
+        min-width: max-content;
+        z-index: 1;
+    }
+
+    .col {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        min-height: 280px;
+        justify-content: center;
+    }
+
+    .col.branch {
+        justify-content: flex-start;
+    }
+
+    .node {
+        width: 190px;
+        height: 132px;
+        background: var(--panel-2);
+        border: 1.5px solid var(--border-strong);
+        border-radius: 9px;
+        padding: 9px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        overflow: hidden;
+    }
+
+    .node.done {
+        border-color: var(--run);
+    }
+
+    .node.active {
+        border-color: var(--blue);
+        box-shadow: 0 0 0 3px var(--blue-soft);
+    }
+
+    .node.review {
+        border-color: var(--warn);
+        box-shadow: 0 0 0 3px var(--warn-soft);
+    }
+
+    .node.locked {
+        border-style: dashed;
+        opacity: .72;
+    }
+
+    .node.fail {
+        border-color: var(--fail);
+    }
+
+    .node .nt {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-weight: 650;
+        font-size: 12.5px;
+    }
+
+    .node .ni {
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        flex: none;
+        display: grid;
+        place-items: center;
+        font-size: 10px;
+        font-weight: 800;
+        background: var(--idle-soft);
+        color: var(--text-dim);
+    }
+
+    .node.done .ni {
+        background: var(--run);
+        color: #fff;
+    }
+
+    .node.active .ni {
+        background: var(--blue);
+        color: #fff;
+    }
+
+    .node .rv {
+        margin-left: auto;
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .02em;
+        padding: 1px 5px;
+        border-radius: 4px;
+    }
+
+    .rv.ai {
+        background: var(--accent-soft);
+        color: var(--accent);
+    }
+
+    .rv.human {
+        background: var(--warn-soft);
+        color: var(--warn);
+    }
+
+    .node .sl {
+        font-size: 11px;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .node.done .sl {
+        color: var(--run);
+    }
+
+    .node.active .sl {
+        color: var(--blue);
+    }
+
+    .node.review .sl {
+        color: var(--warn);
+    }
+
+    .node.locked .sl {
+        color: var(--text-faint);
+    }
+
+    .node.fail .sl {
+        color: var(--fail);
+    }
+
+    .node .meta {
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--text-faint);
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+    }
+
+    .node .stat {
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--text-dim);
+    }
+
+    .node .acts {
+        display: flex;
+        gap: 2px;
+        margin-top: auto;
+        padding-top: 5px;
+        border-top: 1px solid var(--border);
+    }
+
+    .na {
+        border: 0;
+        background: none;
+        cursor: pointer;
+        color: var(--text-faint);
+        height: 22px;
+        min-width: 24px;
+        border-radius: 5px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        font: inherit;
+        font-size: 10px;
+        font-weight: 650;
+        padding: 0 5px;
+    }
+
+    .na:hover {
+        background: var(--idle-soft);
+        color: var(--text);
+    }
+
+    .na.run:hover,
+    .na.approve:hover {
+        color: var(--run);
+        background: var(--run-soft);
+    }
+
+    .na.stop:hover,
+    .na.reject:hover,
+    .na.reset:hover {
+        color: var(--fail);
+        background: var(--fail-soft);
+    }
+
+    .spin {
+        width: 11px;
+        height: 11px;
+        border: 2px solid currentColor;
+        border-top-color: transparent;
+        border-radius: 50%;
+        animation: spin .7s linear infinite;
+    }
+
+    @keyframes spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    @media (prefers-reduced-motion:reduce) {
+        .spin {
+            animation: none;
+        }
+    }
+
+    /* cost analysis table */
+    .ca-sum {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 10px;
+        color: var(--text-faint);
+        font-size: 12px;
+        flex-wrap: wrap;
+    }
+
+    .ca-sum b {
+        color: var(--text);
+    }
+
+    .ca {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+    }
+
+    .ca th {
+        text-align: left;
+        font-size: 10.5px;
+        text-transform: uppercase;
+        letter-spacing: .03em;
+        color: var(--text-faint);
+        padding: 7px 10px;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .ca td {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .ca tr:last-child td {
+        border-bottom: 0;
+    }
+
+    .ca .num {
+        text-align: right;
+    }
+
+    .share {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+    }
+
+    .share .bar {
+        height: 6px;
+        border-radius: 3px;
+        background: var(--accent);
+    }
+
+    .share .barbg {
+        flex: 1;
+        height: 6px;
+        border-radius: 3px;
+        background: var(--idle-soft);
+        overflow: hidden;
+    }
+
+    /* history timeline */
+    .tl {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        padding-left: 6px;
+    }
+
+    .tl-item {
+        display: flex;
+        gap: 11px;
+        padding: 7px 0;
+        position: relative;
+    }
+
+    .tl-item::before {
+        content: "";
+        position: absolute;
+        left: 5px;
+        top: 22px;
+        bottom: -7px;
+        width: 1.5px;
+        background: var(--border);
+    }
+
+    .tl-item:last-child::before {
+        display: none;
+    }
+
+    .tl-dot {
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        flex: none;
+        margin-top: 4px;
+        background: var(--idle);
+    }
+
+    .tl-dot.ok {
+        background: var(--run);
+    }
+
+    .tl-dot.run {
+        background: var(--blue);
+    }
+
+    .tl-dot.fail {
+        background: var(--fail);
+    }
+
+    .tl-time {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--text-faint);
+    }
+
+    .tl-msg {
+        font-size: 12px;
+    }
+
+    /* console */
+    .console {
+        background: #0d1117;
+        color: #c9d1d9;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        border-radius: 8px;
+        padding: 12px 14px;
+        line-height: 1.6;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        border: 1px solid var(--border-strong);
+    }
+
+    .console .g {
+        color: #7ee787;
+    }
+
+    .console .b {
+        color: #79c0ff;
+    }
+
+    .console .y {
+        color: #e3b341;
+    }
+
+    .console .dim {
+        color: #6e7681;
+    }
+
+    /* banners */
+    .banner {
+        border-radius: 8px;
+        padding: 9px 12px;
+        font-size: 12px;
+        font-weight: 550;
+        margin-top: 12px;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+    }
+
+    .banner.ok {
+        background: var(--run-soft);
+        color: var(--run);
+    }
+
+    .banner.warn {
+        background: var(--warn-soft);
+        color: var(--warn);
+    }
+
+    .banner.fail {
+        background: var(--fail-soft);
+        color: var(--fail);
+    }
+
+    /* stats bar */
+    .stats {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+        margin-bottom: 14px;
+    }
+
+    .stat-card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: 12px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        position: relative;
+        overflow: hidden;
+        cursor: pointer;
+    }
+
+    .stat-card .lbl {
+        font-size: 11px;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        color: var(--text-faint);
+        font-weight: 600;
+    }
+
+    .stat-card .val {
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: -.02em;
+        display: flex;
+        align-items: baseline;
+        gap: 5px;
+    }
+
+    .stat-card .unit {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-faint);
+    }
+
+    .stat-card .hint {
+        font-size: 11px;
+        color: var(--text-faint);
+        font-weight: 500;
+        margin: 0;
+    }
+
+    .stat-card .sparkw {
+        position: absolute;
+        right: 10px;
+        bottom: 8px;
+        opacity: .55;
+    }
+
+    .stat-card.accent .val {
+        color: var(--accent);
+    }
+
+    /* overview extras */
+    .sec {
+        margin-bottom: 22px;
+    }
+
+    .sec-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 10px;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .sec-head h4 {
+        font-size: 12px;
+    }
+
+    .trend {
+        display: flex;
+        align-items: flex-end;
+        gap: 6px;
+        height: 110px;
+        padding: 10px 12px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+    }
+
+    .trend .tb {
+        flex: 1;
+        background: var(--accent);
+        border-radius: 3px 3px 0 0;
+        min-width: 5px;
+        opacity: .85;
+    }
+
+    .trend .tb:hover {
+        opacity: 1;
+    }
+
+    .ov-cols {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+    }
+
+    .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        padding: 6px;
+    }
+
+    .ov-row {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 9px 10px;
+        border-radius: 7px;
+    }
+
+    .ov-row:hover {
+        background: var(--row-hover);
+    }
+
+    .ov-row .ico {
+        width: 30px;
+        height: 30px;
+        border-radius: 7px;
+        background: var(--idle-soft);
+        color: var(--text-dim);
+        display: grid;
+        place-items: center;
+        flex: none;
+    }
+
+    .ov-row .g1 {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .ov-row .t1 {
+        font-weight: 600;
+        font-size: 12.5px;
+    }
+
+    .ov-row .t2 {
+        font-size: 11.5px;
+        color: var(--text-faint);
+    }
+
+    .ov-ok {
+        color: var(--run);
+    }
+
+    .ov-warn {
+        color: var(--warn);
+    }
+
+    /* legend */
+    .legend {
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+        margin-top: 14px;
+        padding: 11px 14px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font-size: 11.5px;
+        color: var(--text-dim);
+    }
+
+    .legend .li {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .legend .sw2 {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+    }
+
+    .hint-p {
+        margin-top: 14px;
+        color: var(--text-faint);
+        font-size: 12px;
+        text-align: center;
+    }
+
+    .hint-p kbd {
+        font-family: var(--mono);
+        background: var(--idle-soft);
+        border-radius: 4px;
+        padding: 1px 5px;
+    }
+
+    @media (max-width:760px) {
+        .stats {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        .ov-cols {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<div class="wrap">
+    <div class="topbar">
+        <div class="brand"><span class="logo">S</span>AI StepFlow<span class="sub">— table UI (full concept)</span>
+        </div>
+        <div class="spacer"></div>
+        <button class="theme-btn" id="themeToggle">◐ Theme</button>
+    </div>
+
+    <nav class="tabs">
+        <button class="tab" data-pane="overview">Overview</button>
+        <button class="tab active" data-pane="flows">Workflows <span class="cnt">3</span></button>
+        <button class="tab" data-pane="agents">Agents <span class="cnt">5</span></button>
+        <button class="tab" data-pane="skills">Skills <span class="cnt">4</span></button>
+    </nav>
+
+    <!-- ================= OVERVIEW ================= -->
+    <section class="pane" id="pane-overview">
+        <div class="toolbar">
+            <div class="chips"><button class="chip active">All</button><button class="chip">Repo</button><button
+                    class="chip">Global</button></div>
+            <div class="spacer"></div>
+            <button class="btn sm"><i data-ic="refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path>
+                        <path d="M3 3v5h5"></path>
+                    </svg></i> Refresh</button>
+        </div>
+
+        <div class="sec">
+            <div class="sec-head">
+                <h4>Library</h4>
+            </div>
+            <div class="stats" style="grid-template-columns:repeat(3,1fr)">
+                <div class="stat-card"><span class="lbl">Workflows</span><span class="val num">3</span>
+                    <p class="hint">1 global · 2 repo</p>
+                </div>
+                <div class="stat-card"><span class="lbl">Agents</span><span class="val num">5</span>
+                    <p class="hint">3 global · 2 repo</p>
+                </div>
+                <div class="stat-card"><span class="lbl">Skills</span><span class="val num">4</span>
+                    <p class="hint">1 global · 3 repo</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="sec">
+            <div class="sec-head">
+                <h4>Runs · last 1M</h4>
+                <div class="chips"><button class="chip">All</button><button class="chip">1D</button><button
+                        class="chip">7D</button><button class="chip">14D</button><button class="chip active">1M</button>
+                </div>
+            </div>
+            <div class="stats">
+                <div class="stat-card"><span class="lbl">Total runs</span><span class="val num">42</span>
+                    <p class="hint">37 completed · 1 in progress</p>
+                </div>
+                <div class="stat-card accent"><span class="lbl">Total cost</span><span class="val num">$128.44</span>
+                    <p class="hint">across 3 workspaces</p>
+                </div>
+                <div class="stat-card"><span class="lbl">Tokens</span><span class="val num">38.6<span
+                            class="unit">M</span></span>
+                    <p class="hint">input + output + cache</p>
+                </div>
+                <div class="stat-card"><span class="lbl">Execution time</span><span class="val num">2<span
+                            class="unit">h</span> 14<span class="unit">m</span></span>
+                    <p class="hint">+ 41m in review</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="sec">
+            <div class="sec-head">
+                <h4>Trend · last 30 days</h4>
+                <div class="chips"><button class="chip active">Cost</button><button class="chip">Tokens</button><button
+                        class="chip">Runs</button></div>
+            </div>
+            <div class="trend" id="trend">
+                <div class="tb" style="height:21%" title="$2.70"></div>
+                <div class="tb" style="height:36%" title="$4.50"></div>
+                <div class="tb" style="height:29%" title="$3.60"></div>
+                <div class="tb" style="height:43%" title="$5.40"></div>
+                <div class="tb" style="height:29%" title="$3.60"></div>
+                <div class="tb" style="height:50%" title="$6.30"></div>
+                <div class="tb" style="height:36%" title="$4.50"></div>
+                <div class="tb" style="height:57%" title="$7.20"></div>
+                <div class="tb" style="height:43%" title="$5.40"></div>
+                <div class="tb" style="height:64%" title="$8.10"></div>
+                <div class="tb" style="height:36%" title="$4.50"></div>
+                <div class="tb" style="height:50%" title="$6.30"></div>
+                <div class="tb" style="height:71%" title="$9.00"></div>
+                <div class="tb" style="height:57%" title="$7.20"></div>
+                <div class="tb" style="height:43%" title="$5.40"></div>
+                <div class="tb" style="height:64%" title="$8.10"></div>
+                <div class="tb" style="height:79%" title="$9.90"></div>
+                <div class="tb" style="height:50%" title="$6.30"></div>
+                <div class="tb" style="height:71%" title="$9.00"></div>
+                <div class="tb" style="height:57%" title="$7.20"></div>
+                <div class="tb" style="height:86%" title="$10.80"></div>
+                <div class="tb" style="height:64%" title="$8.10"></div>
+                <div class="tb" style="height:50%" title="$6.30"></div>
+                <div class="tb" style="height:79%" title="$9.90"></div>
+                <div class="tb" style="height:93%" title="$11.70"></div>
+                <div class="tb" style="height:64%" title="$8.10"></div>
+                <div class="tb" style="height:86%" title="$10.80"></div>
+                <div class="tb" style="height:71%" title="$9.00"></div>
+                <div class="tb" style="height:100%" title="$12.60"></div>
+                <div class="tb" style="height:79%" title="$9.90"></div>
+            </div>
+        </div>
+
+        <div class="ov-cols">
+            <div class="sec">
+                <div class="sec-head">
+                    <h4>Recent workspaces</h4>
+                </div>
+                <div class="card">
+                    <div class="ov-row"><span class="ico"><i data-ic="branch"><svg viewBox="0 0 24 24" fill="none"
+                                    stroke="currentColor">
+                                    <circle cx="6" cy="6" r="2.5"></circle>
+                                    <circle cx="6" cy="18" r="2.5"></circle>
+                                    <circle cx="18" cy="8" r="2.5"></circle>
+                                    <path d="M6 8.5v7M18 10.5c0 4-6 1-12 5.5"></path>
+                                </svg></i></span>
+                        <div class="g1">
+                            <div class="t1">ai-stepflow</div>
+                            <div class="t2 mono">~/ai-stepflow</div>
+                        </div><span class="badge run">current</span>
+                    </div>
+                    <div class="ov-row"><span class="ico"><i data-ic="branch"><svg viewBox="0 0 24 24" fill="none"
+                                    stroke="currentColor">
+                                    <circle cx="6" cy="6" r="2.5"></circle>
+                                    <circle cx="6" cy="18" r="2.5"></circle>
+                                    <circle cx="18" cy="8" r="2.5"></circle>
+                                    <path d="M6 8.5v7M18 10.5c0 4-6 1-12 5.5"></path>
+                                </svg></i></span>
+                        <div class="g1">
+                            <div class="t1">ccp-airp</div>
+                            <div class="t2 mono">~/work/ccp-airp</div>
+                        </div><span class="when">3h ago</span>
+                    </div>
+                    <div class="ov-row"><span class="ico"><i data-ic="branch"><svg viewBox="0 0 24 24" fill="none"
+                                    stroke="currentColor">
+                                    <circle cx="6" cy="6" r="2.5"></circle>
+                                    <circle cx="6" cy="18" r="2.5"></circle>
+                                    <circle cx="18" cy="8" r="2.5"></circle>
+                                    <path d="M6 8.5v7M18 10.5c0 4-6 1-12 5.5"></path>
+                                </svg></i></span>
+                        <div class="g1">
+                            <div class="t1">portal-web</div>
+                            <div class="t2 mono">~/work/portal-web</div>
+                        </div><span class="when">2d ago</span>
+                    </div>
+                </div>
+            </div>
+            <div class="sec">
+                <div class="sec-head">
+                    <h4>Quick settings</h4>
+                </div>
+                <div class="card">
+                    <div class="ov-row"><span class="ico"><i data-ic="branch"><svg viewBox="0 0 24 24" fill="none"
+                                    stroke="currentColor">
+                                    <circle cx="6" cy="6" r="2.5"></circle>
+                                    <circle cx="6" cy="18" r="2.5"></circle>
+                                    <circle cx="18" cy="8" r="2.5"></circle>
+                                    <path d="M6 8.5v7M18 10.5c0 4-6 1-12 5.5"></path>
+                                </svg></i></span>
+                        <div class="g1">
+                            <div class="t1">MCP servers</div>
+                            <div class="t2"><span class="ov-ok">2 connected: github, figma</span> · <span
+                                    class="ov-ok">GitNexus connected</span></div>
+                        </div><button class="btn sm">Connect</button>
+                    </div>
+                    <div class="ov-row"><span class="ico"><i data-ic="bot"><svg viewBox="0 0 24 24" fill="none"
+                                    stroke="currentColor">
+                                    <rect x="4" y="8" width="16" height="12" rx="2"></rect>
+                                    <path d="M12 8V4M9 14h.01M15 14h.01"></path>
+                                </svg></i></span>
+                        <div class="g1">
+                            <div class="t1">Default agents &amp; skills library</div>
+                            <div class="t2"><span class="ov-ok">Installed in ~/.claude</span> · bundled SDLC kit</div>
+                        </div><button class="btn sm">Open folder</button>
+                    </div>
+                    <div class="ov-row"><span class="ico"><i data-ic="zap"><svg viewBox="0 0 24 24" fill="none"
+                                    stroke="currentColor">
+                                    <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"></path>
+                                </svg></i></span>
+                        <div class="g1">
+                            <div class="t1">AST graph &amp; run settings</div>
+                            <div class="t2">timeout, max turns, headless MCP allowlist</div>
+                        </div><button class="btn sm">Settings</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ================= WORKFLOWS ================= -->
+    <section class="pane active" id="pane-flows">
+        <p class="caption">Flow = định nghĩa (image) · Run = lần chạy (container). <b>Click tên flow → flow graph</b> ·
+            <b>action Runs (☰) → danh sách runs</b> → mở 1 run để vào runner (trạng thái &amp; action từng step, Cost /
+            Output / History).</p>
+
+        <div class="stats">
+            <div class="stat-card"><span class="lbl">Active runs</span><span class="val num">1<span class="unit">/ 3
+                        flows</span></span>
+                <p class="hint">1 running now</p>
+                <svg class="sparkw" width="56" height="20" viewBox="0 0 56 20">
+                    <polyline points="0,15 11,13 22,14 33,8 44,10 56,4" fill="none" stroke="var(--run)"
+                        stroke-width="1.6"></polyline>
+                </svg>
+            </div>
+            <div class="stat-card accent"><span class="lbl">Tokens (today)</span><span class="val num">1.28<span
+                        class="unit">M</span></span>
+                <p class="hint">▲ 34% vs yesterday</p>
+                <svg class="sparkw" width="56" height="20" viewBox="0 0 56 20">
+                    <polyline points="0,17 11,11 22,13 33,7 44,9 56,3" fill="none" stroke="var(--accent)"
+                        stroke-width="1.6"></polyline>
+                </svg>
+            </div>
+            <div class="stat-card"><span class="lbl">Cost (today)</span><span class="val num">$4.17</span>
+                <p class="hint">within budget</p>
+                <svg class="sparkw" width="56" height="20" viewBox="0 0 56 20">
+                    <polyline points="0,9 11,11 22,7 33,10 44,6 56,8" fill="none" stroke="var(--text-faint)"
+                        stroke-width="1.6"></polyline>
+                </svg>
+            </div>
+            <div class="stat-card"><span class="lbl">Avg run time</span><span class="val num">3<span class="unit">m
+                        42s</span></span>
+                <p class="hint">+ 48s review</p>
+                <svg class="sparkw" width="56" height="20" viewBox="0 0 56 20">
+                    <polyline points="0,6 11,9 22,7 33,12 44,10 56,13" fill="none" stroke="var(--warn)"
+                        stroke-width="1.6"></polyline>
+                </svg>
+            </div>
+        </div>
+
+        <div class="toolbar">
+            <div class="search"><i data-ic="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <circle cx="11" cy="11" r="7"></circle>
+                        <path d="m21 21-4.3-4.3"></path>
+                    </svg></i><input placeholder="Search workflows…"></div>
+            <div class="chips"><button class="chip active">All</button><button class="chip">Repo</button><button
+                    class="chip">Global</button></div>
+            <button class="btn sm"><i data-ic="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h6M14 18h6"></path>
+                        <circle cx="16" cy="6" r="2"></circle>
+                        <circle cx="8" cy="12" r="2"></circle>
+                        <circle cx="12" cy="18" r="2"></circle>
+                    </svg></i> Filters</button>
+            <div class="spacer"></div>
+            <button class="btn primary"><i data-ic="plus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.2">
+                        <path d="M12 5v14M5 12h14"></path>
+                    </svg></i> New Flow</button>
+        </div>
+
+        <div class="table-wrap scroll-x">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width:140px">Status</th>
+                        <th>Name</th>
+                        <th style="width:110px">Runs</th>
+                        <th style="width:80px">Scope</th>
+                        <th style="width:120px">Steps</th>
+                        <th style="width:150px"></th>
+                    </tr>
+                </thead>
+                <tbody>
+
+                    <!-- FLOW 1: Feature Build & QA (expanded, has runs) -->
+                    <tr class="row-main" data-flow="">
+                        <td><span class="status"><span class="dot run"></span><span
+                                    class="status-label">Running</span></span></td>
+                        <td class="name-cell" data-graph="" title="Show flow graph">
+                            <div class="name">
+                                <span class="n"><i data-ic="chev" class="chev"><svg viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <path d="m9 6 6 6-6 6"></path>
+                                        </svg></i> Feature Build &amp; QA</span>
+                                <span class="d">Plan → implement → test &amp; review in parallel → ship.</span>
+                            </div>
+                        </td>
+                        <td class="mono num">2 runs</td>
+                        <td><span class="badge repo">repo</span></td>
+                        <td><span class="pipe"><span class="seg done"></span><span class="seg done"></span><span
+                                    class="seg active"></span><span class="seg"></span><span class="seg"></span><span
+                                    class="pipe-num">5</span></span></td>
+                        <td class="actions-cell"><span class="row-actions">
+                                <button class="icon-btn run" title="New run"><i data-ic="play"><svg viewBox="0 0 24 24"
+                                            fill="currentColor">
+                                            <path d="M8 5v14l11-7z"></path>
+                                        </svg></i></button>
+                                <button class="icon-btn" title="Runs" data-runs=""><i data-ic="lines"><svg
+                                            viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <path d="M4 6h16M4 12h16M4 18h10"></path>
+                                        </svg></i></button>
+                                <button class="icon-btn" title="Edit"><i data-ic="pencil"><svg viewBox="0 0 24 24"
+                                            fill="none" stroke="currentColor">
+                                            <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                                        </svg></i></button>
+                                <button class="icon-btn" title="Details"><i data-ic="info"><svg viewBox="0 0 24 24"
+                                            fill="none" stroke="currentColor">
+                                            <circle cx="12" cy="12" r="9"></circle>
+                                            <path d="M12 11v5M12 8h.01"></path>
+                                        </svg></i></button>
+                                <button class="icon-btn del" title="Delete"><i data-ic="trash"><svg viewBox="0 0 24 24"
+                                            fill="none" stroke="currentColor">
+                                            <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path>
+                                        </svg></i></button>
+                            </span></td>
+                    </tr>
+                    <tr class="detail-row graph-dr">
+                        <td colspan="6">
+                            <div class="detail">
+                                <div class="subhead">
+                                    <div class="lft">
+                                        <h4>Flow graph</h4><span class="badge idle">preview — no run</span>
+                                    </div>
+                                </div>
+                                <div class="canvas def-canvas" style="min-height:320px">
+                                    <svg class="edges">
+                                        <path class="flow-edge" d="M210,160 C233,160 233,160 256,160"></path>
+                                        <path class="flow-edge" d="M446,160 C469,160 469,86 492,86"></path>
+                                        <path class="flow-edge" d="M446,160 C469,160 469,234 492,234"></path>
+                                        <path class="flow-edge" d="M682,86 C705,86 705,160 728,160"></path>
+                                        <path class="flow-edge" d="M682,234 C705,234 705,160 728,160"></path>
+                                    </svg>
+                                    <div class="nodes">
+                                        <div class="col">
+                                            <div class="node">
+                                                <div class="nt"><span class="ni">1</span> Plan <span
+                                                        class="rv ai">AI</span></div>
+                                                <div class="meta"><span>agent: aidlc-tech-lead</span><span>skill:
+                                                        /create-plan</span></div>
+                                                <div class="stat">depends on: —</div>
+                                            </div>
+                                        </div>
+                                        <div class="col">
+                                            <div class="node">
+                                                <div class="nt"><span class="ni">2</span> Implement <span
+                                                        class="rv ai">AI</span></div>
+                                                <div class="meta"><span>agent: aidlc-developer</span><span>skill:
+                                                        /aisf-skill-implement</span></div>
+                                                <div class="stat">depends on: Plan</div>
+                                            </div>
+                                        </div>
+                                        <div class="col branch">
+                                            <div class="node">
+                                                <div class="nt"><span class="ni">3</span> Test <span
+                                                        class="rv ai">AI</span></div>
+                                                <div class="meta"><span>agent: aidlc-qa</span><span>skill:
+                                                        /aisf-skill-test-run</span></div>
+                                                <div class="stat">depends on: Implement</div>
+                                            </div>
+                                            <div class="node">
+                                                <div class="nt"><span class="ni">4</span> Review <span
+                                                        class="rv human">Human</span></div>
+                                                <div class="meta"><span>agent: aidlc-security</span><span>skill:
+                                                        /aisf-skill-review</span></div>
+                                                <div class="stat">depends on: Implement</div>
+                                            </div>
+                                        </div>
+                                        <div class="col">
+                                            <div class="node">
+                                                <div class="nt"><span class="ni">5</span> Ship <span
+                                                        class="rv ai">AI</span></div>
+                                                <div class="meta"><span>agent: aidlc-devops</span><span>skill:
+                                                        /aisf-skill-document</span></div>
+                                                <div class="stat">depends on: Test, Review</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr class="detail-row runs-dr show">
+                        <td colspan="6">
+                            <div class="detail">
+                                <div class="subhead">
+                                    <div class="lft">
+                                        <h4>Runs</h4><span class="badge idle">2 total</span>
+                                    </div>
+                                    <span class="rsub">Tạo run mới bằng nút ▶ trên dòng flow</span>
+                                </div>
+
+                                <div class="runs-tbl scroll-x">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th style="width:32px"></th>
+                                                <th>Run</th>
+                                                <th style="width:120px">Status</th>
+                                                <th style="width:90px">Progress</th>
+                                                <th style="width:80px">Tokens</th>
+                                                <th style="width:70px">Cost</th>
+                                                <th style="width:90px">Task time</th>
+                                                <th style="width:90px">Started</th>
+                                                <th style="width:150px"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+
+                                            <!-- RUN A: in progress, selected + expanded -->
+                                            <tr class="run-row sel open" data-run="">
+                                                <td><i data-ic="chev" class="rchev"><svg viewBox="0 0 24 24" fill="none"
+                                                            stroke="currentColor" stroke-width="2.5">
+                                                            <path d="m9 6 6 6-6 6"></path>
+                                                        </svg></i></td>
+                                                <td><b>feature-auth</b> <span class="mono"
+                                                        style="color:var(--text-faint)">#a3f1</span></td>
+                                                <td><span class="badge run"><i data-ic="play" style="--isz:10px"><svg
+                                                                viewBox="0 0 24 24" fill="currentColor">
+                                                                <path d="M8 5v14l11-7z"></path>
+                                                            </svg></i> Running</span></td>
+                                                <td class="mono num">2 / 5</td>
+                                                <td class="mono num">876K</td>
+                                                <td class="mono num">$2.61</td>
+                                                <td class="mono num">4m 08s</td>
+                                                <td class="when">12m ago</td>
+                                                <td class="actions-cell"><span class="row-actions" style="opacity:1">
+                                                        <button class="icon-btn" title="Report"><i data-ic="copy"><svg
+                                                                    viewBox="0 0 24 24" fill="none"
+                                                                    stroke="currentColor">
+                                                                    <rect x="9" y="9" width="12" height="12" rx="2">
+                                                                    </rect>
+                                                                    <path d="M5 15V5a2 2 0 0 1 2-2h10"></path>
+                                                                </svg></i></button>
+                                                        <button class="icon-btn" title="Reset all steps"><i
+                                                                data-ic="reset"><svg viewBox="0 0 24 24" fill="none"
+                                                                    stroke="currentColor">
+                                                                    <path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path>
+                                                                    <path d="M3 3v5h5"></path>
+                                                                </svg></i></button>
+                                                        <button class="icon-btn del" title="Delete run"><i
+                                                                data-ic="trash"><svg viewBox="0 0 24 24" fill="none"
+                                                                    stroke="currentColor">
+                                                                    <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path>
+                                                                </svg></i></button>
+                                                    </span></td>
+                                            </tr>
+                                            <tr class="run-detail-row">
+                                                <td colspan="9">
+                                                    <div class="run-detail">
+
+                                                        <!-- run control bar -->
+                                                        <div class="runbar">
+                                                            <span class="badge run"><i data-ic="play"
+                                                                    style="--isz:10px"><svg viewBox="0 0 24 24"
+                                                                        fill="currentColor">
+                                                                        <path d="M8 5v14l11-7z"></path>
+                                                                    </svg></i> Running</span>
+                                                            <span class="rt">feature-auth</span>
+                                                            <span class="rsub">2/5 steps done · 4m 08s · started 12m
+                                                                ago</span>
+                                                            <div class="spacer"></div>
+                                                            <span class="toggle">Auto review <span class="sw"></span> <i
+                                                                    data-ic="lock" class="lock"
+                                                                    title="Locked — reset run to change"><svg
+                                                                        viewBox="0 0 24 24" fill="none"
+                                                                        stroke="currentColor">
+                                                                        <rect x="4" y="10" width="16" height="11"
+                                                                            rx="2"></rect>
+                                                                        <path d="M8 10V7a4 4 0 0 1 8 0v3"></path>
+                                                                    </svg></i></span>
+                                                            <button class="btn sm" disabled=""
+                                                                title="Enabled when all steps done"><i
+                                                                    data-ic="check"><svg viewBox="0 0 24 24" fill="none"
+                                                                        stroke="currentColor">
+                                                                        <path d="M20 6 9 17l-5-5"></path>
+                                                                    </svg></i> Done Run</button>
+                                                            <div class="more-menu" id="mm1">
+                                                                <button class="btn sm"
+                                                                    onclick="document.getElementById('mm1').classList.toggle('open')"><i
+                                                                        data-ic="more"><svg viewBox="0 0 24 24"
+                                                                            fill="currentColor">
+                                                                            <circle cx="5" cy="12" r="2"></circle>
+                                                                            <circle cx="12" cy="12" r="2"></circle>
+                                                                            <circle cx="19" cy="12" r="2"></circle>
+                                                                        </svg></i></button>
+                                                                <div class="menu">
+                                                                    <button><i data-ic="reset"><svg viewBox="0 0 24 24"
+                                                                                fill="none" stroke="currentColor">
+                                                                                <path d="M3 12a9 9 0 1 0 3-6.7L3 8">
+                                                                                </path>
+                                                                                <path d="M3 3v5h5"></path>
+                                                                            </svg></i> Reset all steps</button>
+                                                                    <button><i data-ic="check"><svg viewBox="0 0 24 24"
+                                                                                fill="none" stroke="currentColor">
+                                                                                <path d="M20 6 9 17l-5-5"></path>
+                                                                            </svg></i> Verify</button>
+                                                                    <button><i data-ic="copy"><svg viewBox="0 0 24 24"
+                                                                                fill="none" stroke="currentColor">
+                                                                                <rect x="9" y="9" width="12" height="12"
+                                                                                    rx="2"></rect>
+                                                                                <path d="M5 15V5a2 2 0 0 1 2-2h10">
+                                                                                </path>
+                                                                            </svg></i> Export report</button>
+                                                                    <div class="sep"></div>
+                                                                    <button class="danger"><i data-ic="trash"><svg
+                                                                                viewBox="0 0 24 24" fill="none"
+                                                                                stroke="currentColor">
+                                                                                <path
+                                                                                    d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14">
+                                                                                </path>
+                                                                            </svg></i> Delete run</button>
+                                                                </div>
+                                                            </div>
+                                                            <button class="icon-btn" title="Close runner"><i
+                                                                    data-ic="x"><svg viewBox="0 0 24 24" fill="none"
+                                                                        stroke="currentColor">
+                                                                        <path d="M18 6 6 18M6 6l12 12"></path>
+                                                                    </svg></i></button>
+                                                        </div>
+
+                                                        <!-- runner sub-tabs -->
+                                                        <div class="subtabs" data-subtabs="">
+                                                            <button class="subtab" data-st="graph"><i
+                                                                    data-ic="graph"><svg viewBox="0 0 24 24" fill="none"
+                                                                        stroke="currentColor">
+                                                                        <rect x="3" y="4" width="7" height="7" rx="1">
+                                                                        </rect>
+                                                                        <rect x="14" y="13" width="7" height="7" rx="1">
+                                                                        </rect>
+                                                                        <path d="M10 7h4v6"></path>
+                                                                    </svg></i> Graph</button>
+                                                            <button class="subtab on" data-st="cost"><i
+                                                                    data-ic="chart"><svg viewBox="0 0 24 24" fill="none"
+                                                                        stroke="currentColor">
+                                                                        <path d="M4 20V10M10 20V4M16 20v-7M22 20H2">
+                                                                        </path>
+                                                                    </svg></i> Cost analysis</button>
+                                                            <button class="subtab" data-st="out"><i data-ic="lines"><svg
+                                                                        viewBox="0 0 24 24" fill="none"
+                                                                        stroke="currentColor">
+                                                                        <path d="M4 6h16M4 12h16M4 18h10"></path>
+                                                                    </svg></i> Output</button>
+                                                            <button class="subtab" data-st="hist"><i
+                                                                    data-ic="clock"><svg viewBox="0 0 24 24" fill="none"
+                                                                        stroke="currentColor">
+                                                                        <circle cx="12" cy="12" r="9"></circle>
+                                                                        <path d="M12 7v5l3 2"></path>
+                                                                    </svg></i> History</button>
+                                                        </div>
+
+                                                        <!-- GRAPH -->
+                                                        <div class="subpane" data-sp="graph">
+                                                            <div class="canvas" style="min-height:320px">
+                                                                <svg class="edges">
+                                                                    <path class="flow-edge"
+                                                                        d="M210,160 C233,160 233,160 256,160"></path>
+                                                                    <path class="flow-edge hot"
+                                                                        d="M446,160 C469,160 469,86 492,86"></path>
+                                                                    <path class="flow-edge"
+                                                                        d="M446,160 C469,160 469,234 492,234"></path>
+                                                                    <path class="flow-edge"
+                                                                        d="M682,86 C705,86 705,160 728,160"></path>
+                                                                    <path class="flow-edge"
+                                                                        d="M682,234 C705,234 705,160 728,160"></path>
+                                                                </svg>
+                                                                <div class="nodes">
+                                                                    <div class="col">
+                                                                        <div class="node done">
+                                                                            <div class="nt"><span class="ni"><i
+                                                                                        data-ic="check"
+                                                                                        style="--isz:11px"><svg
+                                                                                            viewBox="0 0 24 24"
+                                                                                            fill="none"
+                                                                                            stroke="currentColor">
+                                                                                            <path d="M20 6 9 17l-5-5">
+                                                                                            </path>
+                                                                                        </svg></i></span> Plan <span
+                                                                                    class="rv ai">AI</span></div>
+                                                                            <div class="sl"><i data-ic="check"
+                                                                                    style="--isz:12px"><svg
+                                                                                        viewBox="0 0 24 24" fill="none"
+                                                                                        stroke="currentColor">
+                                                                                        <path d="M20 6 9 17l-5-5">
+                                                                                        </path>
+                                                                                    </svg></i> Approved</div>
+                                                                            <div class="meta">
+                                                                                <span>aidlc-tech-lead</span><span>/create-plan</span>
+                                                                            </div>
+                                                                            <div class="stat">203K · $0.61 · 41s · rev 1
+                                                                            </div>
+                                                                            <div class="acts"><button
+                                                                                    class="na reset"><i
+                                                                                        data-ic="reset"><svg
+                                                                                            viewBox="0 0 24 24"
+                                                                                            fill="none"
+                                                                                            stroke="currentColor">
+                                                                                            <path
+                                                                                                d="M3 12a9 9 0 1 0 3-6.7L3 8">
+                                                                                            </path>
+                                                                                            <path d="M3 3v5h5"></path>
+                                                                                        </svg></i>
+                                                                                    Re-run</button><button
+                                                                                    class="na reset">Reset</button><button
+                                                                                    class="na"><i data-ic="lines"><svg
+                                                                                            viewBox="0 0 24 24"
+                                                                                            fill="none"
+                                                                                            stroke="currentColor">
+                                                                                            <path
+                                                                                                d="M4 6h16M4 12h16M4 18h10">
+                                                                                            </path>
+                                                                                        </svg></i></button></div>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <div class="col">
+                                                                        <div class="node done">
+                                                                            <div class="nt"><span class="ni"><i
+                                                                                        data-ic="check"
+                                                                                        style="--isz:11px"><svg
+                                                                                            viewBox="0 0 24 24"
+                                                                                            fill="none"
+                                                                                            stroke="currentColor">
+                                                                                            <path d="M20 6 9 17l-5-5">
+                                                                                            </path>
+                                                                                        </svg></i></span> Implement
+                                                                                <span class="rv ai">AI</span></div>
+                                                                            <div class="sl"><i data-ic="check"
+                                                                                    style="--isz:12px"><svg
+                                                                                        viewBox="0 0 24 24" fill="none"
+                                                                                        stroke="currentColor">
+                                                                                        <path d="M20 6 9 17l-5-5">
+                                                                                        </path>
+                                                                                    </svg></i> Approved</div>
+                                                                            <div class="meta">
+                                                                                <span>aidlc-developer</span><span>/aisf-skill-implement</span>
+                                                                            </div>
+                                                                            <div class="stat">468K · $1.40 · 2m 06s ·
+                                                                                rev 2</div>
+                                                                            <div class="acts"><button
+                                                                                    class="na reset"><i
+                                                                                        data-ic="reset"><svg
+                                                                                            viewBox="0 0 24 24"
+                                                                                            fill="none"
+                                                                                            stroke="currentColor">
+                                                                                            <path
+                                                                                                d="M3 12a9 9 0 1 0 3-6.7L3 8">
+                                                                                            </path>
+                                                                                            <path d="M3 3v5h5"></path>
+                                                                                        </svg></i>
+                                                                                    Re-run</button><button
+                                                                                    class="na reset">Reset</button><button
+                                                                                    class="na"><i data-ic="lines"><svg
+                                                                                            viewBox="0 0 24 24"
+                                                                                            fill="none"
+                                                                                            stroke="currentColor">
+                                                                                            <path
+                                                                                                d="M4 6h16M4 12h16M4 18h10">
+                                                                                            </path>
+                                                                                        </svg></i></button></div>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <div class="col branch">
+                                                                        <div class="node active">
+                                                                            <div class="nt"><span class="ni">3</span>
+                                                                                Test <span class="rv ai">AI</span></div>
+                                                                            <div class="sl"><span class="spin"></span>
+                                                                                AI working…</div>
+                                                                            <div class="meta">
+                                                                                <span>aidlc-qa</span><span>/aisf-skill-test-run</span>
+                                                                            </div>
+                                                                            <div class="stat">205K · … · running</div>
+                                                                            <div class="acts"><button class="na stop"><i
+                                                                                        data-ic="stop"><svg
+                                                                                            viewBox="0 0 24 24"
+                                                                                            fill="currentColor">
+                                                                                            <rect x="6" y="6" width="12"
+                                                                                                height="12" rx="2">
+                                                                                            </rect>
+                                                                                        </svg></i> Stop</button><button
+                                                                                    class="na"><i data-ic="lines"><svg
+                                                                                            viewBox="0 0 24 24"
+                                                                                            fill="none"
+                                                                                            stroke="currentColor">
+                                                                                            <path
+                                                                                                d="M4 6h16M4 12h16M4 18h10">
+                                                                                            </path>
+                                                                                        </svg></i> Output</button></div>
+                                                                        </div>
+                                                                        <div class="node review">
+                                                                            <div class="nt"><span class="ni">4</span>
+                                                                                Review <span
+                                                                                    class="rv human">Human</span></div>
+                                                                            <div class="sl"><i data-ic="info"
+                                                                                    style="--isz:12px"><svg
+                                                                                        viewBox="0 0 24 24" fill="none"
+                                                                                        stroke="currentColor">
+                                                                                        <circle cx="12" cy="12" r="9">
+                                                                                        </circle>
+                                                                                        <path d="M12 11v5M12 8h.01">
+                                                                                        </path>
+                                                                                    </svg></i> Awaiting review</div>
+                                                                            <div class="meta">
+                                                                                <span>aidlc-security</span><span>/aisf-skill-review</span>
+                                                                            </div>
+                                                                            <div class="stat">— waiting_human</div>
+                                                                            <div class="acts"><button
+                                                                                    class="na approve"><i
+                                                                                        data-ic="check"><svg
+                                                                                            viewBox="0 0 24 24"
+                                                                                            fill="none"
+                                                                                            stroke="currentColor">
+                                                                                            <path d="M20 6 9 17l-5-5">
+                                                                                            </path>
+                                                                                        </svg></i>
+                                                                                    Approve</button><button
+                                                                                    class="na reject"><i
+                                                                                        data-ic="x"><svg
+                                                                                            viewBox="0 0 24 24"
+                                                                                            fill="none"
+                                                                                            stroke="currentColor">
+                                                                                            <path
+                                                                                                d="M18 6 6 18M6 6l12 12">
+                                                                                            </path>
+                                                                                        </svg></i>
+                                                                                    Reject</button><button class="na"><i
+                                                                                        data-ic="file"><svg
+                                                                                            viewBox="0 0 24 24"
+                                                                                            fill="none"
+                                                                                            stroke="currentColor">
+                                                                                            <path
+                                                                                                d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z">
+                                                                                            </path>
+                                                                                            <path d="M14 2v6h6"></path>
+                                                                                        </svg></i></button></div>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <div class="col">
+                                                                        <div class="node locked">
+                                                                            <div class="nt"><span class="ni"><i
+                                                                                        data-ic="lock"
+                                                                                        style="--isz:10px"><svg
+                                                                                            viewBox="0 0 24 24"
+                                                                                            fill="none"
+                                                                                            stroke="currentColor">
+                                                                                            <rect x="4" y="10"
+                                                                                                width="16" height="11"
+                                                                                                rx="2"></rect>
+                                                                                            <path
+                                                                                                d="M8 10V7a4 4 0 0 1 8 0v3">
+                                                                                            </path>
+                                                                                        </svg></i></span> Ship <span
+                                                                                    class="rv ai">AI</span></div>
+                                                                            <div class="sl"><i data-ic="lock"
+                                                                                    style="--isz:12px"><svg
+                                                                                        viewBox="0 0 24 24" fill="none"
+                                                                                        stroke="currentColor">
+                                                                                        <rect x="4" y="10" width="16"
+                                                                                            height="11" rx="2"></rect>
+                                                                                        <path
+                                                                                            d="M8 10V7a4 4 0 0 1 8 0v3">
+                                                                                        </path>
+                                                                                    </svg></i> Locked</div>
+                                                                            <div class="meta">
+                                                                                <span>aidlc-devops</span><span>/aisf-skill-document</span>
+                                                                            </div>
+                                                                            <div class="stat">waiting deps: Test, Review
+                                                                            </div>
+                                                                            <div class="acts"><button class="na"
+                                                                                    disabled="" style="opacity:.5"><i
+                                                                                        data-ic="lock"><svg
+                                                                                            viewBox="0 0 24 24"
+                                                                                            fill="none"
+                                                                                            stroke="currentColor">
+                                                                                            <rect x="4" y="10"
+                                                                                                width="16" height="11"
+                                                                                                rx="2"></rect>
+                                                                                            <path
+                                                                                                d="M8 10V7a4 4 0 0 1 8 0v3">
+                                                                                            </path>
+                                                                                        </svg></i> Locked</button></div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <div class="banner warn"><i data-ic="info"><svg
+                                                                        viewBox="0 0 24 24" fill="none"
+                                                                        stroke="currentColor">
+                                                                        <circle cx="12" cy="12" r="9"></circle>
+                                                                        <path d="M12 11v5M12 8h.01"></path>
+                                                                    </svg></i> Step 4 “Review” is a human-review gate —
+                                                                approve or reject to let “Ship” unlock.</div>
+                                                            <div class="legend">
+                                                                <span class="li"><span class="sw2"
+                                                                        style="background:var(--run)"></span> done /
+                                                                    approved</span>
+                                                                <span class="li"><span class="sw2"
+                                                                        style="background:var(--blue)"></span> running /
+                                                                    reviewing</span>
+                                                                <span class="li"><span class="sw2"
+                                                                        style="background:var(--warn)"></span> waiting
+                                                                    human</span>
+                                                                <span class="li"><span class="sw2"
+                                                                        style="background:var(--fail)"></span> failed /
+                                                                    rejected / cancelled</span>
+                                                                <span class="li"><span class="sw2"
+                                                                        style="background:var(--idle)"></span> locked /
+                                                                    ready</span>
+                                                            </div>
+                                                        </div>
+
+                                                        <!-- COST -->
+                                                        <div class="subpane on" data-sp="cost">
+                                                            <div class="ca-sum"><span>Total <b>$2.61</b> · <b>876K</b>
+                                                                    tokens</span><span>Task <b>4m
+                                                                        08s</b></span><span>Review
+                                                                    <b>+38s</b></span><span>Model <b>sonnet /
+                                                                        opus</b></span></div>
+                                                            <table class="ca">
+                                                                <thead>
+                                                                    <tr>
+                                                                        <th>Step</th>
+                                                                        <th>Status</th>
+                                                                        <th>Model</th>
+                                                                        <th class="num">Tokens</th>
+                                                                        <th class="num">Cost</th>
+                                                                        <th class="num">Task time</th>
+                                                                        <th style="width:140px">Cost share</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    <tr>
+                                                                        <td>Plan</td>
+                                                                        <td><span class="badge ok">approved</span></td>
+                                                                        <td class="mono">opus</td>
+                                                                        <td class="num mono">203K</td>
+                                                                        <td class="num mono">$0.61</td>
+                                                                        <td class="num mono">41s</td>
+                                                                        <td>
+                                                                            <div class="share">
+                                                                                <div class="barbg">
+                                                                                    <div class="bar" style="width:23%">
+                                                                                    </div>
+                                                                                </div><span class="mono">23%</span>
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                    <tr>
+                                                                        <td>Implement</td>
+                                                                        <td><span class="badge ok">approved</span></td>
+                                                                        <td class="mono">sonnet</td>
+                                                                        <td class="num mono">468K</td>
+                                                                        <td class="num mono">$1.40</td>
+                                                                        <td class="num mono">2m 06s</td>
+                                                                        <td>
+                                                                            <div class="share">
+                                                                                <div class="barbg">
+                                                                                    <div class="bar" style="width:54%">
+                                                                                    </div>
+                                                                                </div><span class="mono">54%</span>
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                    <tr>
+                                                                        <td>Test</td>
+                                                                        <td><span class="badge run">running</span></td>
+                                                                        <td class="mono">sonnet</td>
+                                                                        <td class="num mono">205K</td>
+                                                                        <td class="num mono">$0.60</td>
+                                                                        <td class="num mono">…</td>
+                                                                        <td>
+                                                                            <div class="share">
+                                                                                <div class="barbg">
+                                                                                    <div class="bar" style="width:23%">
+                                                                                    </div>
+                                                                                </div><span class="mono">23%</span>
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                    <tr>
+                                                                        <td>Review</td>
+                                                                        <td><span class="badge warn">waiting</span></td>
+                                                                        <td class="mono"
+                                                                            style="color:var(--text-faint)">—</td>
+                                                                        <td class="num mono">—</td>
+                                                                        <td class="num mono">—</td>
+                                                                        <td class="num mono">—</td>
+                                                                        <td class="mono"
+                                                                            style="color:var(--text-faint)">—</td>
+                                                                    </tr>
+                                                                    <tr>
+                                                                        <td>Ship</td>
+                                                                        <td><span class="badge idle">locked</span></td>
+                                                                        <td class="mono"
+                                                                            style="color:var(--text-faint)">—</td>
+                                                                        <td class="num mono">—</td>
+                                                                        <td class="num mono">—</td>
+                                                                        <td class="num mono">—</td>
+                                                                        <td class="mono"
+                                                                            style="color:var(--text-faint)">—</td>
+                                                                    </tr>
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+
+                                                        <!-- OUTPUT -->
+                                                        <div class="subpane" data-sp="out">
+                                                            <div class="console"><span class="dim"># Step 3 · Test ·
+                                                                    aidlc-qa · /aisf-skill-test-run</span>
+                                                                <span class="b">›</span> Running test suite for auth
+                                                                module…
+                                                                <span class="g">PASS</span> src/auth/login.test.ts <span
+                                                                    class="dim">(14 tests)</span>
+                                                                <span class="g">PASS</span> src/auth/token.test.ts <span
+                                                                    class="dim">(9 tests)</span>
+                                                                <span class="b">›</span> Checking coverage thresholds…
+                                                                <span class="y">▶ AI working — editing files, running
+                                                                    commands…</span>
+                                                            </div>
+                                                        </div>
+
+                                                        <!-- HISTORY -->
+                                                        <div class="subpane" data-sp="hist">
+                                                            <div class="tl">
+                                                                <div class="tl-item"><span class="tl-dot ok"></span>
+                                                                    <div>
+                                                                        <div class="tl-time">12m ago · 09:41:02</div>
+                                                                        <div class="tl-msg">Run created — 5 steps,
+                                                                            auto-review ON</div>
+                                                                    </div>
+                                                                </div>
+                                                                <div class="tl-item"><span class="tl-dot ok"></span>
+                                                                    <div>
+                                                                        <div class="tl-time">11m ago</div>
+                                                                        <div class="tl-msg">Plan completed · AI review
+                                                                            <b>approved</b> · 203K tokens</div>
+                                                                    </div>
+                                                                </div>
+                                                                <div class="tl-item"><span class="tl-dot fail"></span>
+                                                                    <div>
+                                                                        <div class="tl-time">9m ago</div>
+                                                                        <div class="tl-msg">Implement · AI review
+                                                                            <b>rejected</b> — missing produced file
+                                                                            <span class="mono">src/auth/token.ts</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                                <div class="tl-item"><span class="tl-dot ok"></span>
+                                                                    <div>
+                                                                        <div class="tl-time">6m ago</div>
+                                                                        <div class="tl-msg">Implement re-run (rev 2) ·
+                                                                            <b>approved</b></div>
+                                                                    </div>
+                                                                </div>
+                                                                <div class="tl-item"><span class="tl-dot run"></span>
+                                                                    <div>
+                                                                        <div class="tl-time">now</div>
+                                                                        <div class="tl-msg">Test <b>running</b> · Review
+                                                                            parked for human approval</div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                    </div>
+                                                </td>
+                                            </tr>
+
+                                            <!-- RUN B: finalized -->
+                                            <tr class="run-row" data-run="">
+                                                <td><i data-ic="chev" class="rchev"><svg viewBox="0 0 24 24" fill="none"
+                                                            stroke="currentColor" stroke-width="2.5">
+                                                            <path d="m9 6 6 6-6 6"></path>
+                                                        </svg></i></td>
+                                                <td><b>feature-auth</b> <span class="mono"
+                                                        style="color:var(--text-faint)">#91cd</span></td>
+                                                <td><span class="badge ok"><i data-ic="check" style="--isz:10px"><svg
+                                                                viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                                                <path d="M20 6 9 17l-5-5"></path>
+                                                            </svg></i> Finalized</span></td>
+                                                <td class="mono num">5 / 5</td>
+                                                <td class="mono num">1.2M</td>
+                                                <td class="mono num">$3.40</td>
+                                                <td class="mono num">6m 12s</td>
+                                                <td class="when">2d ago</td>
+                                                <td class="actions-cell"><span class="row-actions">
+                                                        <button class="icon-btn" title="Open"><i data-ic="chev"><svg
+                                                                    viewBox="0 0 24 24" fill="none"
+                                                                    stroke="currentColor" stroke-width="2.5">
+                                                                    <path d="m9 6 6 6-6 6"></path>
+                                                                </svg></i></button>
+                                                        <button class="icon-btn" title="Report"><i data-ic="copy"><svg
+                                                                    viewBox="0 0 24 24" fill="none"
+                                                                    stroke="currentColor">
+                                                                    <rect x="9" y="9" width="12" height="12" rx="2">
+                                                                    </rect>
+                                                                    <path d="M5 15V5a2 2 0 0 1 2-2h10"></path>
+                                                                </svg></i></button>
+                                                        <button class="icon-btn del" title="Delete run"><i
+                                                                data-ic="trash"><svg viewBox="0 0 24 24" fill="none"
+                                                                    stroke="currentColor">
+                                                                    <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path>
+                                                                </svg></i></button>
+                                                    </span></td>
+                                            </tr>
+                                            <tr class="run-detail-row">
+                                                <td colspan="9">
+                                                    <div class="run-detail"></div>
+                                                </td>
+                                            </tr>
+
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+
+                    <!-- FLOW 2: Documentation Flow -->
+                    <tr class="row-main" data-flow="">
+                        <td><span class="status"><span class="dot warn"></span><span class="status-label">Needs
+                                    review</span></span></td>
+                        <td class="name-cell" data-graph="" title="Show flow graph">
+                            <div class="name">
+                                <span class="n"><i data-ic="chev" class="chev"><svg viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <path d="m9 6 6 6-6 6"></path>
+                                        </svg></i> Documentation Flow</span>
+                                <span class="d">Explore code, then write &amp; review docs for the changed
+                                    surface.</span>
+                            </div>
+                        </td>
+                        <td class="mono num">4 runs</td>
+                        <td><span class="badge repo">repo</span></td>
+                        <td><span class="pipe"><span class="seg done"></span><span class="seg active"></span><span
+                                    class="pipe-num">2</span></span></td>
+                        <td class="actions-cell"><span class="row-actions">
+                                <button class="icon-btn run" title="New run"><i data-ic="play"><svg viewBox="0 0 24 24"
+                                            fill="currentColor">
+                                            <path d="M8 5v14l11-7z"></path>
+                                        </svg></i></button>
+                                <button class="icon-btn" title="Runs" data-runs=""><i data-ic="lines"><svg
+                                            viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <path d="M4 6h16M4 12h16M4 18h10"></path>
+                                        </svg></i></button>
+                                <button class="icon-btn" title="Edit"><i data-ic="pencil"><svg viewBox="0 0 24 24"
+                                            fill="none" stroke="currentColor">
+                                            <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                                        </svg></i></button>
+                                <button class="icon-btn" title="Details"><i data-ic="info"><svg viewBox="0 0 24 24"
+                                            fill="none" stroke="currentColor">
+                                            <circle cx="12" cy="12" r="9"></circle>
+                                            <path d="M12 11v5M12 8h.01"></path>
+                                        </svg></i></button>
+                                <button class="icon-btn del" title="Delete"><i data-ic="trash"><svg viewBox="0 0 24 24"
+                                            fill="none" stroke="currentColor">
+                                            <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path>
+                                        </svg></i></button>
+                            </span></td>
+                    </tr>
+                    <tr class="detail-row graph-dr">
+                        <td colspan="6">
+                            <div class="detail">
+                                <div class="subhead">
+                                    <div class="lft">
+                                        <h4>Flow graph</h4><span class="badge idle">preview — no run</span>
+                                    </div>
+                                </div>
+                                <div class="canvas def-canvas" style="min-height:320px">
+                                    <svg class="edges">
+                                        <path class="flow-edge" d="M210,160 C233,160 233,160 256,160"></path>
+                                    </svg>
+                                    <div class="nodes">
+                                        <div class="col">
+                                            <div class="node">
+                                                <div class="nt"><span class="ni">1</span> Collect Context <span
+                                                        class="rv ai">AI</span></div>
+                                                <div class="meta"><span>agent: aidlc-developer</span><span>skill:
+                                                        /gitnexus-exploring</span></div>
+                                                <div class="stat">depends on: —</div>
+                                            </div>
+                                        </div>
+                                        <div class="col">
+                                            <div class="node">
+                                                <div class="nt"><span class="ni">2</span> Write Docs <span
+                                                        class="rv human">Human</span></div>
+                                                <div class="meta"><span>agent: aidlc-docs-writer</span><span>skill:
+                                                        /create-plan</span></div>
+                                                <div class="stat">depends on: Collect Context</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr class="detail-row runs-dr">
+                        <td colspan="6">
+                            <div class="detail">
+                                <div class="subhead">
+                                    <div class="lft">
+                                        <h4>Runs</h4><span class="badge idle">4 total</span>
+                                    </div><span class="rsub">Tạo run mới bằng nút ▶ trên dòng flow</span>
+                                </div>
+                                <div class="runs-tbl scroll-x">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th style="width:32px"></th>
+                                                <th>Run</th>
+                                                <th style="width:130px">Status</th>
+                                                <th style="width:90px">Progress</th>
+                                                <th style="width:80px">Tokens</th>
+                                                <th style="width:70px">Cost</th>
+                                                <th style="width:90px">Started</th>
+                                                <th style="width:120px"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr class="run-row">
+                                                <td><i data-ic="chev" class="rchev"><svg viewBox="0 0 24 24" fill="none"
+                                                            stroke="currentColor" stroke-width="2.5">
+                                                            <path d="m9 6 6 6-6 6"></path>
+                                                        </svg></i></td>
+                                                <td><b>docs-changed</b> <span class="mono"
+                                                        style="color:var(--text-faint)">#7d2</span></td>
+                                                <td><span class="badge warn"><i data-ic="info" style="--isz:10px"><svg
+                                                                viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                                                <circle cx="12" cy="12" r="9"></circle>
+                                                                <path d="M12 11v5M12 8h.01"></path>
+                                                            </svg></i> Needs review</span></td>
+                                                <td class="mono num">1 / 2</td>
+                                                <td class="mono num">312K</td>
+                                                <td class="mono num">$0.98</td>
+                                                <td class="when">20m ago</td>
+                                                <td class="actions-cell"><span class="row-actions"><button
+                                                            class="icon-btn" title="Report"><i data-ic="copy"><svg
+                                                                    viewBox="0 0 24 24" fill="none"
+                                                                    stroke="currentColor">
+                                                                    <rect x="9" y="9" width="12" height="12" rx="2">
+                                                                    </rect>
+                                                                    <path d="M5 15V5a2 2 0 0 1 2-2h10"></path>
+                                                                </svg></i></button><button class="icon-btn del"
+                                                            title="Delete run"><i data-ic="trash"><svg
+                                                                    viewBox="0 0 24 24" fill="none"
+                                                                    stroke="currentColor">
+                                                                    <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path>
+                                                                </svg></i></button></span></td>
+                                            </tr>
+                                            <tr class="run-row">
+                                                <td><i data-ic="chev" class="rchev"><svg viewBox="0 0 24 24" fill="none"
+                                                            stroke="currentColor" stroke-width="2.5">
+                                                            <path d="m9 6 6 6-6 6"></path>
+                                                        </svg></i></td>
+                                                <td><b>docs-api</b> <span class="mono"
+                                                        style="color:var(--text-faint)">#4a8</span></td>
+                                                <td><span class="badge ok"><i data-ic="check" style="--isz:10px"><svg
+                                                                viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                                                <path d="M20 6 9 17l-5-5"></path>
+                                                            </svg></i> Finalized</span></td>
+                                                <td class="mono num">2 / 2</td>
+                                                <td class="mono num">280K</td>
+                                                <td class="mono num">$0.84</td>
+                                                <td class="when">1d ago</td>
+                                                <td class="actions-cell"><span class="row-actions"><button
+                                                            class="icon-btn" title="Report"><i data-ic="copy"><svg
+                                                                    viewBox="0 0 24 24" fill="none"
+                                                                    stroke="currentColor">
+                                                                    <rect x="9" y="9" width="12" height="12" rx="2">
+                                                                    </rect>
+                                                                    <path d="M5 15V5a2 2 0 0 1 2-2h10"></path>
+                                                                </svg></i></button><button class="icon-btn del"
+                                                            title="Delete run"><i data-ic="trash"><svg
+                                                                    viewBox="0 0 24 24" fill="none"
+                                                                    stroke="currentColor">
+                                                                    <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path>
+                                                                </svg></i></button></span></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+
+                    <!-- FLOW 3: Release Notes (never run) -->
+                    <tr class="row-main" data-flow="">
+                        <td><span class="status"><span class="dot idle"></span><span
+                                    class="status-label">Idle</span></span></td>
+                        <td class="name-cell" data-graph="" title="Show flow graph">
+                            <div class="name">
+                                <span class="n"><i data-ic="chev" class="chev"><svg viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <path d="m9 6 6 6-6 6"></path>
+                                        </svg></i> Release Notes</span>
+                                <span class="d">Gather merged PRs and draft release notes for a milestone.</span>
+                            </div>
+                        </td>
+                        <td class="mono num" style="color:var(--text-faint)">0 runs</td>
+                        <td><span class="badge global">global</span></td>
+                        <td><span class="pipe"><span class="seg"></span><span class="seg"></span><span
+                                    class="seg"></span><span class="pipe-num">3</span></span></td>
+                        <td class="actions-cell"><span class="row-actions">
+                                <button class="icon-btn run" title="New run"><i data-ic="play"><svg viewBox="0 0 24 24"
+                                            fill="currentColor">
+                                            <path d="M8 5v14l11-7z"></path>
+                                        </svg></i></button>
+                                <button class="icon-btn" title="Runs" data-runs=""><i data-ic="lines"><svg
+                                            viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <path d="M4 6h16M4 12h16M4 18h10"></path>
+                                        </svg></i></button>
+                                <button class="icon-btn" title="Edit"><i data-ic="pencil"><svg viewBox="0 0 24 24"
+                                            fill="none" stroke="currentColor">
+                                            <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                                        </svg></i></button>
+                                <button class="icon-btn" title="Details"><i data-ic="info"><svg viewBox="0 0 24 24"
+                                            fill="none" stroke="currentColor">
+                                            <circle cx="12" cy="12" r="9"></circle>
+                                            <path d="M12 11v5M12 8h.01"></path>
+                                        </svg></i></button>
+                                <button class="icon-btn del" title="Delete"><i data-ic="trash"><svg viewBox="0 0 24 24"
+                                            fill="none" stroke="currentColor">
+                                            <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path>
+                                        </svg></i></button>
+                            </span></td>
+                    </tr>
+                    <tr class="detail-row graph-dr">
+                        <td colspan="6">
+                            <div class="detail">
+                                <div class="subhead">
+                                    <div class="lft">
+                                        <h4>Flow graph</h4><span class="badge idle">preview — no run</span>
+                                    </div>
+                                </div>
+                                <div class="canvas def-canvas" style="min-height:320px">
+                                    <svg class="edges">
+                                        <path class="flow-edge" d="M210,160 C233,160 233,160 256,160"></path>
+                                        <path class="flow-edge" d="M446,160 C469,160 469,160 492,160"></path>
+                                    </svg>
+                                    <div class="nodes">
+                                        <div class="col">
+                                            <div class="node">
+                                                <div class="nt"><span class="ni">1</span> Collect PRs <span
+                                                        class="rv ai">AI</span></div>
+                                                <div class="meta"><span>agent: aidlc-developer</span><span>skill:
+                                                        /gitnexus-exploring</span></div>
+                                                <div class="stat">depends on: —</div>
+                                            </div>
+                                        </div>
+                                        <div class="col">
+                                            <div class="node">
+                                                <div class="nt"><span class="ni">2</span> Draft notes <span
+                                                        class="rv ai">AI</span></div>
+                                                <div class="meta"><span>agent: aidlc-docs-writer</span><span>skill:
+                                                        /consolidate-srs</span></div>
+                                                <div class="stat">depends on: Collect PRs</div>
+                                            </div>
+                                        </div>
+                                        <div class="col">
+                                            <div class="node">
+                                                <div class="nt"><span class="ni">3</span> Publish <span
+                                                        class="rv human">Human</span></div>
+                                                <div class="meta"><span>agent: aidlc-devops</span><span>skill:
+                                                        /aisf-skill-document</span></div>
+                                                <div class="stat">depends on: Draft notes</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr class="detail-row runs-dr">
+                        <td colspan="6">
+                            <div class="detail">
+                                <div class="subhead">
+                                    <div class="lft">
+                                        <h4>Runs</h4><span class="badge idle">0 total</span>
+                                    </div>
+                                </div>
+                                <div style="text-align:center;color:var(--text-faint);padding:24px;font-size:12px">No
+                                    runs yet — bấm <b>▶</b> trên dòng flow để tạo run.</div>
+                            </div>
+                        </td>
+                    </tr>
+
+                </tbody>
+            </table>
+        </div>
+        <p class="hint-p">Click <kbd>tên flow</kbd> → graph · <kbd>☰ Runs</kbd> → danh sách run · <kbd>▶</kbd> → tạo run
+            mới · click 1 run → runner. Đổi theme ở góc phải.</p>
+    </section>
+
+    <!-- ================= AGENTS ================= -->
+    <section class="pane" id="pane-agents">
+        <div class="toolbar">
+            <div class="search"><i data-ic="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <circle cx="11" cy="11" r="7"></circle>
+                        <path d="m21 21-4.3-4.3"></path>
+                    </svg></i><input placeholder="Search agents…"></div>
+            <div class="chips"><button class="chip active">List</button><button class="chip">Groups</button></div>
+            <button class="btn sm"><i data-ic="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h6M14 18h6"></path>
+                        <circle cx="16" cy="6" r="2"></circle>
+                        <circle cx="8" cy="12" r="2"></circle>
+                        <circle cx="12" cy="18" r="2"></circle>
+                    </svg></i> Filters</button>
+            <div class="spacer"></div>
+            <button class="btn sm"><i data-ic="upload"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M12 15V3M7 8l5-5 5 5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path>
+                    </svg></i> Import</button>
+            <button class="btn primary"><i data-ic="plus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.2">
+                        <path d="M12 5v14M5 12h14"></path>
+                    </svg></i> New Agent</button>
+        </div>
+        <div class="table-wrap scroll-x">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th style="width:100px">Model</th>
+                        <th style="width:180px">Tools</th>
+                        <th style="width:130px">Tags</th>
+                        <th style="width:80px">Scope</th>
+                        <th style="width:130px"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="row-main">
+                        <td>
+                            <div class="name"><span class="n">aidlc-developer <span
+                                        class="badge built">built-in</span></span><span class="d">Implements and checks
+                                    code changes for AI StepFlow workflows.</span></div>
+                        </td>
+                        <td class="model">sonnet</td>
+                        <td>
+                            <div class="tools"><span class="tool">files</span></div>
+                        </td>
+                        <td>
+                            <div class="tools"><span class="tool">dev</span></div>
+                        </td>
+                        <td><span class="badge repo">repo</span></td>
+                        <td class="actions-cell"><span class="row-actions"><button class="icon-btn run" title="Run"><i
+                                        data-ic="play"><svg viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M8 5v14l11-7z"></path>
+                                        </svg></i></button><button class="icon-btn" title="Edit"><i
+                                        data-ic="pencil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                                        </svg></i></button><button class="icon-btn" title="Details"><i
+                                        data-ic="info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <circle cx="12" cy="12" r="9"></circle>
+                                            <path d="M12 11v5M12 8h.01"></path>
+                                        </svg></i></button></span></td>
+                    </tr>
+                    <tr class="row-main">
+                        <td>
+                            <div class="name"><span class="n">research-analyst</span><span class="d">Gathers sources,
+                                    synthesizes findings, and drafts research briefs.</span></div>
+                        </td>
+                        <td class="model">opus</td>
+                        <td>
+                            <div class="tools"><span class="tool">web</span><span class="tool">files</span></div>
+                        </td>
+                        <td>
+                            <div class="tools"><span class="tool">research</span></div>
+                        </td>
+                        <td><span class="badge global">global</span></td>
+                        <td class="actions-cell"><span class="row-actions"><button class="icon-btn run" title="Run"><i
+                                        data-ic="play"><svg viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M8 5v14l11-7z"></path>
+                                        </svg></i></button><button class="icon-btn" title="Edit"><i
+                                        data-ic="pencil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                                        </svg></i></button><button class="icon-btn del" title="Delete"><i
+                                        data-ic="trash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path>
+                                        </svg></i></button></span></td>
+                    </tr>
+                    <tr class="row-main">
+                        <td>
+                            <div class="name"><span class="n">research-reviewer</span><span class="d">Fact-checks
+                                    research output against cited sources.</span></div>
+                        </td>
+                        <td class="model">sonnet</td>
+                        <td>
+                            <div class="tools"><span class="tool">web</span></div>
+                        </td>
+                        <td>
+                            <div class="tools"><span class="tool">research</span><span class="tool">docs</span></div>
+                        </td>
+                        <td><span class="badge global">global</span></td>
+                        <td class="actions-cell"><span class="row-actions"><button class="icon-btn run" title="Run"><i
+                                        data-ic="play"><svg viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M8 5v14l11-7z"></path>
+                                        </svg></i></button><button class="icon-btn" title="Edit"><i
+                                        data-ic="pencil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                                        </svg></i></button><button class="icon-btn del" title="Delete"><i
+                                        data-ic="trash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path>
+                                        </svg></i></button></span></td>
+                    </tr>
+                    <tr class="row-main">
+                        <td>
+                            <div class="name"><span class="n">sandbox-runner</span><span class="d">Runs quick
+                                    experiments in an isolated workspace.</span></div>
+                        </td>
+                        <td class="model">haiku</td>
+                        <td>
+                            <div class="tools"><span class="tool">files</span></div>
+                        </td>
+                        <td>
+                            <div class="tools" style="color:var(--text-faint)">—</div>
+                        </td>
+                        <td><span class="badge repo">repo</span></td>
+                        <td class="actions-cell"><span class="row-actions"><button class="icon-btn run" title="Run"><i
+                                        data-ic="play"><svg viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M8 5v14l11-7z"></path>
+                                        </svg></i></button><button class="icon-btn" title="Edit"><i
+                                        data-ic="pencil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                                        </svg></i></button><button class="icon-btn del" title="Delete"><i
+                                        data-ic="trash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path>
+                                        </svg></i></button></span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- ================= SKILLS ================= -->
+    <section class="pane" id="pane-skills">
+        <div class="toolbar">
+            <div class="search"><i data-ic="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <circle cx="11" cy="11" r="7"></circle>
+                        <path d="m21 21-4.3-4.3"></path>
+                    </svg></i><input placeholder="Search skills…"></div>
+            <div class="chips"><button class="chip active">List</button><button class="chip">Groups</button></div>
+            <button class="btn sm"><i data-ic="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h6M14 18h6"></path>
+                        <circle cx="16" cy="6" r="2"></circle>
+                        <circle cx="8" cy="12" r="2"></circle>
+                        <circle cx="12" cy="18" r="2"></circle>
+                    </svg></i> Filters</button>
+            <div class="spacer"></div>
+            <button class="btn sm"><i data-ic="upload"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M12 15V3M7 8l5-5 5 5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path>
+                    </svg></i> Import</button>
+            <button class="btn primary"><i data-ic="plus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.2">
+                        <path d="M12 5v14M5 12h14"></path>
+                    </svg></i> New Skill</button>
+        </div>
+        <div class="table-wrap scroll-x">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th style="width:180px">Tags</th>
+                        <th style="width:80px">Scope</th>
+                        <th style="width:130px"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="row-main">
+                        <td>
+                            <div class="name"><span class="n">create-plan</span><span class="d">Creates a short
+                                    implementation plan before making changes.</span></div>
+                        </td>
+                        <td>
+                            <div class="tools"><span class="tool">dev</span></div>
+                        </td>
+                        <td><span class="badge repo">repo</span></td>
+                        <td class="actions-cell"><span class="row-actions"><button class="icon-btn run" title="Run"><i
+                                        data-ic="play"><svg viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M8 5v14l11-7z"></path>
+                                        </svg></i></button><button class="icon-btn" title="Edit"><i
+                                        data-ic="pencil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                                        </svg></i></button><button class="icon-btn del" title="Delete"><i
+                                        data-ic="trash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path>
+                                        </svg></i></button></span></td>
+                    </tr>
+                    <tr class="row-main">
+                        <td>
+                            <div class="name"><span class="n">gitnexus-exploring <span
+                                        class="badge built">built-in</span></span><span class="d">Explores code
+                                    structure and execution flows.</span></div>
+                        </td>
+                        <td>
+                            <div class="tools"><span class="tool">dev</span><span class="tool">research</span></div>
+                        </td>
+                        <td><span class="badge repo">repo</span></td>
+                        <td class="actions-cell"><span class="row-actions"><button class="icon-btn run" title="Run"><i
+                                        data-ic="play"><svg viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M8 5v14l11-7z"></path>
+                                        </svg></i></button><button class="icon-btn" title="Edit"><i
+                                        data-ic="pencil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                                        </svg></i></button><button class="icon-btn" title="Details"><i
+                                        data-ic="info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <circle cx="12" cy="12" r="9"></circle>
+                                            <path d="M12 11v5M12 8h.01"></path>
+                                        </svg></i></button></span></td>
+                    </tr>
+                    <tr class="row-main">
+                        <td>
+                            <div class="name"><span class="n">deep-research</span><span class="d">Fan-out web search,
+                                    verify claims, synthesize a cited report.</span></div>
+                        </td>
+                        <td>
+                            <div class="tools"><span class="tool">research</span></div>
+                        </td>
+                        <td><span class="badge global">global</span></td>
+                        <td class="actions-cell"><span class="row-actions"><button class="icon-btn run" title="Run"><i
+                                        data-ic="play"><svg viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M8 5v14l11-7z"></path>
+                                        </svg></i></button><button class="icon-btn" title="Edit"><i
+                                        data-ic="pencil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                                        </svg></i></button><button class="icon-btn del" title="Delete"><i
+                                        data-ic="trash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path>
+                                        </svg></i></button></span></td>
+                    </tr>
+                    <tr class="row-main">
+                        <td>
+                            <div class="name"><span class="n">consolidate-srs</span><span class="d">Consolidate multiple
+                                    SRS documents into a release document.</span></div>
+                        </td>
+                        <td>
+                            <div class="tools"><span class="tool">docs</span></div>
+                        </td>
+                        <td><span class="badge repo">repo</span></td>
+                        <td class="actions-cell"><span class="row-actions"><button class="icon-btn run" title="Run"><i
+                                        data-ic="play"><svg viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M8 5v14l11-7z"></path>
+                                        </svg></i></button><button class="icon-btn" title="Edit"><i
+                                        data-ic="pencil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                                        </svg></i></button><button class="icon-btn del" title="Delete"><i
+                                        data-ic="trash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path>
+                                        </svg></i></button></span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+<script>
+    const ICONS = {
+        play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',
+        stop: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
+        reset: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>',
+        refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>',
+        check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 6 9 17l-5-5"/></svg>',
+        x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+        more: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
+        lines: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 6h16M4 12h16M4 18h10"/></svg>',
+        pencil: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+        trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>',
+        info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>',
+        plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>',
+        search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>',
+        chev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 6 6 6-6 6"/></svg>',
+        copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
+        upload: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 15V3M7 8l5-5 5 5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>',
+        lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>',
+        settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h6M14 18h6"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="12" cy="18" r="2"/></svg>',
+        branch: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7M18 10.5c0 4-6 1-12 5.5"/></svg>',
+        bot: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 8V4M9 14h.01M15 14h.01"/></svg>',
+        zap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>',
+        graph: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="7" height="7" rx="1"/><rect x="14" y="13" width="7" height="7" rx="1"/><path d="M10 7h4v6"/></svg>',
+        chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
+        clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+        file: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>'
+    };
+    document.querySelectorAll('[data-ic]').forEach(el => { el.innerHTML = ICONS[el.dataset.ic] || ''; });
+
+    const root = document.documentElement;
+    document.getElementById('themeToggle').addEventListener('click', () => {
+        const cur = root.getAttribute('data-theme');
+        const next = cur === 'dark' ? 'light' : cur === 'light' ? 'dark'
+            : (matchMedia('(prefers-color-scheme: dark)').matches ? 'light' : 'dark');
+        root.setAttribute('data-theme', next);
+    });
+
+    document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.pane').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('pane-' + tab.dataset.pane).classList.add('active');
+    }));
+
+    // click NAME → toggle the flow's graph expand (graph-dr = row's next sibling)
+    document.querySelectorAll('[data-graph]').forEach(cell => cell.addEventListener('click', () => {
+        const row = cell.closest('.row-main');
+        const open = row.nextElementSibling.classList.toggle('show');
+        row.classList.toggle('graph-on', open);
+    }));
+    // click RUNS action → toggle the flow's runs expand (runs-dr = 2nd sibling)
+    document.querySelectorAll('[data-runs]').forEach(btn => btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const row = btn.closest('.row-main');
+        row.nextElementSibling.nextElementSibling.classList.toggle('show');
+    }));
+    // expand run rows (containers)
+    document.querySelectorAll('[data-run]').forEach(row => row.addEventListener('click', e => {
+        if (e.target.closest('.row-actions')) return;
+        row.classList.toggle('open');
+    }));
+    // runner sub-tabs
+    document.querySelectorAll('[data-subtabs]').forEach(group => {
+        const scope = group.closest('.run-detail');
+        group.querySelectorAll('.subtab').forEach(st => st.addEventListener('click', () => {
+            group.querySelectorAll('.subtab').forEach(x => x.classList.remove('on'));
+            scope.querySelectorAll('.subpane').forEach(x => x.classList.remove('on'));
+            st.classList.add('on');
+            scope.querySelector('[data-sp="' + st.dataset.st + '"]').classList.add('on');
+        }));
+    });
+
+    // trend bars
+    const vals = [3, 5, 4, 6, 4, 7, 5, 8, 6, 9, 5, 7, 10, 8, 6, 9, 11, 7, 10, 8, 12, 9, 7, 11, 13, 9, 12, 10, 14, 11];
+    const max = Math.max(...vals);
+    document.getElementById('trend').innerHTML = vals.map(v =>
+        `<div class="tb" style="height:${Math.round(v / max * 100)}%" title="$${(v * 0.9).toFixed(2)}"></div>`).join('');
+</script>
+
+</body>
+
+</html>

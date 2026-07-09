@@ -131,35 +131,33 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
   return (
     <div className="page">
       <div className="page-head">
-        <h2>Skills</h2>
-        <div className="page-head-actions">
-          <div className="page-search">
-            <span className="page-search-icon"><Icon.Search size={14} /></span>
-            <input
-              className="page-search-input"
-              type="text"
-              placeholder="Search skills…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-          </div>
-          <GroupByToggle value={groupBy} onChange={changeGroupBy} />
-          <UnifiedFilterPanel
-            scope={filter}
-            view={viewFilter}
-            sort={sortOrder}
-            onApply={(s, v, o) => { setFilter(s); setViewFilter(v); setSortOrder(o); }}
+        <div className="page-search">
+          <span className="page-search-icon"><Icon.Search size={14} /></span>
+          <input
+            className="page-search-input"
+            type="text"
+            placeholder="Search skills…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
           />
-          <button className="btn" title="Create a skill from an existing markdown file" onClick={() => sendToVSCode('importSkillFile', {})}>
-            <span className="btn-glyph"><Icon.Upload size={14} /></span>Import file
-          </button>
-          <button
-            className="btn primary"
-            onClick={() => onNew(filter === 'global' ? 'global' : 'project')}
-          >
-            <span className="btn-glyph plus"><Icon.Plus size={14} /></span>New Skill
-          </button>
         </div>
+        <span className="ph-spacer" />
+        <GroupByToggle value={groupBy} onChange={changeGroupBy} />
+        <UnifiedFilterPanel
+          scope={filter}
+          view={viewFilter}
+          sort={sortOrder}
+          onApply={(s, v, o) => { setFilter(s); setViewFilter(v); setSortOrder(o); }}
+        />
+        <button className="btn" title="Create a skill from an existing markdown file" onClick={() => sendToVSCode('importSkillFile', {})}>
+          <span className="btn-glyph"><Icon.Upload size={14} /></span>Import file
+        </button>
+        <button
+          className="btn primary"
+          onClick={() => onNew(filter === 'global' ? 'global' : 'project')}
+        >
+          <span className="btn-glyph plus"><Icon.Plus size={14} /></span>New Skill
+        </button>
       </div>
       {visibleSkills.length === 0 ? (
         <EmptyState title="No skills found" text={q ? `No skills match "${search}"` : 'Create reusable skills that agents can use across different steps.'} icon={<Icon.Zap size={24} />} />

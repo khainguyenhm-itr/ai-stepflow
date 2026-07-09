@@ -100,16 +100,18 @@ const App: React.FC = () => {
   return (
     <div className="app">
       <nav className="tab-bar">
-        {tabs.map(tab => (
-          <button
-            key={tab.key}
-            className={`tab ${activeTab === tab.key ? 'active' : ''}`}
-            onClick={() => { setActiveTab(tab.key); sendToVSCode('savePref', { key: 'activeTab', value: tab.key }); }}
-          >
-            {tab.label}
-            {tab.count !== undefined && <span className="tab-count">{tab.count}</span>}
-          </button>
-        ))}
+        <div className="tab-bar-inner">
+          {tabs.map(tab => (
+            <button
+              key={tab.key}
+              className={`tab ${activeTab === tab.key ? 'active' : ''}`}
+              onClick={() => { setActiveTab(tab.key); sendToVSCode('savePref', { key: 'activeTab', value: tab.key }); }}
+            >
+              {tab.label}
+              {tab.count !== undefined && <span className="tab-count">{tab.count}</span>}
+            </button>
+          ))}
+        </div>
       </nav>
 
       {activeTab === 'overview' && (

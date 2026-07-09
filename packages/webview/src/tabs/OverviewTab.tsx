@@ -79,8 +79,8 @@ const fmtAgo = (ms: number) => {
 
 const Stat: React.FC<{ label: string; value: string; hint?: string; onClick?: () => void }> = ({ label, value, hint, onClick }) => (
   <div className={`ov-stat${onClick ? ' clickable' : ''}`} onClick={onClick} role={onClick ? 'button' : undefined}>
-    <div className="ov-stat-value">{value}</div>
     <div className="ov-stat-label">{label}</div>
+    <div className="ov-stat-value">{value}</div>
     {hint && <div className="ov-stat-hint muted small">{hint}</div>}
   </div>
 );
@@ -222,24 +222,19 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   return (
     <div className="page ov-page">
       <div className="page-head">
-        <div>
-          <h2 className="ov-title">Overview</h2>
-          <p className="muted small">{projectPath ? projectPath.split('/').pop() : 'No workspace'} — library &amp; run statistics</p>
+        <div className="ov-scope-switch" role="tablist" aria-label="Scope">
+          {SCOPES.map(s => (
+            <button
+              key={s.key}
+              className={`ov-scope-btn${scope === s.key ? ' active' : ''}`}
+              onClick={() => onScopeChange(s.key)}
+            >{s.label}</button>
+          ))}
         </div>
-        <div className="page-head-actions">
-          <div className="ov-scope-switch" role="tablist" aria-label="Scope">
-            {SCOPES.map(s => (
-              <button
-                key={s.key}
-                className={`ov-scope-btn${scope === s.key ? ' active' : ''}`}
-                onClick={() => onScopeChange(s.key)}
-              >{s.label}</button>
-            ))}
-          </div>
-          <button className="btn" onClick={() => onRunCommand('ai-stepflow.refreshAll')} title="Reload library and runs">
-            <span className="btn-glyph"><Icon.RotateCw size={14} /></span>Refresh
-          </button>
-        </div>
+        <span className="ph-spacer" />
+        <button className="btn" onClick={() => onRunCommand('ai-stepflow.refreshAll')} title="Reload library and runs">
+          <span className="btn-glyph"><Icon.RotateCw size={14} /></span>Refresh
+        </button>
       </div>
 
       <section className="ov-section">

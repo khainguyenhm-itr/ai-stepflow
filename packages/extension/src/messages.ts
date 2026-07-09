@@ -80,12 +80,12 @@ export type WebviewMessage =
   | { type: 'runSkill'; skill: Skill; description?: string }
   | { type: 'reviewStep'; stepId: string; decision: 'approved' | 'rejected' }
   | { type: 'setAutoReview'; enabled: boolean }
-  | { type: 'resetRun' }
+  | { type: 'resetRun'; flowId?: string; runId?: string }
   | { type: 'resetStep'; stepId: string }
   | { type: 'closeRun', finalize?: boolean }
-  | { type: 'deleteRun' }
+  | { type: 'deleteRun'; flowId?: string; runId?: string }
   | { type: 'verifyRun' }
-  | { type: 'exportRunReport' }
+  | { type: 'exportRunReport'; flowId?: string; runId?: string }
   | { type: 'importAgentFile' }
   | { type: 'importSkillFile' }
   | { type: 'generateDraft'; kind: 'agent' | 'skill'; prompt: string; history?: { role: 'user' | 'assistant'; content: string }[] }
@@ -128,12 +128,12 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   ready: () => true,
   importAgentFile: () => true,
   importSkillFile: () => true,
-  resetRun: () => true,
+  resetRun: m => (m.flowId === undefined || isString(m.flowId)) && (m.runId === undefined || isString(m.runId)),
   resetStep: m => isString(m.stepId),
   closeRun: m => m.finalize === undefined || typeof m.finalize === 'boolean',
-  deleteRun: () => true,
+  deleteRun: m => (m.flowId === undefined || isString(m.flowId)) && (m.runId === undefined || isString(m.runId)),
   verifyRun: () => true,
-  exportRunReport: () => true,
+  exportRunReport: m => (m.flowId === undefined || isString(m.flowId)) && (m.runId === undefined || isString(m.runId)),
   loadFlow: m => isFlowLike(m.flow) && (m.runState === undefined || isFlowRunStateShape(m.runState)),
   openFile: m => isString(m.path),
   saveFlow: m => isFlowLike(m.flow),

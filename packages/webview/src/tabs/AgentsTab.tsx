@@ -128,35 +128,33 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
   return (
     <div className="page">
       <div className="page-head">
-        <h2>Agents</h2>
-        <div className="page-head-actions">
-          <div className="page-search">
-            <span className="page-search-icon"><Icon.Search size={14} /></span>
-            <input
-              className="page-search-input"
-              type="text"
-              placeholder="Search agents…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-          </div>
-          <GroupByToggle value={groupBy} onChange={changeGroupBy} />
-          <UnifiedFilterPanel
-            scope={filter}
-            view={viewFilter}
-            sort={sortOrder}
-            onApply={(s, v, o) => { setFilter(s); setViewFilter(v); setSortOrder(o); }}
+        <div className="page-search">
+          <span className="page-search-icon"><Icon.Search size={14} /></span>
+          <input
+            className="page-search-input"
+            type="text"
+            placeholder="Search agents…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
           />
-          <button className="btn" title="Create an agent from an existing markdown file" onClick={() => sendToVSCode('importAgentFile', {})}>
-            <span className="btn-glyph"><Icon.Upload size={14} /></span>Import file
-          </button>
-          <button
-            className="btn primary"
-            onClick={() => onNew(filter === 'global' ? 'global' : 'project')}
-          >
-            <span className="btn-glyph plus"><Icon.Plus size={14} /></span>New Agent
-          </button>
         </div>
+        <span className="ph-spacer" />
+        <GroupByToggle value={groupBy} onChange={changeGroupBy} />
+        <UnifiedFilterPanel
+          scope={filter}
+          view={viewFilter}
+          sort={sortOrder}
+          onApply={(s, v, o) => { setFilter(s); setViewFilter(v); setSortOrder(o); }}
+        />
+        <button className="btn" title="Create an agent from an existing markdown file" onClick={() => sendToVSCode('importAgentFile', {})}>
+          <span className="btn-glyph"><Icon.Upload size={14} /></span>Import file
+        </button>
+        <button
+          className="btn primary"
+          onClick={() => onNew(filter === 'global' ? 'global' : 'project')}
+        >
+          <span className="btn-glyph plus"><Icon.Plus size={14} /></span>New Agent
+        </button>
       </div>
       {visibleAgents.length === 0 ? (
         <EmptyState title="No agents found" text={q ? `No agents match "${search}"` : 'Define a specialized AI agent with a custom system prompt and tools.'} icon={<Icon.User size={24} />} />

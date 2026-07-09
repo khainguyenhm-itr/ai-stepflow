@@ -158,50 +158,7 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
 
   return (
     <div className="page">
-      <div className="page-head">
-        <h2>Workflows</h2>
-        <div className="page-head-actions">
-          <div className="page-search">
-            <span className="page-search-icon"><Icon.Search size={14} /></span>
-            <input
-              className="page-search-input"
-              type="text"
-              placeholder="Search workflows…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-          </div>
-          <div className="ov-scope-switch" role="tablist" aria-label="Scope">
-            {SCOPES.map(([v, label]) => (
-              <button
-                key={v}
-                className={`ov-scope-btn${filter === v ? ' active' : ''}`}
-                onClick={() => setFilter(v)}
-              >{label}</button>
-            ))}
-          </div>
-          <UnifiedFilterPanel
-            scope={filter}
-            view={viewFilter}
-            sort={sortOrder}
-            showBuiltIn={false}
-            onApply={(s, v, o) => { setFilter(s); setViewFilter(v); setSortOrder(o); }}
-          />
-          <button
-            className="btn primary"
-            onClick={() => {
-              onNew(
-                { id: `flow-${Date.now()}`, name: '', description: '', inputs: {}, steps: [], sourcePath: '' },
-                filter === 'global' ? 'global' : 'project'
-              );
-            }}
-          >
-            <span className="btn-glyph plus"><Icon.Plus size={14} /></span>New Flow
-          </button>
-        </div>
-      </div>
-
-      <p className="flow-help muted small">
+      <p className="caption">
         Flow = định nghĩa · Run = lần chạy. Bấm tên flow để xem flow graph; mở tab Runs để chọn một run và vào runner.
       </p>
 
@@ -238,6 +195,47 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
             <Sparkline data={series(r => r.taskTimeMs || 0)} color="var(--warn)" />
           </div>
         </div>
+      </div>
+
+      <div className="page-head">
+        <div className="page-search">
+          <span className="page-search-icon"><Icon.Search size={14} /></span>
+          <input
+            className="page-search-input"
+            type="text"
+            placeholder="Search workflows…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+        <div className="ov-scope-switch" role="tablist" aria-label="Scope">
+          {SCOPES.map(([v, label]) => (
+            <button
+              key={v}
+              className={`ov-scope-btn${filter === v ? ' active' : ''}`}
+              onClick={() => setFilter(v)}
+            >{label}</button>
+          ))}
+        </div>
+        <span className="ph-spacer" />
+        <UnifiedFilterPanel
+          scope={filter}
+          view={viewFilter}
+          sort={sortOrder}
+          showBuiltIn={false}
+          onApply={(s, v, o) => { setFilter(s); setViewFilter(v); setSortOrder(o); }}
+        />
+        <button
+          className="btn primary"
+          onClick={() => {
+            onNew(
+              { id: `flow-${Date.now()}`, name: '', description: '', inputs: {}, steps: [], sourcePath: '' },
+              filter === 'global' ? 'global' : 'project'
+            );
+          }}
+        >
+          <span className="btn-glyph plus"><Icon.Plus size={14} /></span>New Flow
+        </button>
       </div>
 
       {visibleFlows.length === 0 ? (

@@ -64,35 +64,9 @@ export const FlowGraphCanvas: React.FC<FlowGraphCanvasProps> = ({ steps, contain
   }, [steps, isExpanded, containerRef]);
 
   return (
-    <svg
-      ref={svgRef}
-      style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 0, overflow: 'visible' }}
-    >
-      <defs>
-        <marker id="arrowhead-white" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-          <polygon points="0 0, 6 3, 0 6" fill="rgba(255,255,255,0.35)" />
-        </marker>
-        <style>{`
-          @keyframes dash-flow {
-            from { stroke-dashoffset: 24; }
-            to   { stroke-dashoffset: 0; }
-          }
-          .flow-edge {
-            stroke: rgba(255,255,255,0.28);
-            stroke-width: 1.5;
-            stroke-dasharray: 6 6;
-            fill: none;
-            animation: dash-flow 1.8s linear infinite;
-          }
-        `}</style>
-      </defs>
+    <svg ref={svgRef} className="edges">
       {paths.map(p => (
-        <path
-          key={p.id}
-          className="flow-edge"
-          d={p.d}
-          markerEnd="url(#arrowhead-white)"
-        />
+        <path key={p.id} className="flow-edge" d={p.d} />
       ))}
     </svg>
   );

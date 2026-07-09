@@ -6,7 +6,7 @@ import {
   getDefaultActiveStepId,
   hasDependencyCycle
 } from '../flowUtils';
-import { previewFlow, previewAgents, previewSkills } from '../previewData';
+import { previewFlow, previewAgents, previewSkills, previewRunSummaries, previewRunState, previewAuditLogs } from '../previewData';
 
 import { useLibraryState } from './appState/useLibraryState';
 import { useRunState } from './appState/useRunState';
@@ -454,6 +454,14 @@ export const useAppLogic = () => {
     libState.setSkills(previewSkills);
     libState.setGlobalPath('/preview/global');
     libState.setProjectPath('/preview/project');
+    // Seed runs + open the in-progress run inline so the Workflows tab shows the full Run section.
+    libState.setRunSummaries(previewRunSummaries);
+    libState.setAuditLogs(previewAuditLogs);
+    libState.setActiveTab('flows');
+    runState.setActiveFlow(previewFlow);
+    runState.setRunState(previewRunState);
+    runState.setRunnerVisible(true);
+    runState.setActiveStepId(getDefaultActiveStepId(previewFlow, previewRunState));
   };
 
   const seedPreviewRun = (stepId: string, runDescription?: string) => {
