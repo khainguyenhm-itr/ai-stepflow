@@ -2038,3 +2038,21 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 .badge.warn { color: #1e1e1e; background: var(--warn); }
 .badge.fail { color: #fff; background: var(--error); }
 .badge.idle { color: var(--muted); background: transparent; border: 1px solid var(--btn-outline); }
+
+/* ---- flow expand rows (graph / runs) ---- */
+.detail-row > td { padding: 0; background: var(--panel-2); }
+.detail-row .detail { padding: 14px 16px; border-top: 2px solid var(--focus); }
+.detail-row.runs-dr .detail { border-top-color: var(--success); }
+.drow.graph-on { background: var(--hover); }
+.name-cell { cursor: pointer; }
+.name-cell .chev-inline { transition: transform .15s; display: inline-flex; vertical-align: middle; margin-right: 4px; color: var(--muted); }
+.drow.graph-on .name-cell .chev-inline { transform: rotate(90deg); }
+.detail-subhead { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.detail-subhead h4 { margin: 0; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.detail-subhead .hint { color: var(--muted); font-size: 11px; margin-left: auto; }
+
+/* runs sub-table */
+.run-row-item { cursor: pointer; }
+.run-row-item:hover { background: var(--hover); }
+.run-row-item.sel { background: var(--active-sel); }
+.run-empty { text-align: center; color: var(--muted); padding: 20px; font-size: 12px; }

@@ -159,11 +159,18 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
           ) : undefined}
         />
       ) : (
-        <div className="stack">
+        <div className="dwrap scroll-x">
+          <table className="dtable">
+            <thead><tr>
+              <th style={{ width: 130 }}>Status</th><th>Name</th>
+              <th style={{ width: 90 }}>Runs</th><th style={{ width: 80 }}>Scope</th>
+              <th style={{ width: 120 }}>Steps</th><th style={{ width: 180 }} />
+            </tr></thead>
           {visibleFlows.map(flow => (
             <FlowBoard
               key={flow.id}
               flow={flow}
+              scopeBadge={<span className="badge scope">{getItemScope(flow.sourcePath) === 'global' ? 'global' : 'repo'}</span>}
               activeFlow={activeFlow}
               runState={runState}
               auditLogs={auditLogs}
@@ -190,6 +197,7 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
               onToggleBookmark={() => onToggleBookmark(flow)}
             />
           ))}
+          </table>
         </div>
       )}
     </div>

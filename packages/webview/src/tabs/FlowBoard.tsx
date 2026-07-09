@@ -1,18 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Flow, FlowRunState } from '@ai-stepflow/core/types';
 import { Icon, Modal } from '../components/primitives';
-import { EmptyState } from '../components/ResourceCard';
 import { getFlowColumns } from '../flowUtils';
 import { sendToVSCode } from '../vscode';
 import { InlineRunner } from './InlineRunner';
 import { FlowGraphCanvas } from '../components/FlowGraphCanvas';
+
+type RunSummary = {
+  flowId: string; runId: string; runName?: string;
+  completedSteps: number; totalSteps: number; mtimeMs: number; isClosed: boolean;
+};
 
 interface FlowBoardProps {
   flow: Flow;
   activeFlow: Flow | null;
   runState: FlowRunState | null;
   auditLogs: Record<string, any[]>;
-  runSummaries: { flowId: string; runId: string; runName?: string; completedSteps: number; totalSteps: number; mtimeMs: number; isClosed: boolean }[];
+  runSummaries: RunSummary[];
   runnerVisible: boolean;
   activeStepId: string | null;
   completedSteps: number;
@@ -31,9 +35,19 @@ interface FlowBoardProps {
   onOpenFile: (path: string) => void;
   onCopyCommand: () => void;
   outputEndRef: React.RefObject<HTMLDivElement | null>;
+  scopeBadge: React.ReactNode;
   bookmarked?: boolean;
   onToggleBookmark?: () => void;
 }
+
+const fmtAgo = (ms: number): string => {
+  if (!ms) return '—';
+  const diff = Date.now() - ms;
+  if (diff < 60_000) return 'just now';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  return `${Math.floor(diff / 86_400_000)}d ago`;
+};
 
 export const FlowBoard: React.FC<FlowBoardProps> = ({
   flow,
@@ -57,213 +71,195 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
   onOpenFile,
   onCopyCommand,
   outputEndRef,
+  scopeBadge,
   bookmarked,
   onToggleBookmark,
 }) => {
   const columns = getFlowColumns(flow);
   const runnerOpen = activeFlow?.id === flow.id && !!runState && runnerVisible;
-  const [isExpanded, setIsExpanded] = useState(runnerOpen);
+  const [graphOpen, setGraphOpen] = useState(false);
+  const [runsOpen, setRunsOpen] = useState(runnerOpen);
   const [confirmRemoveIndex, setConfirmRemoveIndex] = useState<number | null>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
-  // Auto-expand and scroll into view when runner becomes open for this flow
-  useEffect(() => {
-    if (runnerOpen) {
-      setIsExpanded(true);
-      setTimeout(() => {
-        panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 50);
-    }
-  }, [runnerOpen, runState?.runId]);
+  useEffect(() => { if (runnerOpen) setRunsOpen(true); }, [runnerOpen, runState?.runId]);
 
-  // Auto-load most recent run when expanding (if no active run and runs exist).
-  const handleExpand = () => {
-    setIsExpanded(prev => {
+  const activeRuns = runSummaries.filter(s => !s.isClosed);
+  const total = flow.steps.length;
+  const latest = [...runSummaries].sort((a, b) => b.mtimeMs - a.mtimeMs)[0];
+  const doneCount = latest ? Math.min(latest.completedSteps, total) : 0;
+
+  let statusKey: 'run' | 'ok' | 'idle' = 'idle';
+  let statusLabel = 'Idle';
+  if (runnerOpen && runState) { statusKey = 'run'; statusLabel = 'Running'; }
+  else if (activeRuns.length > 0) { statusKey = 'run'; statusLabel = 'In progress'; }
+  else if (runSummaries.length > 0) { statusKey = 'ok'; statusLabel = 'Done'; }
+
+  const toggleRuns = () => {
+    setRunsOpen(prev => {
       const next = !prev;
-      if (next && !runnerOpen && runSummaries.length > 0) {
-        const activeRuns = runSummaries.filter(s => !s.isClosed);
-        if (activeRuns.length > 0) {
-          const mostRecent = [...activeRuns].sort((a, b) => b.mtimeMs - a.mtimeMs)[0];
-          sendToVSCode('switchRun', { flowId: flow.id, runId: mostRecent.runId });
-        }
+      if (next && !runnerOpen && activeRuns.length > 0) {
+        const mostRecent = [...activeRuns].sort((a, b) => b.mtimeMs - a.mtimeMs)[0];
+        sendToVSCode('switchRun', { flowId: flow.id, runId: mostRecent.runId });
       }
       return next;
     });
   };
 
+  const runStatusBadge = (s: RunSummary) => {
+    if (s.isClosed) return <span className="badge ok">Finalized</span>;
+    if (s.completedSteps >= s.totalSteps) return <span className="badge ok">Done</span>;
+    return <span className="badge run">In progress</span>;
+  };
+
   return (
-    <div className="panel" ref={panelRef}>
-      {/* Panel header — always visible */}
-      <div className="panel-head">
-        <div className="panel-head-info">
-          <span className="panel-title">{flow.name}</span>
-          <span className="muted small">{flow.steps.length} steps</span>
-          {runnerOpen && !runState?.isClosed && <span className="badge progress">run active</span>}
-          {runnerOpen && runState?.isClosed && <span className="badge success">run finalized</span>}
-        </div>
-        <div className="panel-head-actions">
-          <button
-            className="icon-btn"
-            title={isExpanded ? 'Collapse' : 'Expand'}
-            onClick={handleExpand}
-          >
-            {isExpanded ? <Icon.ChevronUp size={18} /> : <Icon.ChevronDown size={18} />}
-          </button>
-          {onToggleBookmark && (
-            <button
-              className={`icon-btn bookmark ${bookmarked ? 'active' : ''}`}
-              title={bookmarked ? 'Remove bookmark' : 'Bookmark'}
-              aria-pressed={bookmarked}
-              onClick={onToggleBookmark}
-            >
-              <Icon.Bookmark size={14} fill={bookmarked ? 'currentColor' : 'none'} />
-            </button>
-          )}
-          <button className="icon-btn pencil" title="Edit flow" onClick={() => onEdit(flow)}><Icon.Pencil size={14} /></button>
-          <button className="icon-btn" title="Details" onClick={() => onDetail(flow)}>
-            <Icon.Info size={14} />
-          </button>
-          {flow.sourcePath && (
-            <button className="icon-btn danger" title="Delete flow" onClick={() => sendToVSCode('deleteFlow', { flow })}><Icon.X size={14} /></button>
-          )}
-        </div>
-      </div>
-
-      {/* Step flow canvas — always visible */}
-      <div className="flow-canvas" style={{ position: 'relative' }} ref={canvasRef}>
-          <FlowGraphCanvas steps={flow.steps} containerRef={canvasRef} isExpanded={isExpanded} />
-          <div className="flow-track" style={{ position: 'relative', zIndex: 1 }}>
-            {columns.map((column, columnIndex) => (
-              <React.Fragment key={`${flow.id}-${columnIndex}`}>
-                <div className="flow-stage">
-                  {column.map((step, rowIndex) => {
-                    const stepNumber = column.length > 1 ? `${columnIndex + 1}.${rowIndex + 1}` : `${columnIndex + 1}`;
-                    const reviewLabel = step.review.type === 'ai' ? 'auto review' : 'human review';
-                    const stepIndex = flow.steps.findIndex(s => s.id === step.id);
-
-                    return (
-                      <div
-                        key={step.id}
-                        id={`step-node-${step.id}`}
-                        className="flow-step-card editable"
-                      >
-                        <div className="flow-step-heading">
-                          <span className="flow-step-number">{stepNumber}</span>
-                          <span className="flow-step-title">{step.title || step.id}</span>
-                          <span className="flow-step-actions">
-                            <button
-                              type="button"
-                              className="icon-btn sm gear"
-                              title="Edit step"
-                              onClick={e => { e.stopPropagation(); onBoardStepEditor(flow, stepIndex); }}
-                            >
-                              <Icon.Settings size={12} />
-                            </button>
-                            <button
-                              type="button"
-                              className="icon-btn sm danger"
-                              title="Remove step"
-                              onClick={e => { e.stopPropagation(); setConfirmRemoveIndex(stepIndex); }}
-                            >
-                              <Icon.X size={14} />
-                            </button>
-                          </span>
-                        </div>
-                        <div className="flow-step-sub mono">agent:{step.agent || 'unassigned'}</div>
-                        <span className="flow-step-review" title={reviewLabel}>
-                          {step.review.type === 'ai' ? <Icon.Bot size={12} /> : <Icon.User size={12} />}
-                          <span>{reviewLabel}</span>
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </React.Fragment>
+    <tbody className="flow-tbody">
+      {/* main row */}
+      <tr className={`drow ${graphOpen ? 'graph-on' : ''}`}>
+        <td>
+          <span className="dstatus">
+            <span className={`ddot ${statusKey}`} />
+            <span className="dstatus-label">{statusLabel}</span>
+          </span>
+        </td>
+        <td className="name-cell" onClick={() => setGraphOpen(o => !o)} title="Show flow graph">
+          <div className="dname">
+            <span className="dn"><span className="chev-inline"><Icon.ChevronRight size={14} /></span>{flow.name}</span>
+            <span className="dsub">{flow.description || 'No description.'}</span>
+          </div>
+        </td>
+        <td className="mono muted">{runSummaries.length} {runSummaries.length === 1 ? 'run' : 'runs'}</td>
+        <td>{scopeBadge}</td>
+        <td>
+          <span className="pipe">
+            {flow.steps.map((s, i) => (
+              <span key={s.id} className={`seg ${i < doneCount ? 'done' : (i === doneCount && statusKey === 'run' ? 'active' : '')}`} />
             ))}
-            <button type="button" className="flow-add-node" onClick={() => onBoardStepAdder(flow)} aria-label="Add workflow step"><Icon.Plus size={14} /></button>
-          </div>
-        </div>
-
-      {/* Expanded: run controls + inline runner */}
-      {isExpanded && (
-        <>
-          <div className="flow-run-controls">
-            {runSummaries.length > 0 && (
-              <div className="flex-row items-center gap-4">
-                <span className="small muted" style={{ flexShrink: 0 }}>Resume:</span>
-                <select
-                  className="input sm"
-                  style={{ minWidth: '180px', maxWidth: 'auto' }}
-                  value={runnerOpen ? (runState?.runId || '') : ''}
-                  onChange={e => {
-                    if (e.target.value) {
-                      sendToVSCode('switchRun', { flowId: flow.id, runId: e.target.value });
-                    }
-                  }}
-                >
-                  <option value="" disabled>Select run...</option>
-                  {runSummaries.some(s => !s.isClosed) && (
-                    <optgroup label="In progress">
-                      {runSummaries.filter(s => !s.isClosed).map(s => (
-                        <option key={s.runId} value={s.runId}>
-                          {s.runName || s.runId.split('T')[0]} ({s.completedSteps}/{s.totalSteps})
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                  {runSummaries.some(s => s.isClosed) && (
-                    <optgroup label="Done">
-                      {runSummaries.filter(s => s.isClosed).map(s => (
-                        <option key={s.runId} value={s.runId}>
-                          ✓ {s.runName || s.runId.split('T')[0]} ({s.completedSteps}/{s.totalSteps})
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                </select>
-              </div>
+            <span className="pipe-num">{total}</span>
+          </span>
+        </td>
+        <td className="drow-actions-cell">
+          <span className="drow-actions">
+            <button className="icon-btn" title="New run" onClick={() => onRun(flow)}><Icon.Play size={14} /></button>
+            <button className={`icon-btn ${runsOpen ? 'active' : ''}`} title="Runs" onClick={toggleRuns}><Icon.Terminal size={14} /></button>
+            {onToggleBookmark && (
+              <button className={`icon-btn bookmark ${bookmarked ? 'active' : ''}`} title={bookmarked ? 'Remove bookmark' : 'Bookmark'} aria-pressed={bookmarked} onClick={onToggleBookmark}>
+                <Icon.Bookmark size={14} fill={bookmarked ? 'currentColor' : 'none'} />
+              </button>
             )}
-            <button
-              className="btn primary"
-              style={{ marginLeft: 'auto' }}
-              title="Start a new independent run"
-              onClick={() => onRun(flow)}
-            >
-              <span className="btn-glyph"><Icon.Plus size={14} /></span>New Run
-            </button>
-          </div>
+            <button className="icon-btn pencil" title="Edit flow" onClick={() => onEdit(flow)}><Icon.Pencil size={14} /></button>
+            <button className="icon-btn" title="Details" onClick={() => onDetail(flow)}><Icon.Info size={14} /></button>
+            {flow.sourcePath && (
+              <button className="icon-btn danger" title="Delete flow" onClick={() => sendToVSCode('deleteFlow', { flow })}><Icon.Trash2 size={14} /></button>
+            )}
+          </span>
+        </td>
+      </tr>
 
-          {runnerOpen && runState ? (
-            <InlineRunner
-              flow={flow}
-              runState={runState}
-              auditLogs={auditLogs}
-              activeStepId={activeStepId}
-              completedSteps={completedSteps}
-              activeProgress={activeProgress}
-              commandCopied={commandCopied}
-              onSetActiveStep={onSetActiveStep}
-              onRunStep={onRunStep}
-              onOpenFile={onOpenFile}
-              onCopyCommand={onCopyCommand}
-              outputEndRef={outputEndRef}
-            />
-          ) : runSummaries.length === 0 ? (
-            <EmptyState
-              title="No runs yet"
-              text="Click New Run to start the first run of this workflow."
-              icon={<Icon.Play size={24} />}
-            />
-          ) : (
-            <EmptyState
-              title="No run selected"
-              text="Select a run from the dropdown above, or start a new one."
-              icon={<Icon.Play size={24} />}
-            />
-          )}
-        </>
+      {/* graph expand */}
+      {graphOpen && (
+        <tr className="detail-row graph-dr">
+          <td colSpan={6}>
+            <div className="detail">
+              <div className="detail-subhead">
+                <h4>Flow graph</h4>
+                <span className="hint">preview — click ▶ to run</span>
+              </div>
+              <div className="flow-canvas" style={{ position: 'relative' }} ref={canvasRef}>
+                <FlowGraphCanvas steps={flow.steps} containerRef={canvasRef} isExpanded={graphOpen} />
+                <div className="flow-track" style={{ position: 'relative', zIndex: 1 }}>
+                  {columns.map((column, columnIndex) => (
+                    <div className="flow-stage" key={`${flow.id}-${columnIndex}`}>
+                      {column.map((step, rowIndex) => {
+                        const stepNumber = column.length > 1 ? `${columnIndex + 1}.${rowIndex + 1}` : `${columnIndex + 1}`;
+                        const reviewLabel = step.review.type === 'ai' ? 'auto review' : 'human review';
+                        const stepIndex = flow.steps.findIndex(s => s.id === step.id);
+                        return (
+                          <div key={step.id} id={`step-node-${step.id}`} className="flow-step-card editable">
+                            <div className="flow-step-heading">
+                              <span className="flow-step-number">{stepNumber}</span>
+                              <span className="flow-step-title">{step.title || step.id}</span>
+                              <span className="flow-step-actions">
+                                <button type="button" className="icon-btn sm gear" title="Edit step" onClick={e => { e.stopPropagation(); onBoardStepEditor(flow, stepIndex); }}><Icon.Settings size={12} /></button>
+                                <button type="button" className="icon-btn sm danger" title="Remove step" onClick={e => { e.stopPropagation(); setConfirmRemoveIndex(stepIndex); }}><Icon.X size={14} /></button>
+                              </span>
+                            </div>
+                            <div className="flow-step-sub mono">agent:{step.agent || 'unassigned'}</div>
+                            <span className="flow-step-review" title={reviewLabel}>
+                              {step.review.type === 'ai' ? <Icon.Bot size={12} /> : <Icon.User size={12} />}
+                              <span>{reviewLabel}</span>
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                  <button type="button" className="flow-add-node" onClick={() => onBoardStepAdder(flow)} aria-label="Add workflow step"><Icon.Plus size={14} /></button>
+                </div>
+              </div>
+            </div>
+          </td>
+        </tr>
       )}
+
+      {/* runs expand */}
+      {runsOpen && (
+        <tr className="detail-row runs-dr">
+          <td colSpan={6}>
+            <div className="detail">
+              <div className="detail-subhead">
+                <h4>Runs</h4>
+                <span className="badge idle">{runSummaries.length} total</span>
+                <span className="hint">tạo run mới bằng ▶ trên dòng flow</span>
+              </div>
+
+              {runSummaries.length === 0 ? (
+                <div className="run-empty">No runs yet — click ▶ to create the first run.</div>
+              ) : (
+                <div className="dwrap scroll-x">
+                  <table className="dtable">
+                    <thead><tr><th>Run</th><th style={{ width: 130 }}>Status</th><th style={{ width: 90 }}>Progress</th><th style={{ width: 110 }}>Started</th></tr></thead>
+                    <tbody>
+                      {[...runSummaries].sort((a, b) => b.mtimeMs - a.mtimeMs).map(s => (
+                        <tr
+                          key={s.runId}
+                          className={`run-row-item ${runnerOpen && runState?.runId === s.runId ? 'sel' : ''}`}
+                          onClick={() => sendToVSCode('switchRun', { flowId: flow.id, runId: s.runId })}
+                        >
+                          <td><strong>{s.runName || s.runId.split('T')[0]}</strong> <span className="mono muted small">{s.runId.slice(-6)}</span></td>
+                          <td>{runStatusBadge(s)}</td>
+                          <td className="mono">{s.completedSteps} / {s.totalSteps}</td>
+                          <td className="muted small">{fmtAgo(s.mtimeMs)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {runnerOpen && runState && (
+                <div style={{ marginTop: 14 }}>
+                  <InlineRunner
+                    flow={flow}
+                    runState={runState}
+                    auditLogs={auditLogs}
+                    activeStepId={activeStepId}
+                    completedSteps={completedSteps}
+                    activeProgress={activeProgress}
+                    commandCopied={commandCopied}
+                    onSetActiveStep={onSetActiveStep}
+                    onRunStep={onRunStep}
+                    onOpenFile={onOpenFile}
+                    onCopyCommand={onCopyCommand}
+                    outputEndRef={outputEndRef}
+                  />
+                </div>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
+
       <Modal
         title="Remove step?"
         open={confirmRemoveIndex !== null}
@@ -282,6 +278,6 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
           <p>Remove step <strong>{flow.steps[confirmRemoveIndex]?.title || flow.steps[confirmRemoveIndex]?.id}</strong>? This cannot be undone.</p>
         )}
       </Modal>
-    </div>
+    </tbody>
   );
 };
