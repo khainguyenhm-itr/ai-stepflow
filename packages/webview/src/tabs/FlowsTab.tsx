@@ -162,9 +162,9 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
         <div className="dwrap scroll-x">
           <table className="dtable">
             <thead><tr>
-              <th style={{ width: '13%' }}>Status</th><th style={{ width: '28%' }}>Name</th>
+              <th style={{ width: '13%' }}>Status</th><th style={{ width: '34%' }}>Name</th>
               <th style={{ width: '9%' }}>Runs</th><th style={{ width: '10%' }}>Scope</th>
-              <th style={{ width: '22%' }}>Steps</th><th style={{ width: '18%' }} />
+              <th style={{ width: '15%' }}>Steps</th><th style={{ width: '19%' }} />
             </tr></thead>
           {visibleFlows.map(flow => (
             <FlowBoard
