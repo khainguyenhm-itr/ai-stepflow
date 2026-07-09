@@ -33,13 +33,13 @@ export function applyDependencyLocks(flow: Flow, steps: Record<string, StepRunSt
   return next;
 }
 
-/** Build the initial run state for a flow: every step ready, review pending where required. */
+/** Build the initial run state for a flow: every step ready, review pending. */
 export function initRunState(flow: Flow, opts: { runId: string; runName?: string; projectPath?: string; inputs?: Record<string, string> }): FlowRunState {
   const steps: Record<string, StepRunState> = {};
   for (const step of flow.steps) {
     steps[step.id] = {
       executionStatus: 'ready',
-      reviewStatus: step.review.required ? 'pending' : 'not_required',
+      reviewStatus: 'pending',
       completionStatus: 'not_ready',
       output: ''
     };
@@ -110,11 +110,10 @@ function invalidateForRerun(state: FlowRunState, flow: Flow, stepId: string): Fl
   for (const id of ids) {
     const prev = steps[id];
     if (!prev) continue;
-    const step = flow.steps.find(s => s.id === id);
     steps[id] = {
       ...prev,
       executionStatus: id === stepId ? prev.executionStatus : 'ready',
-      reviewStatus: step?.review.required ? 'pending' : 'not_required',
+      reviewStatus: 'pending',
       completionStatus: 'not_ready',
       error: undefined,
       aiReviewOutput: undefined,
@@ -128,32 +127,23 @@ function invalidateForRerun(state: FlowRunState, flow: Flow, stepId: string): Fl
 export function markRunning(state: FlowRunState, flow: Flow, stepId: string): FlowRunState {
   const rerunDoneStep = state.steps[stepId]?.completionStatus === 'done';
   const baseState = rerunDoneStep ? invalidateForRerun(state, flow, stepId) : state;
-  const step = flow.steps.find(s => s.id === stepId);
   const revision = (baseState.steps[stepId]?.revision ?? 0) + 1;
-  const patch: Partial<StepRunState> = { executionStatus: 'running', completionStatus: 'not_ready', output: '', error: undefined, startedAt: new Date().toISOString(), completedAt: undefined, reviewCompletedAt: undefined, revision, tokensUsed: undefined, costUsd: undefined, modelUsed: undefined };
-  if (step?.review.required) {
-    patch.reviewStatus = 'pending';
-    patch.aiReviewOutput = '';
-  }
+  const patch: Partial<StepRunState> = { executionStatus: 'running', completionStatus: 'not_ready', output: '', error: undefined, startedAt: new Date().toISOString(), completedAt: undefined, reviewCompletedAt: undefined, revision, tokensUsed: undefined, costUsd: undefined, modelUsed: undefined, reviewStatus: 'pending', aiReviewOutput: '' };
   return patchStep(baseState, flow, stepId, patch, { status: 'running', message: revision > 1 ? `rerun #${revision}` : undefined });
 }
 
-/** A finished run: transitions from 'running' to 'completed'. 
- *  If no review is required, it can go straight to 'done'. 
+/** A finished run: transitions from 'running' to 'completed', then opens the review gate.
+ *  Every step is reviewed — AI reviews run automatically, human reviews wait for a decision.
  */
 export function markCompleted(state: FlowRunState, flow: Flow, stepId: string, metrics: StepMetrics = {}): FlowRunState {
   const step = flow.steps.find(s => s.id === stepId);
-  const patch: Partial<StepRunState> = { executionStatus: 'completed', completedAt: new Date().toISOString(), ...metrics };
-  
-  if (!step?.review.required) {
-    // No review: go straight to 'done'.
-    patch.completionStatus = 'done';
-  } else {
-    // Review required: wait for decision.
-    patch.completionStatus = 'not_ready';
-    patch.reviewStatus = step.review.type === 'ai' ? 'ai_review_running' : 'waiting_human';
-  }
-  
+  const patch: Partial<StepRunState> = {
+    executionStatus: 'completed',
+    completedAt: new Date().toISOString(),
+    completionStatus: 'not_ready',
+    reviewStatus: step?.review.type === 'ai' ? 'ai_review_running' : 'waiting_human',
+    ...metrics
+  };
   return patchStep(state, flow, stepId, patch, { status: 'completed' });
 }
 
@@ -233,7 +223,7 @@ export function resetStep(state: FlowRunState, flow: Flow, stepId: string): Flow
     if (!step) continue;
     steps[id] = {
       executionStatus: 'ready',
-      reviewStatus: step.review.required ? 'pending' : 'not_required',
+      reviewStatus: 'pending',
       completionStatus: 'not_ready',
       output: ''
     };

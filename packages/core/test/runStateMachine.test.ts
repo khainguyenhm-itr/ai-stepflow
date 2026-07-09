@@ -3,11 +3,17 @@ import assert from 'node:assert/strict';
 import {
   Flow,
   initRunState, markRunning, markCompleted, markFailed, markCancelled,
-  applyHumanReview, markDone, doneStepIds, lockStatesEqual, resetStep
+  applyHumanReview, applyAiReview, markDone, doneStepIds, lockStatesEqual, resetStep
 } from '@ai-stepflow/core';
 
+// Every step is reviewed; the default is auto (AI) review.
 function step(id: string, extra: Record<string, unknown> = {}) {
-  return { id, title: id, agent: 'a', skill: 's', review: { required: false }, ...extra } as any;
+  return { id, title: id, agent: 'a', skill: 's', review: { required: true, type: 'ai' }, ...extra } as any;
+}
+
+// Drive a step run → complete → AI-approve so it reaches 'done'.
+function toDone(st: any, fl: Flow, id: string) {
+  return applyAiReview(markCompleted(markRunning(st, fl, id), fl, id), fl, id, 'approved');
 }
 
 const flow: Flow = {
@@ -33,10 +39,11 @@ test('markCompleted transitions status and applies metrics', () => {
   st = markCompleted(st, flow, 'a', { costUsd: 0.1 });
   assert.equal(st.steps.a.executionStatus, 'completed');
   assert.equal(st.steps.a.costUsd, 0.1);
-  // Root step with no review is 'done' immediately
-  assert.equal(st.steps.a.completionStatus, 'done');
-  // 'b' should now be unlocked
-  assert.equal(st.steps.b.executionStatus, 'ready');
+  // Every step is reviewed: completion opens the review gate rather than going straight to done.
+  assert.equal(st.steps.a.completionStatus, 'not_ready');
+  assert.equal(st.steps.a.reviewStatus, 'ai_review_running');
+  // 'b' stays locked until 'a' is approved.
+  assert.equal(st.steps.b.executionStatus, 'locked');
 });
 
 test('markFailed transitions status', () => {
@@ -62,8 +69,7 @@ test('markCancelled marks the attempt cancelled and stays re-runnable', () => {
 
 test('applyHumanReview transitions status', () => {
   let st = initRunState(flow, { runId: 'r1' });
-  st = markRunning(st, flow, 'a');
-  st = markCompleted(st, flow, 'a');
+  st = toDone(st, flow, 'a');
   st = markRunning(st, flow, 'b');
   st = markCompleted(st, flow, 'b');
   assert.equal(st.steps.b.reviewStatus, 'waiting_human');
@@ -75,8 +81,7 @@ test('applyHumanReview transitions status', () => {
 
 test('markDone transitions status to done', () => {
   let st = initRunState(flow, { runId: 'r1' });
-  st = markRunning(st, flow, 'a');
-  st = markCompleted(st, flow, 'a');
+  st = toDone(st, flow, 'a');
   st = markRunning(st, flow, 'b');
   st = markCompleted(st, flow, 'b');
   st = applyHumanReview(st, flow, 'b', { decision: 'approved' });
@@ -116,9 +121,9 @@ test('rerunning a done step invalidates dependent steps', () => {
     ]
   };
   let st = initRunState(threeStepFlow, { runId: 'r1' });
-  st = markCompleted(markRunning(st, threeStepFlow, 'a'), threeStepFlow, 'a');
-  st = markCompleted(markRunning(st, threeStepFlow, 'b'), threeStepFlow, 'b');
-  st = markCompleted(markRunning(st, threeStepFlow, 'c'), threeStepFlow, 'c');
+  st = toDone(st, threeStepFlow, 'a');
+  st = toDone(st, threeStepFlow, 'b');
+  st = toDone(st, threeStepFlow, 'c');
   assert.deepEqual([...doneStepIds(st)].sort(), ['a', 'b', 'c']);
 
   st = markRunning(st, threeStepFlow, 'a');
@@ -140,11 +145,11 @@ test('resetStep returns a wedged step (and dependents) to initial state', () => 
     ]
   };
   let st = initRunState(threeStepFlow, { runId: 'r1' });
-  st = markCompleted(markRunning(st, threeStepFlow, 'a'), threeStepFlow, 'a');
+  st = toDone(st, threeStepFlow, 'a');
   st = markCompleted(markRunning(st, threeStepFlow, 'b'), threeStepFlow, 'b');
   st = applyHumanReview(st, threeStepFlow, 'b', { decision: 'approved' });
   st = markDone(st, threeStepFlow, 'b');
-  st = markCompleted(markRunning(st, threeStepFlow, 'c'), threeStepFlow, 'c');
+  st = toDone(st, threeStepFlow, 'c');
   assert.deepEqual([...doneStepIds(st)].sort(), ['a', 'b', 'c']);
 
   // Reset the middle step: it and its dependent 'c' return to initial; 'a' is untouched.
@@ -165,8 +170,7 @@ test('resetStep returns a wedged step (and dependents) to initial state', () => 
 
 test('human review records the decision and comment in history', () => {
   let st = initRunState(flow, { runId: 'r1' });
-  st = markRunning(st, flow, 'a');
-  st = markCompleted(st, flow, 'a');
+  st = toDone(st, flow, 'a');
   st = markRunning(st, flow, 'b');
   st = markCompleted(st, flow, 'b');
   st = applyHumanReview(st, flow, 'b', { decision: 'rejected', comment: 'needs tests' });
@@ -177,8 +181,7 @@ test('human review records the decision and comment in history', () => {
 
 test('doneStepIds returns the set of completed steps', () => {
   let st = initRunState(flow, { runId: 'r1' });
-  st = markRunning(st, flow, 'a');
-  st = markCompleted(st, flow, 'a');
+  st = toDone(st, flow, 'a');
   const done = doneStepIds(st);
   assert.ok(done.has('a'));
   assert.ok(!done.has('b'));

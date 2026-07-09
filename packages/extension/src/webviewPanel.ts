@@ -228,9 +228,6 @@ export class CockpitPanel {
         this._runner.reviewStep(message.stepId, message.decision);
         break;
 
-      case 'markStepDone':
-        await this._runner.markStepDone(message.stepId);
-        return;
       case 'setAutoReview':
         await this._runner.setAutoReview(message.enabled);
         return;
@@ -570,7 +567,7 @@ export class CockpitPanel {
         requires: Array.isArray(item.requires) ? item.requires.filter((value): value is string => typeof value === 'string') : undefined,
         produces: Array.isArray(item.produces) ? item.produces.filter((value): value is string => typeof value === 'string') : undefined,
         producesContains: Array.isArray(item.producesContains) ? item.producesContains.filter((value): value is string => typeof value === 'string') : undefined,
-        review: { required: !!review.required }
+        review: { required: true, type: review.type === 'human' ? 'human' : 'ai' }
       };
     });
   }

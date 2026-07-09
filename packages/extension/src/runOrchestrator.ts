@@ -86,18 +86,12 @@ export class RunOrchestrator {
       if (!this._currentFlow || !this._runState) return;
       if (this._runState.steps[stepId]?.executionStatus !== 'running') return;
       const step = this._currentFlow.steps.find(s => s.id === stepId);
+      if (!step) return;
       const metrics = await this._readInteractiveMetrics(stepId);
-      if (step?.review?.required) {
-        await this._setRunState(s => machine.markCompleted(s, this._currentFlow!, stepId, metrics), { stepId, status: 'completed', message: 'Terminal session ended — reviewing' });
-        await this._reviewStep(step, stepId);
-      } else if (this._runState.autoReview && step) {
-        // Auto-pilot: an otherwise-unreviewed step still gets an AI review before it auto-confirms.
-        await this._setRunState(s => machine.markCompleted(s, this._currentFlow!, stepId, metrics), { stepId, status: 'completed', message: 'Terminal session ended — auto-reviewing' });
-        await this._runAiReview(step, stepId, this.configManager.getProjectPath() || '');
-      } else {
-        await this._setRunState(s => machine.markDone(machine.markCompleted(s, this._currentFlow!, stepId, metrics), this._currentFlow!, stepId), { stepId, status: 'completed', message: 'Terminal work done' });
-        this._advanceReadySteps();
-      }
+      // Every step is reviewed: mark completed then run the review (AI reviews auto-decide,
+      // human reviews wait for approval).
+      await this._setRunState(s => machine.markCompleted(s, this._currentFlow!, stepId, metrics), { stepId, status: 'completed', message: 'Terminal session ended — reviewing' });
+      await this._reviewStep(step, stepId);
     });
   }
 
@@ -297,55 +291,6 @@ export class RunOrchestrator {
    * Finalize a step whose "Mark step done" was pressed. Gates requires/produces, then either
    * completes (no review needed, or already approved) and advances the DAG, or opens the review gate.
    */
-  async markStepDone(stepId: string): Promise<void> {
-    if (!this._currentFlow || !this._runState) return;
-    const flow = this._currentFlow;
-    const step = flow.steps.find(s => s.id === stepId);
-    if (!step) return;
-
-    const req = this._validateRequires(step);
-    if (!req.ok) {
-      this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[cannot mark done — requires check failed: ${req.message}]\n` });
-      vscode.window.showErrorMessage(`Step '${step.title || step.id}' cannot be marked done: ${req.message}`);
-      return;
-    }
-    const prod = this._validateProduces(step);
-    if (!prod.ok) {
-      this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[cannot mark done — produces check failed: ${prod.message}]\n` });
-      vscode.window.showErrorMessage(`Step '${step.title || step.id}' cannot be marked done: ${prod.message}`);
-      return;
-    }
-    const content = await this._verifyProducesContent(step);
-    if (!content.ok) {
-      this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[cannot mark done — ${content.message}]\n` });
-      vscode.window.showErrorMessage(`Step '${step.title || step.id}' cannot be marked done: ${content.message}`);
-      return;
-    }
-
-    const rs = this._runState.steps[stepId];
-    // Non-review terminal step still running: the user clicked the "Done in terminal" button to signal
-    // the terminal work is finished. Transition directly to 'done' and advance.
-    if (!step.review?.required && rs?.executionStatus === 'running') {
-      const metrics = await this._readInteractiveMetrics(stepId);
-      await this._setRunState(s => machine.markDone(machine.markCompleted(s, flow, stepId, metrics), flow, stepId), { stepId, status: 'completed', message: 'Terminal work done' });
-      this._advanceReadySteps();
-      return;
-    }
-    // No review gate, or a reviewer already approved → finish and advance.
-    if (!step.review?.required || rs?.reviewStatus === 'approved') {
-      await this._persistInteractiveMetrics(stepId);
-      await this._setRunState(s => machine.markDone(s, flow, stepId), { stepId, status: 'completed', message: 'Marked done' });
-      this._advanceReadySteps();
-      return;
-    }
-
-    // Review required and not yet satisfied: record the run as completed (this opens the
-    // review gate, setting reviewStatus to 'pending'), then run the artifact review or
-    // wait for a human decision.
-    await this._setRunState(s => machine.markCompleted(s, flow, stepId), { stepId, status: 'completed', message: 'Run completed — reviewing' });
-    await this._reviewStep(step, stepId);
-  }
-
   /** Reset the current run to a fresh state, terminating any in-flight processes. */
   async resetRun(): Promise<void> {
     if (!this._currentFlow || !this._runState) return;
@@ -632,12 +577,12 @@ export class RunOrchestrator {
       ? { tokensUsed: result.reviewTokensUsed, costUsd: result.reviewCostUsd }
       : undefined;
 
-    // Forced auto-review (auto-pilot on a step with no configured review): the run must never
-    // stall on a human gate here. If the review couldn't actually run (no artifacts / no kit →
-    // 'waiting_human'), there is nothing to judge, so auto-confirm and advance instead of parking.
-    const forcedAuto = !step.review?.required;
-    if (forcedAuto && result.status === 'waiting_human') {
-      await this._setRunState(s => machine.markDone(s, flow, stepId), { stepId, status: 'completed', message: 'Auto-review: nothing to review — confirmed' });
+    // Auto-pilot must not stall on an undecidable AI review. When the review couldn't actually
+    // run (no artifacts / no kit → 'waiting_human'), there is nothing to judge, so auto-confirm
+    // and advance instead of parking at a human gate — honoring the auto-pilot contract that the
+    // run only halts at a human-review gate or an AI-review rejection.
+    if (this._runState?.autoReview && result.status === 'waiting_human') {
+      await this._setRunState(s => machine.markDone(s, flow, stepId), { stepId, status: 'completed', message: 'Auto-pilot: nothing to review — confirmed' });
       this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[auto-review: ${result.note} — confirmed]\n` });
       this._advanceReadySteps();
       return;
@@ -755,7 +700,7 @@ export class RunOrchestrator {
     for (const action of actions) {
       if (action.type === 'launch_interactive') {
         const step = this._currentFlow?.steps.find(s => s.id === action.stepId);
-        const hasAiReview = !!step?.review?.required && (step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai'));
+        const hasAiReview = !!step && (step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai'));
 
         // Auto-pilot runs every ready step itself (human-review steps run too, then halt at their
         // approval gate). Otherwise only AI-reviewed steps auto-run; the rest park for a manual click.

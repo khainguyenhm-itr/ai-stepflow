@@ -10,7 +10,7 @@ test('renderRunReport includes step table and audit history', () => {
     description: '',
     inputs: { epic: { type: 'string', required: true, label: 'Epic' } },
     sourcePath: '/tmp/flow.yaml',
-    steps: [{ id: 'step-1', title: 'Plan', agent: 'po', skill: 'prd', review: { required: false } }]
+    steps: [{ id: 'step-1', title: 'Plan', agent: 'po', skill: 'prd', review: { required: true, type: 'ai' } }]
   };
   const runState: FlowRunState = {
     flowId: 'flow',
@@ -21,7 +21,7 @@ test('renderRunReport includes step table and audit history', () => {
     steps: {
       'step-1': {
         executionStatus: 'completed',
-        reviewStatus: 'not_required',
+        reviewStatus: 'approved',
         completionStatus: 'done',
         modelUsed: 'claude-sonnet-4-6',
         tokensUsed: 1234,
@@ -38,7 +38,7 @@ test('renderRunReport includes step table and audit history', () => {
   assert.match(markdown, /Run Report: Report Flow/);
   // Step number is in the heading (### 1. Plan), not a table column.
   assert.match(markdown, /### 1\. Plan/);
-  assert.match(markdown, /\| completed \| not_required \| done \|/);
+  assert.match(markdown, /\| completed \| approved \| done \|/);
   assert.match(markdown, /EPIC-1/);
   assert.match(markdown, /Started run/);
 });

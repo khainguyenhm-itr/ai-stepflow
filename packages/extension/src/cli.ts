@@ -277,11 +277,6 @@ async function runFlow(projectPath: string, flowRef: string, inputs: Record<stri
 
     runState = machine.markCompleted(runState, flow, next.id, metrics);
 
-    if (!next.review.required) {
-      await saveRun(projectPath, runState);
-      continue;
-    }
-
     const hasAiReview = next.review.type === 'ai' || !!next.review.reviewers?.some(r => r.type === 'ai');
     if (!hasAiReview && !next.review.validatorPath) {
       await saveRun(projectPath, runState);

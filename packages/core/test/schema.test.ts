@@ -8,7 +8,9 @@ test('parseFlow fills defaults for a minimal hand-written flow', () => {
   assert.equal(flow.name, 'f1');
   assert.equal(flow.sourcePath, '/x/f1.yaml');
   const step = flow.steps[0];
-  assert.equal(step.review.required, false);
+  // Every step is reviewed: a minimal step defaults to auto (AI) review.
+  assert.equal(step.review.required, true);
+  assert.equal(step.review.type, 'ai');
   assert.deepEqual(step.skills, ['prd']);
 });
 
@@ -51,10 +53,10 @@ test('parseFlow preserves validator config', () => {
   assert.equal(flow.steps[0].review.validatorTimeoutMs, 5000);
 });
 
-test('parseFlow degrades an unknown review type to undefined instead of failing', () => {
+test('parseFlow degrades an unknown review type to the auto (AI) default instead of failing', () => {
   const flow = parseFlow({ id: 'f', steps: [{ id: 's', review: { required: true, type: 'robot' } }] }, 'f', '/x/f.yaml');
   assert.equal(flow.steps[0].review.required, true);
-  assert.equal(flow.steps[0].review.type, undefined);
+  assert.equal(flow.steps[0].review.type, 'ai');
 });
 
 test('parseFlow preserves aiConversation history', () => {

@@ -14,7 +14,7 @@ export const previewFlow: Flow = {
       title: 'Collect Context',
       agent: 'aidlc-developer',
       skill: 'gitnexus-exploring',
-      review: { required: false }
+      review: { required: true, type: 'ai' }
     },
     {
       id: 'write-docs',
@@ -22,7 +22,7 @@ export const previewFlow: Flow = {
       agent: 'aidlc-docs-writer',
       skill: 'create-plan',
       dependsOn: ['collect-context'],
-      review: { required: true }
+      review: { required: true, type: 'human' }
     }
   ]
 };

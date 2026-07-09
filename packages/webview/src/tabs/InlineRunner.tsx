@@ -71,18 +71,16 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   const totalReviewMs = stepCosts.reduce((sum, item) => sum + item.reviewMs, 0);
   const hasAnyHeadlessStep = false; // All steps run interactively now
   const reviewStatus = activeStepState?.reviewStatus;
-  const reviewRequired = !!activeStep?.review.required;
   const aiReviewing = reviewStatus === 'ai_review_running';
-  // AI-reviewed steps run headless (a tracked `claude` child), so their in-flight run can be
-  // cancelled; interactive steps (no-review or human-review) run in the terminal.
-  const isHeadless = false; // All steps run interactively now
+  // All steps run interactively in the terminal; the in-flight run is cancelled by disposing it.
+  const isHeadless = false;
 
   const stepActions = (() => {
     const actions = {
       showRun: false,
       showRerun: false,
       showReview: false,
-      showFinish: false,
+      showWorking: false,
       showCancel: false,
       isLocked: false
     };
@@ -98,14 +96,11 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
       // Once fully done, only re-run is allowed
       actions.showRerun = true;
     } else if (executionStatus === 'running') {
-      if (reviewRequired) {
-        // Human review: show Approve/Reject while terminal is running.
-        // The orchestrator handles the isRunning case (kills terminal + marks done) correctly.
-        actions.showReview = true;
-      } else {
-        // No review: show Finish as the manual signal that terminal work is done.
-        actions.showFinish = true;
-      }
+      // AI is actively working. Show a working indicator + Stop; the review actions only
+      // appear once the run completes (AI review runs, or a human-review step reaches its
+      // approval gate), so the user is never asked to judge a result that doesn't exist yet.
+      actions.showWorking = true;
+      actions.showCancel = true;
     } else if (reviewStatus === 'waiting_human') {
       // Terminal closed, explicitly waiting for approval/rejection
       actions.showReview = true;
@@ -131,8 +126,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
     if (reviewStatus === 'approved') return <span className="badge success"><Icon.Check size={10} style={{ marginRight: 4 }} />approved</span>;
     if (executionStatus === 'running') return <span className="badge progress"><Icon.Play size={10} style={{ marginRight: 4 }} />running</span>;
     if (reviewStatus === 'ai_review_running') return <span className="badge progress"><Icon.RotateCw size={10} style={{ marginRight: 4 }} className="spin" />reviewing</span>;
-    if (reviewStatus === 'waiting_human' || (reviewRequired && executionStatus === 'completed')) return <span className="badge warning"><Icon.Info size={10} style={{ marginRight: 4 }} />waiting review</span>;
-    if (executionStatus === 'completed') return <span className="badge progress">completed</span>;
+    if (reviewStatus === 'waiting_human' || executionStatus === 'completed') return <span className="badge warning"><Icon.Info size={10} style={{ marginRight: 4 }} />waiting review</span>;
     if (executionStatus === 'cancelled') return <span className="badge">cancelled</span>;
     if (executionStatus === 'locked') return <span className="badge"><Icon.Lock size={10} style={{ marginRight: 4 }} />locked</span>;
     if (executionStatus === 'ready') return <span className="badge">ready</span>;
@@ -210,7 +204,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   // Approve/Reject/Finish can wait on a real Claude call (semantic produces check, AI review)
   // before the extension replies, so spin the clicked button until that step's state actually
   // changes (success) or an error is posted back (failure) — both replace `activeStepState`.
-  const [pendingAction, setPendingAction] = useState<'approve' | 'reject' | 'finish' | null>(null);
+  const [pendingAction, setPendingAction] = useState<'approve' | 'reject' | null>(null);
   useEffect(() => {
     setPendingAction(null);
   }, [activeStepId, activeStepState]);
@@ -349,6 +343,12 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
           <div className="runner-detail-actions">
             {!isFinalized && (
               <>
+                {stepActions.showWorking && (
+                  <span className="badge progress">
+                    <Icon.RotateCw size={10} style={{ marginRight: 4 }} className="spin" />
+                    AI working…
+                  </span>
+                )}
                 {aiReviewing && (
                   <span className="badge progress">
                     <Icon.RotateCw size={10} style={{ marginRight: 4 }} className="spin" />
@@ -357,8 +357,8 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
                 )}
 
                 {stepActions.showCancel && (
-                  <button className="btn error" title="Cancel this headless run" onClick={() => sendToVSCode('cancelStep', { stepId: activeStepId! })}>
-                    <span className="btn-glyph"><Icon.X size={14} /></span>Cancel
+                  <button className="btn error" title="Stop the running step" onClick={() => sendToVSCode('cancelStep', { stepId: activeStepId! })}>
+                    <span className="btn-glyph"><Icon.X size={14} /></span>Stop
                   </button>
                 )}
                 {stepActions.showRun && (
@@ -384,17 +384,6 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
                       {pendingAction === 'reject' && <span className="btn-glyph"><Icon.RotateCw size={14} className="spin" /></span>}Reject
                     </button>
                   </>
-                )}
-                {stepActions.showFinish && (
-                  <button className="btn primary" title="Complete this step" disabled={pendingAction !== null} onClick={() => {
-                    setPendingAction('finish');
-                    sendToVSCode('markStepDone', {
-                      stepId: activeStepId!,
-                      historyEvent: { timestamp: new Date().toISOString(), status: 'completed', message: 'Marked done by user' }
-                    });
-                  }}>
-                    <span className="btn-glyph">{pendingAction === 'finish' ? <Icon.RotateCw size={14} className="spin" /> : <Icon.Check size={14} />}</span>Finish
-                  </button>
                 )}
                 {stepActions.showRerun && (
                   <button className="btn" title="Re-run this step" onClick={() => onRunStep(activeStepId!, '')}>

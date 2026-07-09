@@ -21,7 +21,7 @@ function createFixture() {
       skill: 'prd',
       produces: ['docs/prd.md'],
       producesContains: ['## Summary'],
-      review: { required: false }
+      review: { required: true, type: 'ai' }
     }]
   };
   const runState: FlowRunState = {
@@ -33,7 +33,7 @@ function createFixture() {
     steps: {
       'step-1': {
         executionStatus: 'completed',
-        reviewStatus: 'not_required',
+        reviewStatus: 'approved',
         completionStatus: 'done'
       }
     }

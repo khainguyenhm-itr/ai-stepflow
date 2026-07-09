@@ -18,8 +18,8 @@ const reviewerSchema = z.object({
 
 const reviewSchema = z
   .object({
-    required: z.boolean().default(false),
-    // An unknown review type degrades to "unset" rather than failing the whole flow.
+    required: z.boolean().default(true),
+    // An unknown review type degrades to the auto (AI) default rather than failing the flow.
     type: z.enum(['human', 'ai']).optional().catch(undefined),
     validatorPath: z.string().optional(),
     deep: z.boolean().optional(),
@@ -29,7 +29,10 @@ const reviewSchema = z
     approvalRequired: z.boolean().optional(),
     checklist: z.array(z.coerce.string()).optional()
   })
-  .default({});
+  .default({})
+  // Every step is reviewed: there is no "no review" state. Coerce any legacy
+  // `required:false`/missing-type into the auto (AI) review default.
+  .transform(r => ({ ...r, required: true, type: r.type ?? ('ai' as const) }));
 
 const stepSchema = z.preprocess(
   raw => {

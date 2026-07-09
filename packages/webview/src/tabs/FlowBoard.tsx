@@ -139,7 +139,6 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
                 <div className="flow-stage">
                   {column.map((step, rowIndex) => {
                     const stepNumber = column.length > 1 ? `${columnIndex + 1}.${rowIndex + 1}` : `${columnIndex + 1}`;
-                    const needsReview = step.review.required;
                     const reviewLabel = step.review.type === 'ai' ? 'auto review' : 'human review';
                     const stepIndex = flow.steps.findIndex(s => s.id === step.id);
 
@@ -172,12 +171,10 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
                           </span>
                         </div>
                         <div className="flow-step-sub mono">agent:{step.agent || 'unassigned'}</div>
-                        {needsReview && (
-                          <span className="flow-step-review" title={reviewLabel}>
-                            {step.review.type === 'ai' ? <Icon.Bot size={12} /> : <Icon.User size={12} />}
-                            <span>{reviewLabel}</span>
-                          </span>
-                        )}
+                        <span className="flow-step-review" title={reviewLabel}>
+                          {step.review.type === 'ai' ? <Icon.Bot size={12} /> : <Icon.User size={12} />}
+                          <span>{reviewLabel}</span>
+                        </span>
                       </div>
                     );
                   })}

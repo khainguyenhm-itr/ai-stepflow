@@ -1,6 +1,6 @@
 export type StepExecutionStatus = "locked" | "ready" | "running" | "completed" | "failed" | "cancelled";
 
-export type StepReviewStatus = "not_required" | "pending" | "ai_review_running" | "waiting_human" | "approved" | "rejected";
+export type StepReviewStatus = "pending" | "ai_review_running" | "waiting_human" | "approved" | "rejected";
 
 export type StepCompletionStatus = "not_ready" | "done";
 
@@ -81,8 +81,9 @@ export interface FlowStep {
     prompt?: string;
   };
   review: {
+    /** Always true — every step is reviewed. Kept for backward-compatible flow parsing. */
     required: boolean;
-    /** Who performs the review when required. Defaults to human. */
+    /** Who performs the review: auto (AI) or human. Defaults to 'ai'. */
     type?: "human" | "ai";
     /** Optional validator module for deterministic auto-review. */
     validatorPath?: string;

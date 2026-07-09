@@ -2,16 +2,22 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   Flow,
-  initRunState, markCompleted, markRunning,
+  initRunState, markCompleted, markRunning, applyAiReview,
   FlowOrchestrator
 } from '@ai-stepflow/core';
 
+// Every step is reviewed; the default is auto (AI) review.
 function step(id: string, extra: Record<string, any> = {}) {
-  return { 
-    id, title: id, agent: 'a', skill: 's', 
-    review: { required: false },
+  return {
+    id, title: id, agent: 'a', skill: 's',
+    review: { required: true, type: 'ai' },
     ...extra
   } as any;
+}
+
+// Drive a step run → complete → AI-approve so it reaches 'done'.
+function toDone(st: any, fl: Flow, id: string) {
+  return applyAiReview(markCompleted(markRunning(st, fl, id), fl, id), fl, id, 'approved');
 }
 
 test('FlowOrchestrator identifies ready steps and respects interactive limits', () => {
@@ -31,8 +37,8 @@ test('FlowOrchestrator identifies ready steps and respects interactive limits', 
   // Initially only 'a' is ready, but it's a root step so auto-advance doesn't pick it
   assert.deepEqual(orch.getAutoAdvanceActions(), []);
 
-  // Complete 'a'
-  st = markCompleted(markRunning(st, flow, 'a'), flow, 'a');
+  // Complete and approve 'a' so its dependents unlock
+  st = toDone(st, flow, 'a');
   orch = new FlowOrchestrator(flow, st);
 
   // Every step runs interactively (AI review only changes post-run verify, not launch mode).
@@ -54,8 +60,8 @@ test('FlowOrchestrator does not re-launch already started steps', () => {
   };
 
   let st = initRunState(flow, { runId: 'r1' });
-  st = markCompleted(markRunning(st, flow, 'a'), flow, 'a');
-  
+  st = toDone(st, flow, 'a');
+
   const orch = new FlowOrchestrator(flow, st);
   const actions1 = orch.getAutoAdvanceActions();
   assert.equal(actions1.length, 1);

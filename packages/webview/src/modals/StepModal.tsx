@@ -128,7 +128,7 @@ export const StepModal: React.FC<StepModalProps> = ({
             <option value="ai">Auto review</option>
           </select>
         </Field>
-        {step.review.required && step.review.type === 'ai' && (
+        {step.review.type === 'ai' && (
           <>
             <Field label="Validator module" hint="optional — JS/TS module that returns { decision, reason } for deterministic auto-review">
               <input

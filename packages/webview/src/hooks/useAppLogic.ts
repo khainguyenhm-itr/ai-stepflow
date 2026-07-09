@@ -41,7 +41,7 @@ export const useAppLogic = () => {
     flow.steps.forEach(step => {
       initialSteps[step.id] = {
         executionStatus: 'ready',
-        reviewStatus: step.review.required ? 'pending' : 'not_required',
+        reviewStatus: 'pending',
         completionStatus: 'not_ready',
         output: ''
       };
@@ -468,17 +468,10 @@ export const useAppLogic = () => {
       output: `Preview mode: simulating Claude output...\n\nRun description:\n${runDescription || 'No run description.'}\n`
     });
     window.setTimeout(() => {
-      updateRunState(stepId, () => {
-        const step = runState.activeFlowRef.current?.steps.find(s => s.id === stepId);
-        const updates: Partial<StepRunState> = {
-          executionStatus: 'completed',
-          output: 'Preview mode: simulated step completed successfully.\n\nInstall the VSIX or run the extension host to execute Claude for real.'
-        };
-        if (step && !step.review?.required) {
-          updates.completionStatus = 'done';
-        }
-        return updates;
-      });
+      updateRunState(stepId, () => ({
+        executionStatus: 'completed',
+        output: 'Preview mode: simulated step completed successfully.\n\nInstall the VSIX or run the extension host to execute Claude for real.'
+      }));
     }, 700);
   };
 
