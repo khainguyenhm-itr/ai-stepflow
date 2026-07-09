@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Skill } from '@ai-stepflow/core/types';
 import { Icon } from '../components/primitives';
-import { ResourceCard, EmptyState } from '../components/ResourceCard';
+import { EmptyState } from '../components/ResourceCard';
 import { ScopeFilter, SaveScope, ViewFilter, SortOrder, UnifiedFilterPanel } from '../components/ScopeControls';
 import { sendToVSCode } from '../vscode';
 import { useScopeFilter } from '../hooks/useScopeFilter';
@@ -86,32 +86,48 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
     return <span className="badge scope">{scope === 'global' ? 'global' : 'repo'}</span>;
   };
 
-  const renderCard = (skill: Skill) => {
+  const renderRow = (skill: Skill) => {
     const parts = skill.sourcePath.split('/');
     const basename = parts[parts.length - 1] ?? '';
     const fileTitle = basename.toUpperCase() === 'SKILL.MD'
       ? (parts[parts.length - 2] ?? skill.name)
       : basename.replace(/\.md$/i, '') || skill.name;
+    const bookmarked = isBookmarked(skill);
     return (
-      <ResourceCard
-        key={skill.sourcePath || skill.name}
-        title={fileTitle}
-        subtitle={skill.name}
-        description={skill.description}
-        scopeBadge={renderScopeBadge(skill.sourcePath)}
-        badge={skill.builtIn ? <span className="badge built-in">Build-in</span> : undefined}
-        onEdit={() => onOpenEditor(skill)}
-        bookmarked={isBookmarked(skill)}
-        onToggleBookmark={() => onToggleBookmark(skill)}
-        actions={
-          <button className="btn primary" onClick={() => onRun(skill)}>
-            <span className="btn-glyph"><Icon.Play size={14} /></span>Run
-          </button>
-        }
-        onDetail={() => onDetail(skill)}
-      />
+      <tr className="drow" key={skill.sourcePath || skill.name}>
+        <td>
+          <div className="dname">
+            <span className="dn">
+              {fileTitle}
+              {skill.builtIn && <span className="badge built-in">Build-in</span>}
+            </span>
+            <span className="dsub">{skill.description || 'No description.'}</span>
+          </div>
+        </td>
+        <td>{skill.tags?.length ? <div className="dtools">{skill.tags.map(t => <span className="dtool" key={t}>{t}</span>)}</div> : <span className="muted">—</span>}</td>
+        <td>{renderScopeBadge(skill.sourcePath)}</td>
+        <td className="drow-actions-cell">
+          <span className="drow-actions">
+            <button className={`icon-btn bookmark ${bookmarked ? 'active' : ''}`} title={bookmarked ? 'Remove bookmark' : 'Bookmark'} aria-pressed={bookmarked} onClick={() => onToggleBookmark(skill)}>
+              <Icon.Bookmark size={14} fill={bookmarked ? 'currentColor' : 'none'} />
+            </button>
+            <button className="icon-btn" title="Run" onClick={() => onRun(skill)}><Icon.Play size={14} /></button>
+            <button className="icon-btn pencil" title="Edit" onClick={() => onOpenEditor(skill)}><Icon.Pencil size={14} /></button>
+            <button className="icon-btn" title="Details" onClick={() => onDetail(skill)}><Icon.Info size={14} /></button>
+          </span>
+        </td>
+      </tr>
     );
   };
+
+  const table = (rows: Skill[]) => (
+    <div className="dwrap scroll-x">
+      <table className="dtable">
+        <thead><tr><th>Name</th><th style={{ width: 200 }}>Tags</th><th style={{ width: 80 }}>Scope</th><th style={{ width: 140 }} /></tr></thead>
+        <tbody>{rows.map(renderRow)}</tbody>
+      </table>
+    </div>
+  );
 
   return (
     <div className="page">
@@ -152,11 +168,11 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
         groupByTag(visibleSkills).map(group => (
           <section key={group.tag} className="tag-group">
             <h3 className="tag-group-title">{group.tag}<span className="sec-count">{group.items.length}</span></h3>
-            <div className="card-grid">{group.items.map(renderCard)}</div>
+            {table(group.items)}
           </section>
         ))
       ) : (
-        <div className="card-grid">{visibleSkills.map(renderCard)}</div>
+        table(visibleSkills)
       )}
     </div>
   );

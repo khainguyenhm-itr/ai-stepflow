@@ -1983,3 +1983,58 @@ textarea.input {
 
 /* Overview — date-range filter */
 .ov-filter { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+
+/* ================= Docker-style data tables ================= */
+.dwrap { border: 1px solid var(--border); border-radius: 4px; background: var(--panel); overflow: hidden; }
+.dwrap + .dwrap { margin-top: 10px; }
+.scroll-x { overflow-x: auto; }
+.dtable { width: 100%; border-collapse: collapse; font-size: var(--font-size); }
+.dtable thead th {
+  text-align: left; font-weight: 600; font-size: 11px; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--muted); padding: 8px 12px; border-bottom: 1px solid var(--border);
+  background: var(--panel-2); white-space: nowrap;
+}
+.dtable tbody tr { border-bottom: 1px solid var(--border); }
+.dtable tbody tr:last-child { border-bottom: 0; }
+.dtable td { padding: 9px 12px; vertical-align: middle; }
+.drow { cursor: default; }
+.drow.clickable { cursor: pointer; }
+.drow:hover { background: var(--hover); }
+.drow:hover .drow-actions { opacity: 1; }
+td.drow-actions-cell { text-align: right; white-space: nowrap; }
+.drow-actions { display: inline-flex; gap: 2px; opacity: .45; transition: opacity .12s; }
+
+.dname { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.dname .dn { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.dname .dsub { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 420px; }
+.dtools { display: flex; gap: 4px; flex-wrap: wrap; }
+.dtool { font-family: var(--mono); font-size: 11px; background: var(--badge-bg); color: var(--badge-fg); border-radius: 3px; padding: 0 6px; line-height: 17px; }
+.dmodel { font-family: var(--mono); color: var(--muted); }
+
+/* status dot + label */
+.dstatus { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.ddot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--muted); }
+.ddot.run { background: var(--running); box-shadow: 0 0 0 3px color-mix(in srgb, var(--running) 22%, transparent); animation: ddot-pulse 1.6s ease-in-out infinite; }
+.ddot.ok { background: var(--success); }
+.ddot.warn { background: var(--warn); }
+.ddot.fail { background: var(--error); }
+.ddot.idle { background: var(--muted); }
+@keyframes ddot-pulse { 0%,100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--running) 22%, transparent); } 50% { box-shadow: 0 0 0 5px transparent; } }
+@media (prefers-reduced-motion: reduce) { .ddot.run { animation: none; } }
+.dstatus-label { color: var(--muted); }
+
+/* mini pipeline */
+.pipe { display: inline-flex; align-items: center; gap: 3px; }
+.pipe .seg { width: 18px; height: 5px; border-radius: 3px; background: var(--badge-bg); }
+.pipe .seg.done { background: var(--success); }
+.pipe .seg.active { background: var(--running); }
+.pipe .seg.fail { background: var(--error); }
+.pipe .pipe-num { color: var(--muted); font-size: 12px; margin-left: 4px; font-variant-numeric: tabular-nums; }
+
+/* badge variants mapped to theme */
+.badge.built-in { color: #1e1e1e; background: var(--warn); }
+.badge.ok { color: #fff; background: var(--success); }
+.badge.run { color: #fff; background: var(--running); }
+.badge.warn { color: #1e1e1e; background: var(--warn); }
+.badge.fail { color: #fff; background: var(--error); }
+.badge.idle { color: var(--muted); background: transparent; border: 1px solid var(--btn-outline); }
