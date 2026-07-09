@@ -111,7 +111,7 @@ export const UnifiedFilterPanel: React.FC<UnifiedFilterPanelProps> = ({
   return (
     <div className="fp-wrap" ref={wrapRef}>
       <button className={`btn fp-btn${open ? ' active' : ''}`} type="button" onClick={() => setOpen(v => !v)}>
-        <Icon.Settings size={13} />
+        <Icon.Sliders size={13} />
         Filters
         {n > 0 && <span className="fp-badge">{n}</span>}
         <Icon.ChevronDown size={11} />

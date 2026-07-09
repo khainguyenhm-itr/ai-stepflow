@@ -28,6 +28,8 @@ import {
   Search,
   MoreHorizontal,
   FolderOpen,
+  List,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 /* Small native UI primitives styled after VS Code. */
@@ -114,4 +116,6 @@ export const Icon = {
   Search,
   More: MoreHorizontal,
   FolderOpen,
+  List,
+  Sliders: SlidersHorizontal,
 };

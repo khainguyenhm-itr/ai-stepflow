@@ -1,43 +1,42 @@
 /* ------------------------------------------------------------------ */
-/* AI StepFlow — minimal VS Code-native theme.                         */
-/* Every color/font comes from VS Code theme variables, with dark      */
-/* fallbacks so the browser preview still looks like VS Code Dark+.    */
+/* AI StepFlow — fixed "GitHub Dark" palette matching the design       */
+/* artifact. Colors are pinned (not derived from --vscode-* theme      */
+/* variables) so the UI always looks like the artifact regardless of   */
+/* the user's VS Code theme.                                           */
 /* ------------------------------------------------------------------ */
 
 :root {
-  --bg: var(--vscode-editor-background, #1e1e1e);
-  --fg: var(--vscode-editor-foreground, #cccccc);
-  --muted: var(--vscode-descriptionForeground, #9d9d9d);
-  --border: var(--vscode-panel-border, #3c3c3c);
-  --panel: var(--vscode-sideBar-background, #252526);
-  --panel-2: var(--vscode-editorWidget-background, #2d2d2d);
-  --input-bg: var(--vscode-input-background, #3c3c3c);
-  --input-fg: var(--vscode-input-foreground, #cccccc);
-  --input-border: var(--vscode-input-border, #3c3c3c);
-  --focus: var(--vscode-focusBorder, #007fd4);
-  --btn-bg: var(--vscode-button-background, #0e639c);
-  --btn-fg: var(--vscode-button-foreground, #ffffff);
-  --btn-hover: var(--vscode-button-hoverBackground, #1177bb);
-  --btn-2-bg: var(--vscode-button-secondaryBackground, #3a3d41);
-  --btn-2-fg: var(--vscode-button-secondaryForeground, #cccccc);
-  --btn-2-hover: var(--vscode-button-secondaryHoverBackground, #45494e);
-  --hover: var(--vscode-list-hoverBackground, #2a2d2e);
-  --active-sel: var(--vscode-list-activeSelectionBackground, #094771);
-  --link: var(--vscode-textLink-foreground, #3794ff);
-  --error: var(--vscode-errorForeground, #f48771);
-  --warn: var(--vscode-editorWarning-foreground, #cca700);
+  --bg: #0d1117;
+  --fg: #c9d1d9;
+  --muted: #8b949e;
+  --border: #30363d;
+  --panel: #161b22;
+  --panel-2: #1c2128;
+  --input-bg: #0d1117;
+  --input-fg: #c9d1d9;
+  --input-border: #30363d;
+  --focus: #388bfd;
+  --btn-bg: #1f6feb;
+  --btn-fg: #ffffff;
+  --btn-hover: #388bfd;
+  --btn-2-bg: #21262d;
+  --btn-2-fg: #c9d1d9;
+  --btn-2-hover: #30363d;
+  --hover: #1c2128;
+  --active-sel: #30363d;
+  --link: #58a6ff;
+  --error: #f85149;
+  --warn: #d29922;
 
-  --success: var(--vscode-charts-green, #73c991);
-  --running: var(--vscode-charts-blue, #3794ff);
-  --badge-bg: var(--vscode-badge-background, #4d4d4d);
-  --badge-fg: var(--vscode-badge-foreground, #ffffff);
-  /* Outline for secondary buttons. Derived from the foreground color because
-     themes like Dark+ set --vscode-input-border to transparent, which made
-     outlined buttons look flat/borderless. */
+  --success: #3fb950;
+  --running: #58a6ff;
+  --badge-bg: #30363d;
+  --badge-fg: #c9d1d9;
+  /* Outline for secondary buttons, derived from the foreground color. */
   --btn-outline: color-mix(in srgb, var(--fg) 40%, transparent);
-  --font: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", sans-serif);
-  --mono: var(--vscode-editor-font-family, "SF Mono", Monaco, Menlo, Consolas, "Courier New", monospace);
-  --font-size: var(--vscode-font-size, 13px);
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-size: 13px;
 }
 
 * {
@@ -749,12 +748,16 @@ textarea.input {
   white-space: nowrap;
 }
 
-/* Scope badges (global/repo) are informational only — keep them neutral
-   instead of the theme's accent badge color. */
+/* Scope badges (global/repo) — blue-tinted uppercase chip, matching the
+   artifact's REPO badge. */
 .badge.scope {
-  color: var(--muted);
-  background: transparent;
-  border: 1px solid var(--btn-outline);
+  color: var(--link);
+  background: rgba(56, 139, 253, 0.15);
+  border: 1px solid rgba(56, 139, 253, 0.4);
+  border-radius: 4px;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.04em;
   line-height: 14px;
 }
 
@@ -2025,6 +2028,23 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 .pipe .seg.active { background: var(--running); }
 .pipe .seg.fail { background: var(--error); }
 .pipe .pipe-num { color: var(--muted); font-size: 12px; margin-left: 4px; font-variant-numeric: tabular-nums; }
+
+/* Workflows tab — help line & run-stat cards */
+.flow-help { margin: 10px 0 0; }
+.flow-stats {
+  display: grid; gap: 10px; margin: 12px 0 4px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+.flow-stat {
+  display: flex; flex-direction: column; gap: 6px;
+  border: 1px solid var(--border); border-radius: 3px;
+  padding: 12px 14px; background: var(--panel);
+}
+.flow-stat-label { font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.flow-stat-value { font-size: 24px; font-weight: 600; line-height: 1; }
+.flow-stat-value .sub { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 5px; }
+.flow-stat-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; margin-top: auto; }
+.flow-spark { display: block; flex: none; opacity: .9; }
 
 /* badge variants mapped to theme */
 .badge.built-in { color: #1e1e1e; background: var(--warn); }

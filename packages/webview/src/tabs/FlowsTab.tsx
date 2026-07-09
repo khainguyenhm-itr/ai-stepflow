@@ -8,12 +8,37 @@ import { useScopeFilter } from '../hooks/useScopeFilter';
 import { useViewFilter } from '../hooks/useViewFilter';
 import { useSortOrder } from '../hooks/useSortOrder';
 
+const fmtUsd = (n: number) => `$${n > 0 && n < 0.01 ? n.toFixed(4) : n.toFixed(2)}`;
+const fmtTokens = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k` : `${n}`);
+const fmtDuration = (ms: number) => {
+  if (ms <= 0) return '0s';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+};
+
+/** Tiny inline line chart for the run-stat cards. */
+const Sparkline: React.FC<{ data: number[]; color: string }> = ({ data, color }) => {
+  const w = 76, h = 26;
+  const max = Math.max(1, ...data);
+  const n = data.length;
+  const pts = data.map((v, i) => `${n <= 1 ? w : (i / (n - 1)) * w},${(h - 1) - (v / max) * (h - 2)}`).join(' ');
+  return (
+    <svg className="flow-spark" viewBox={`0 0 ${w} ${h}`} width={w} height={h} preserveAspectRatio="none" aria-hidden="true">
+      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+};
+
 interface FlowsTabProps {
   flows: Flow[];
   agents: Agent[];
   skills: Skill[];
   auditLogs: Record<string, any[]>;
-  runSummaries: { flowId: string; runId: string; runName?: string; completedSteps: number; totalSteps: number; mtimeMs: number; isClosed: boolean }[];
+  runSummaries: { flowId: string; runId: string; runName?: string; completedSteps: number; totalSteps: number; mtimeMs: number; isClosed: boolean; costUsd?: number; tokensUsed?: number; taskTimeMs?: number; reviewTimeMs?: number }[];
   activeFlow: Flow | null;
   runState: FlowRunState | null;
   runnerVisible: boolean;
@@ -101,6 +126,36 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
       : a.name.localeCompare(b.name)
     );
 
+  // ── Run stats for the header cards (this repo's run summaries) ──
+  const DAY = 86_400_000;
+  const startOfDay = (t: number) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+  const todayStart = startOfDay(Date.now());
+  const inDay = (t: number, start: number) => t >= start && t < start + DAY;
+  const sum = (arr: number[]) => arr.reduce((a, b) => a + b, 0);
+
+  const activeRuns = runSummaries.filter(r => !r.isClosed && r.completedSteps < r.totalSteps).length;
+  const runsToday = runSummaries.filter(r => inDay(r.mtimeMs, todayStart));
+  const tokensToday = sum(runsToday.map(r => r.tokensUsed || 0));
+  const tokensYest = sum(runSummaries.filter(r => inDay(r.mtimeMs, todayStart - DAY)).map(r => r.tokensUsed || 0));
+  const costToday = sum(runsToday.map(r => r.costUsd || 0));
+  const avgBase = runsToday.length ? runsToday : runSummaries;
+  const avgTaskMs = avgBase.length ? sum(avgBase.map(r => r.taskTimeMs || 0)) / avgBase.length : 0;
+  const avgReviewMs = avgBase.length ? sum(avgBase.map(r => r.reviewTimeMs || 0)) / avgBase.length : 0;
+  const tokenDelta = tokensYest > 0 ? Math.round(((tokensToday - tokensYest) / tokensYest) * 100) : null;
+
+  type Run = (typeof runSummaries)[number];
+  const series = (pick: (r: Run) => number) => {
+    const days = 14;
+    const arr = new Array<number>(days).fill(0);
+    for (const r of runSummaries) {
+      const idx = Math.round((todayStart - startOfDay(r.mtimeMs)) / DAY);
+      if (idx >= 0 && idx < days) arr[days - 1 - idx] += pick(r);
+    }
+    return arr;
+  };
+
+  const SCOPES: [ScopeFilter, string][] = [['all', 'All'], ['project', 'Repo'], ['global', 'Global']];
+
   return (
     <div className="page">
       <div className="page-head">
@@ -115,6 +170,15 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
               value={search}
               onChange={e => setSearch(e.target.value)}
             />
+          </div>
+          <div className="ov-scope-switch" role="tablist" aria-label="Scope">
+            {SCOPES.map(([v, label]) => (
+              <button
+                key={v}
+                className={`ov-scope-btn${filter === v ? ' active' : ''}`}
+                onClick={() => setFilter(v)}
+              >{label}</button>
+            ))}
           </div>
           <UnifiedFilterPanel
             scope={filter}
@@ -136,6 +200,46 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
           </button>
         </div>
       </div>
+
+      <p className="flow-help muted small">
+        Flow = định nghĩa · Run = lần chạy. Bấm tên flow để xem flow graph; mở tab Runs để chọn một run và vào runner.
+      </p>
+
+      <div className="flow-stats">
+        <div className="flow-stat">
+          <div className="flow-stat-label">Active runs</div>
+          <div className="flow-stat-value">{activeRuns}<span className="sub">/ {flows.length} flows</span></div>
+          <div className="flow-stat-foot">
+            <span className="muted small">{activeRuns === 0 ? 'none running' : 'running now'}</span>
+            <Sparkline data={series(() => 1)} color="var(--success)" />
+          </div>
+        </div>
+        <div className="flow-stat">
+          <div className="flow-stat-label">Tokens (today)</div>
+          <div className="flow-stat-value">{fmtTokens(tokensToday)}</div>
+          <div className="flow-stat-foot">
+            <span className="muted small">{tokenDelta === null ? '—' : `${tokenDelta >= 0 ? '▲' : '▼'} ${Math.abs(tokenDelta)}% vs yesterday`}</span>
+            <Sparkline data={series(r => r.tokensUsed || 0)} color="var(--running)" />
+          </div>
+        </div>
+        <div className="flow-stat">
+          <div className="flow-stat-label">Cost (today)</div>
+          <div className="flow-stat-value">{fmtUsd(costToday)}</div>
+          <div className="flow-stat-foot">
+            <span className="muted small">{runsToday.length} run{runsToday.length === 1 ? '' : 's'} today</span>
+            <Sparkline data={series(r => r.costUsd || 0)} color="var(--muted)" />
+          </div>
+        </div>
+        <div className="flow-stat">
+          <div className="flow-stat-label">Avg run time</div>
+          <div className="flow-stat-value">{fmtDuration(avgTaskMs)}</div>
+          <div className="flow-stat-foot">
+            <span className="muted small">{avgReviewMs > 0 ? `+ ${fmtDuration(avgReviewMs)} review` : (runsToday.length ? 'today' : 'all runs')}</span>
+            <Sparkline data={series(r => r.taskTimeMs || 0)} color="var(--warn)" />
+          </div>
+        </div>
+      </div>
+
       {visibleFlows.length === 0 ? (
         <EmptyState
           title="No workflows found"
