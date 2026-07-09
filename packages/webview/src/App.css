@@ -26,7 +26,7 @@
   --link: var(--vscode-textLink-foreground, #3794ff);
   --error: var(--vscode-errorForeground, #f48771);
   --warn: var(--vscode-editorWarning-foreground, #cca700);
-  --bookmark: var(--vscode-editorWarning-foreground, #cca700);
+
   --success: var(--vscode-charts-green, #73c991);
   --running: var(--vscode-charts-blue, #3794ff);
   --badge-bg: var(--vscode-badge-background, #4d4d4d);
@@ -986,17 +986,7 @@ textarea.input {
   flex: 0 0 auto;
 }
 
-.card-head-actions .icon-btn.bookmark,
-.panel-head-actions .icon-btn.bookmark {
-  color: var(--muted);
-}
 
-.card-head-actions .icon-btn.bookmark:hover,
-.card-head-actions .icon-btn.bookmark.active,
-.panel-head-actions .icon-btn.bookmark:hover,
-.panel-head-actions .icon-btn.bookmark.active {
-  color: var(--bookmark);
-}
 
 .card-description {
   display: -webkit-box;

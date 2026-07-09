@@ -41,8 +41,6 @@ interface FlowsTabProps {
   onViewFilterChange: (v: ViewFilter) => void;
   initialSortOrder: SortOrder;
   onSortOrderChange: (v: SortOrder) => void;
-  isBookmarked: (flow: Flow) => boolean;
-  onToggleBookmark: (flow: Flow) => void;
 }
 
 export const FlowsTab: React.FC<FlowsTabProps> = ({
@@ -76,8 +74,6 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
   onViewFilterChange,
   initialSortOrder,
   onSortOrderChange,
-  isBookmarked,
-  onToggleBookmark,
 }) => {
   const [filter, setFilter] = useScopeFilter(initialFilter, onScopeFilterChange);
   const [viewFilter, setViewFilter] = useViewFilter(initialViewFilter, onViewFilterChange);
@@ -95,7 +91,6 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
   const q = search.trim().toLowerCase();
   const visibleFlows = flows
     .filter(flow => matchesScopeFilter(flow.sourcePath))
-    .filter(flow => viewFilter.length === 0 || (viewFilter.includes('bookmarked') && isBookmarked(flow)))
     .filter(flow =>
       !q ||
       flow.name.toLowerCase().includes(q) ||
@@ -193,8 +188,6 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
               onOpenFile={onOpenFile}
               onCopyCommand={onCopyCommand}
               outputEndRef={outputEndRef}
-              bookmarked={isBookmarked(flow)}
-              onToggleBookmark={() => onToggleBookmark(flow)}
             />
           ))}
           </table>

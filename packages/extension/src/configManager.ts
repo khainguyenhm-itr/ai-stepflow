@@ -4,7 +4,7 @@ import * as os from 'os';
 import { promises as fs } from 'fs';
 import { parse, parseDocument, Document, isMap } from 'yaml';
 import matter from 'gray-matter';
-import { Agent, Skill, Flow, parseFlow, formatFlowError, AgentInput, SkillInput } from '@ai-stepflow/core';
+import { Agent, Skill, Flow, parseFlow, formatFlowError, AgentInput, SkillInput, normalizeTools } from '@ai-stepflow/core';
 
 export type BundledKind = 'agents' | 'skills' | 'reviews' | 'validators';
 
@@ -846,7 +846,7 @@ export class ConfigManager {
         name: data.name || path.basename(filePath, '.md'),
         description: data.description || '',
         model: data.model || 'sonnet',
-        tools: data.tools,
+        tools: normalizeTools(data.tools),
         systemPrompt: body.trim(),
         sourcePath: filePath,
         ...(tags ? { tags } : {}),

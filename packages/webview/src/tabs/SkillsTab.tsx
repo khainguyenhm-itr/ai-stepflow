@@ -18,8 +18,6 @@ interface SkillsTabProps {
   onRun: (skill: Skill) => void;
   onDetail: (skill: Skill) => void;
   onNew: (scope: SaveScope) => void;
-  isBookmarked: (skill: Skill) => boolean;
-  onToggleBookmark: (skill: Skill) => void;
   initialFilter: ScopeFilter;
   onScopeFilterChange: (v: ScopeFilter) => void;
   initialViewFilter: ViewFilter;
@@ -37,8 +35,6 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
   onRun,
   onDetail,
   onNew,
-  isBookmarked,
-  onToggleBookmark,
   initialFilter,
   onScopeFilterChange,
   initialViewFilter,
@@ -66,7 +62,6 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
     .filter(skill => filter === 'all' || getItemScope(skill.sourcePath) === filter)
     .filter(skill =>
       viewFilter.length === 0 ||
-      (viewFilter.includes('bookmarked') && isBookmarked(skill)) ||
       (viewFilter.includes('built-in') && !!skill.builtIn)
     )
     .filter(skill =>
@@ -92,7 +87,6 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
     const fileTitle = basename.toUpperCase() === 'SKILL.MD'
       ? (parts[parts.length - 2] ?? skill.name)
       : basename.replace(/\.md$/i, '') || skill.name;
-    const bookmarked = isBookmarked(skill);
     return (
       <tr className="drow" key={skill.sourcePath || skill.name}>
         <td>
@@ -104,13 +98,18 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
             <span className="dsub">{skill.description || 'No description.'}</span>
           </div>
         </td>
-        <td>{skill.tags?.length ? <div className="dtools">{skill.tags.map(t => <span className="dtool" key={t}>{t}</span>)}</div> : <span className="muted">—</span>}</td>
+        <td>
+          {skill.tags?.length ? (
+            <div className="dtools">
+              {skill.tags.slice(0, 3).map(t => <span className="dtool" key={t}>{t}</span>)}
+              {skill.tags.length > 3 && <span className="dtool" title={skill.tags.slice(3).join(', ')}>...</span>}
+            </div>
+          ) : <span className="muted">—</span>}
+        </td>
         <td>{renderScopeBadge(skill.sourcePath)}</td>
         <td className="drow-actions-cell">
           <span className="drow-actions">
-            <button className={`icon-btn bookmark ${bookmarked ? 'active' : ''}`} title={bookmarked ? 'Remove bookmark' : 'Bookmark'} aria-pressed={bookmarked} onClick={() => onToggleBookmark(skill)}>
-              <Icon.Bookmark size={14} fill={bookmarked ? 'currentColor' : 'none'} />
-            </button>
+
             <button className="icon-btn" title="Run" onClick={() => onRun(skill)}><Icon.Play size={14} /></button>
             <button className="icon-btn pencil" title="Edit" onClick={() => onOpenEditor(skill)}><Icon.Pencil size={14} /></button>
             <button className="icon-btn" title="Details" onClick={() => onDetail(skill)}><Icon.Info size={14} /></button>

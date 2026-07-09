@@ -4,14 +4,14 @@ import { isVSCodeWebview, sendToVSCode } from '../../vscode';
 import { Tab, SaveScope, ScopeFilter, ViewFilter, SortOrder } from './types';
 import { GroupBy } from '../../tagUtils';
 
-type ResourceBookmarks = Record<string, boolean>;
+
 
 export const useLibraryState = () => {
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [flows, setFlows] = useState<Flow[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
-  const [bookmarks, setBookmarks] = useState<ResourceBookmarks>({});
+
   const [auditLogs, setAuditLogs] = useState<Record<string, any[]>>({});
   const [globalPath, setGlobalPath] = useState<string>('');
   const [projectPath, setProjectPath] = useState<string>('');
@@ -37,14 +37,7 @@ export const useLibraryState = () => {
     onDelete: () => void;
   } | null>(null);
 
-  useEffect(() => {
-    if (!projectPath) return; // wait until loadData sets projectPath before persisting
-    if (isVSCodeWebview()) {
-      sendToVSCode('savePref', { key: 'bookmarks', value: JSON.stringify(bookmarks) });
-    } else {
-      try { window.localStorage.setItem('ai-stepflow:resource-bookmarks', JSON.stringify(bookmarks)); } catch (_e) { /* ignore */ }
-    }
-  }, [bookmarks, projectPath]);
+
 
   const getItemScope = (sourcePath: string): SaveScope => {
     if (globalPath && sourcePath.startsWith(globalPath)) return 'global';
@@ -55,24 +48,14 @@ export const useLibraryState = () => {
   const getAgentByName = (name: string) => agents.find(agent => agent.name === name);
   const getSkillByName = (name: string) => skills.find(skill => skill.name === name);
   
-  const getBookmarkKey = (kind: 'agent' | 'skill' | 'flow', sourcePath: string) => `${kind}:${sourcePath}`;
-  const isBookmarked = (kind: 'agent' | 'skill' | 'flow', sourcePath: string) => !!bookmarks[getBookmarkKey(kind, sourcePath)];
-  const toggleBookmark = (kind: 'agent' | 'skill' | 'flow', sourcePath: string) => {
-    const key = getBookmarkKey(kind, sourcePath);
-    setBookmarks(prev => {
-      const next = { ...prev };
-      if (next[key]) delete next[key];
-      else next[key] = true;
-      return next;
-    });
-  };
+
 
   return {
     activeTab, setActiveTab,
     flows, setFlows,
     agents, setAgents,
     skills, setSkills,
-    bookmarks, setBookmarks,
+
     auditLogs, setAuditLogs,
     globalPath, setGlobalPath,
     projectPath, setProjectPath,
@@ -88,7 +71,6 @@ export const useLibraryState = () => {
     viewFilters, setViewFilters,
     sortOrders, setSortOrders,
     detailItem, setDetailItem,
-    getItemScope, getFlowScope, getAgentByName, getSkillByName,
-    isBookmarked, toggleBookmark
+    getItemScope, getFlowScope, getAgentByName, getSkillByName
   };
 };

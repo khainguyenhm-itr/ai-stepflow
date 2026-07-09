@@ -113,8 +113,8 @@ export const useAppLogic = () => {
           });
           libState.setOverviewScope(parseFilter(message.uiPrefs['overviewScope']));
           const parseViewFilter = (v: unknown): ViewFilter => {
-            if (Array.isArray(v)) return (v as string[]).filter((x): x is ViewFilterItem => x === 'bookmarked' || x === 'built-in');
-            if (v === 'bookmarked' || v === 'built-in') return [v]; // migrate old persisted string
+            if (Array.isArray(v)) return (v as string[]).filter((x): x is ViewFilterItem => x === 'built-in');
+            if (v === 'built-in') return [v]; // migrate old persisted string
             return [];
           };
           const parseSortOrder = (v: string | undefined): SortOrder =>
@@ -138,13 +138,7 @@ export const useAppLogic = () => {
           if (savedTab === 'overview' || savedTab === 'flows' || savedTab === 'agents' || savedTab === 'skills') {
             libState.setActiveTab(savedTab);
           }
-          try {
-            const rawBm = message.uiPrefs['bookmarks'];
-            if (rawBm) {
-              const bm = JSON.parse(rawBm);
-              if (bm && typeof bm === 'object' && !Array.isArray(bm)) libState.setBookmarks(bm);
-            }
-          } catch { /* corrupt prefs — keep empty */ }
+
         }
         break;
       case 'mcpServers':

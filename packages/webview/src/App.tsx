@@ -31,7 +31,6 @@ const App: React.FC = () => {
     activeStepId, setActiveStepId,
     runnerVisible,
     commandCopied, setCommandCopied,
-    isBookmarked, toggleBookmark,
     standaloneRun, setStandaloneRun,
     standaloneRunDescription, setStandaloneRunDescription,
     editingFlow, setEditingFlow,
@@ -235,8 +234,6 @@ const App: React.FC = () => {
           onViewFilterChange={v => sendToVSCode('savePref', { key: 'viewFilter:flows', value: v })}
           initialSortOrder={sortOrders.flows}
           onSortOrderChange={v => sendToVSCode('savePref', { key: 'sortOrder:flows', value: v })}
-          isBookmarked={flow => isBookmarked('flow', flow.sourcePath)}
-          onToggleBookmark={flow => toggleBookmark('flow', flow.sourcePath)}
         />
       )}
 
@@ -266,8 +263,6 @@ const App: React.FC = () => {
             meta: { Scope: getScope(agent.sourcePath), Model: agent.model },
             onDelete: () => sendToVSCode('deleteAgent', { agent })
           })}
-          isBookmarked={agent => isBookmarked('agent', agent.sourcePath)}
-          onToggleBookmark={agent => toggleBookmark('agent', agent.sourcePath)}
           onNew={scope => openAgentEditor({ name: '', description: '', model: 'sonnet', tools: [], systemPrompt: '', sourcePath: scope === 'global' ? globalPath : projectPath })}
         />
       )}
@@ -298,8 +293,6 @@ const App: React.FC = () => {
             meta: { Scope: getScope(skill.sourcePath) },
             onDelete: () => sendToVSCode('deleteSkill', { skill })
           })}
-          isBookmarked={skill => isBookmarked('skill', skill.sourcePath)}
-          onToggleBookmark={skill => toggleBookmark('skill', skill.sourcePath)}
           onNew={scope => openSkillEditor(undefined, scope)}
         />
       )}

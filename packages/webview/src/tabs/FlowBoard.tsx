@@ -36,8 +36,6 @@ interface FlowBoardProps {
   onCopyCommand: () => void;
   outputEndRef: React.RefObject<HTMLDivElement | null>;
   scopeBadge: React.ReactNode;
-  bookmarked?: boolean;
-  onToggleBookmark?: () => void;
 }
 
 const fmtAgo = (ms: number): string => {
@@ -72,8 +70,6 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
   onCopyCommand,
   outputEndRef,
   scopeBadge,
-  bookmarked,
-  onToggleBookmark,
 }) => {
   const columns = getFlowColumns(flow);
   const runnerOpen = activeFlow?.id === flow.id && !!runState && runnerVisible;
@@ -142,11 +138,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
           <span className="drow-actions">
             <button className="icon-btn" title="New run" onClick={() => onRun(flow)}><Icon.Play size={14} /></button>
             <button className={`icon-btn ${runsOpen ? 'active' : ''}`} title="Runs" onClick={toggleRuns}><Icon.Terminal size={14} /></button>
-            {onToggleBookmark && (
-              <button className={`icon-btn bookmark ${bookmarked ? 'active' : ''}`} title={bookmarked ? 'Remove bookmark' : 'Bookmark'} aria-pressed={bookmarked} onClick={onToggleBookmark}>
-                <Icon.Bookmark size={14} fill={bookmarked ? 'currentColor' : 'none'} />
-              </button>
-            )}
+
             <button className="icon-btn pencil" title="Edit flow" onClick={() => onEdit(flow)}><Icon.Pencil size={14} /></button>
             <button className="icon-btn" title="Details" onClick={() => onDetail(flow)}><Icon.Info size={14} /></button>
             {flow.sourcePath && (

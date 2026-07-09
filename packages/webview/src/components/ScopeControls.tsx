@@ -3,7 +3,7 @@ import { Icon } from './primitives';
 
 export type SaveScope = 'project' | 'global';
 export type ScopeFilter = SaveScope | 'all';
-export type ViewFilterItem = 'bookmarked' | 'built-in';
+export type ViewFilterItem = 'built-in';
 export type ViewFilter = ReadonlyArray<ViewFilterItem>; // [] = "all items"
 export type SortOrder = 'asc' | 'desc' | 'newest' | 'oldest';
 
@@ -25,7 +25,7 @@ export const ViewFilterSelect: React.FC<{ value: ViewFilter; onChange: (v: ViewF
       onChange(v === 'all' ? [] : [v as ViewFilterItem]);
     }}>
       <option value="all">All Items</option>
-      <option value="bookmarked">Bookmarked</option>
+
       {showBuiltIn && <option value="built-in">Built-in</option>}
     </select>
   );
@@ -138,9 +138,7 @@ export const UnifiedFilterPanel: React.FC<UnifiedFilterPanelProps> = ({
               <button type="button" className="fp-option" onClick={() => setPView([])}>
                 <Checkbox on={pView.length === 0} />All items
               </button>
-              <button type="button" className="fp-option" onClick={() => toggleView('bookmarked')}>
-                <Checkbox on={pView.includes('bookmarked')} />Bookmarked
-              </button>
+
               {showBuiltIn && (
                 <button type="button" className="fp-option" onClick={() => toggleView('built-in')}>
                   <Checkbox on={pView.includes('built-in')} />Built-in

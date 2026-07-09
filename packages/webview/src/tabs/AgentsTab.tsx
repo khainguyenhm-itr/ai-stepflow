@@ -18,8 +18,6 @@ interface AgentsTabProps {
   onRun: (agent: Agent) => void;
   onDetail: (agent: Agent) => void;
   onNew: (scope: SaveScope) => void;
-  isBookmarked: (agent: Agent) => boolean;
-  onToggleBookmark: (agent: Agent) => void;
   initialFilter: ScopeFilter;
   onScopeFilterChange: (v: ScopeFilter) => void;
   initialViewFilter: ViewFilter;
@@ -37,8 +35,6 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
   onRun,
   onDetail,
   onNew,
-  isBookmarked,
-  onToggleBookmark,
   initialFilter,
   onScopeFilterChange,
   initialViewFilter,
@@ -66,7 +62,6 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
     .filter(agent => filter === 'all' || getItemScope(agent.sourcePath) === filter)
     .filter(agent =>
       viewFilter.length === 0 ||
-      (viewFilter.includes('bookmarked') && isBookmarked(agent)) ||
       (viewFilter.includes('built-in') && !!agent.builtIn)
     )
     .filter(agent =>
@@ -88,7 +83,6 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
 
   const renderRow = (agent: Agent) => {
     const fileTitle = agent.sourcePath.split('/').pop()?.replace(/\.md$/i, '') ?? agent.name;
-    const bookmarked = isBookmarked(agent);
     return (
       <tr className="drow" key={agent.sourcePath || agent.name}>
         <td>
@@ -101,13 +95,18 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
           </div>
         </td>
         <td className="dmodel">{agent.model}</td>
-        <td>{agent.tools?.length ? <div className="dtools">{agent.tools.map(t => <span className="dtool" key={t}>{t}</span>)}</div> : <span className="muted">—</span>}</td>
+        <td>
+          {agent.tools?.length ? (
+            <div className="dtools">
+              {agent.tools.slice(0, 3).map(t => <span className="dtool" key={t}>{t}</span>)}
+              {agent.tools.length > 3 && <span className="dtool" title={agent.tools.slice(3).join(', ')}>...</span>}
+            </div>
+          ) : <span className="muted">—</span>}
+        </td>
         <td>{renderScopeBadge(agent.sourcePath)}</td>
         <td className="drow-actions-cell">
           <span className="drow-actions">
-            <button className={`icon-btn bookmark ${bookmarked ? 'active' : ''}`} title={bookmarked ? 'Remove bookmark' : 'Bookmark'} aria-pressed={bookmarked} onClick={() => onToggleBookmark(agent)}>
-              <Icon.Bookmark size={14} fill={bookmarked ? 'currentColor' : 'none'} />
-            </button>
+
             <button className="icon-btn" title="Run" onClick={() => onRun(agent)}><Icon.Play size={14} /></button>
             <button className="icon-btn pencil" title="Edit" onClick={() => onOpenEditor(agent)}><Icon.Pencil size={14} /></button>
             <button className="icon-btn" title="Details" onClick={() => onDetail(agent)}><Icon.Info size={14} /></button>

@@ -11,8 +11,6 @@ interface ResourceCardProps {
   actions: React.ReactNode;
   onDetail: () => void;
   onEdit?: () => void;
-  bookmarked?: boolean;
-  onToggleBookmark?: () => void;
 }
 
 export const ResourceCard: React.FC<ResourceCardProps> = ({
@@ -24,11 +22,9 @@ export const ResourceCard: React.FC<ResourceCardProps> = ({
   meta,
   actions,
   onDetail,
-  onEdit,
-  bookmarked = false,
-  onToggleBookmark
+  onEdit
 }) => (
-  <div className={`card ${bookmarked ? 'bookmarked' : ''}`}>
+  <div className="card">
     <div className="card-head">
       <div className="card-head-main">
         <div className="card-title-group">
@@ -39,16 +35,7 @@ export const ResourceCard: React.FC<ResourceCardProps> = ({
         {badge}
       </div>
       <div className="card-head-actions">
-        {onToggleBookmark && (
-          <button
-            className={`icon-btn bookmark ${bookmarked ? 'active' : ''}`}
-            title={bookmarked ? 'Remove bookmark' : 'Bookmark'}
-            aria-pressed={bookmarked}
-            onClick={onToggleBookmark}
-          >
-            <Icon.Bookmark size={14} fill={bookmarked ? 'currentColor' : 'none'} />
-          </button>
-        )}
+
         {onEdit && <button className="icon-btn pencil" title="Edit" onClick={onEdit}><Icon.Pencil size={14} /></button>}
       </div>
     </div>
