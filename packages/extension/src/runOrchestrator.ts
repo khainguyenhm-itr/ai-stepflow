@@ -502,7 +502,9 @@ export class RunOrchestrator {
       const step = flow.steps.find(s => s.id === id);
       if (!step) continue;
       for (const p of machine.resolveTemplates(step.produces, inputs)) {
-        paths.add(machine.resolveFlowPath(p, flow.name, projectPath, slug));
+        // Locate where the artifact actually is (an agent may have nested it), so a per-step
+        // reset deletes the real file, not just the exact declared path.
+        paths.add(machine.locateProducedFile(p, flow.name, projectPath, slug));
       }
     }
     return [...paths];

@@ -16,7 +16,8 @@ import { FlowRunState, FlowStep } from './types.js';
 import { StepRunner } from './claudeRunner.js';
 import { runValidator } from './validatorRunner.js';
 import { parseVerdict, parseReviewFindings } from './runUtils.js';
-import { resolveTemplates, resolveFlowPath, runOutputSlug } from './pathTemplates.js';
+import { resolveTemplates, runOutputSlug } from './pathTemplates.js';
+import { locateProducedFile } from './artifactLocator.js';
 
 /** Layer-1 validator applied to AI reviews that don't name their own `validatorPath`. */
 export const DEFAULT_REVIEW_VALIDATOR = 'aisf-produces-complete.mjs';
@@ -69,7 +70,7 @@ export function readProducedArtifacts(
 ): { text: string; count: number } {
   const reviewPath = step.review.filePath ? [step.review.filePath] : [];
   const paths = resolveTemplates([...reviewPath, ...(step.produces ?? [])], inputs)
-    .map(p => resolveFlowPath(p, flowName, workspaceRoot, runSlug));
+    .map(p => locateProducedFile(p, flowName, workspaceRoot, runSlug));
   const seen = new Set<string>();
   const parts: string[] = [];
   let total = 0;
@@ -143,7 +144,7 @@ export function findStaleProducedFile(
   if (produces.length === 0 || !startedAtIso) return null;
   const startedMs = new Date(startedAtIso).getTime();
   if (!Number.isFinite(startedMs)) return null;
-  const paths = resolveTemplates(produces, inputs).map(p => resolveFlowPath(p, flowName, workspaceRoot, runSlug));
+  const paths = resolveTemplates(produces, inputs).map(p => locateProducedFile(p, flowName, workspaceRoot, runSlug));
   for (const filePath of paths) {
     let mtimeMs: number;
     try { mtimeMs = statSync(filePath).mtimeMs; } catch { continue; } // missing → validator reports it

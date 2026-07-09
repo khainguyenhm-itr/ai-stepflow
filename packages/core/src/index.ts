@@ -6,6 +6,7 @@ export * from './claudeRunner.js';
 export * from './promptComposer.js';
 export * from './libraryLoader.js';
 export * from './pathTemplates.js';
+export * from './artifactLocator.js';
 export * from './produces.js';
 export * from './runReport.js';
 export * from './runUtils.js';

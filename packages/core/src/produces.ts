@@ -2,7 +2,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { FlowStep } from './types.js';
 import { StepRunner } from './claudeRunner.js';
-import { resolveTemplates, resolveFlowPath } from './pathTemplates.js';
+import { resolveTemplates } from './pathTemplates.js';
+import { locateProducedFile } from './artifactLocator.js';
 import { missingMarkers, extractJsonObject } from './runUtils.js';
 
 export interface ProducesValidationResult {
@@ -22,7 +23,9 @@ export function validateRequires(step: FlowStep, projectPath: string, inputs: Re
   // Skip entries that are flow input keys (not file artifacts) — they are validated at flow start.
   const fileRequires = requires.filter(r => !(r in inputs));
   if (fileRequires.length === 0) return { ok: true };
-  const resolved = fileRequires.map(p => resolveFlowPath(p, flowName, projectPath, runSlug));
+  // Locate each required file where it actually landed (an upstream step may have nested its
+  // output in a subfolder), so a downstream step isn't blocked by a mismatched declared path.
+  const resolved = fileRequires.map(p => locateProducedFile(p, flowName, projectPath, runSlug));
   const missing = resolved.filter(p => !fs.existsSync(p));
   if (missing.length === 0) return { ok: true };
   return { ok: false, message: `missing required file(s): ${missing.map(p => path.relative(projectPath, p) || p).join(', ')}` };
@@ -32,7 +35,9 @@ export function validateRequires(step: FlowStep, projectPath: string, inputs: Re
 function resolveProducedPaths(step: FlowStep, projectPath: string, inputs: Record<string, string>, flowName: string, runSlug: string): string[] {
   const reviewPath = step.review.filePath ? [step.review.filePath] : [];
   const produces = resolveTemplates([...(step.produces ?? []), ...reviewPath], inputs);
-  return [...new Set(produces.map(p => resolveFlowPath(p, flowName, projectPath, runSlug)))];
+  // Locate each declared artifact where it actually is — an agent may nest a plain-named output
+  // in a subfolder under the run dir; the exact declared path would then look "missing".
+  return [...new Set(produces.map(p => locateProducedFile(p, flowName, projectPath, runSlug)))];
 }
 
 /** Verify a step's declared `produces`/review files exist on disk (existence only — no content check). */
