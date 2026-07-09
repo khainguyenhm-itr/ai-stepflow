@@ -2056,3 +2056,9 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 .run-row-item:hover { background: var(--hover); }
 .run-row-item.sel { background: var(--active-sel); }
 .run-empty { text-align: center; color: var(--muted); padding: 20px; font-size: 12px; }
+
+/* ---- runner sub-tabs ---- */
+.runner-subtabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin: 4px 0 12px; }
+.runner-subtab { border: 0; background: none; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; padding: 7px 12px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; display: inline-flex; align-items: center; gap: 6px; }
+.runner-subtab:hover { color: var(--fg); }
+.runner-subtab.on { color: var(--fg); border-bottom-color: var(--focus); }

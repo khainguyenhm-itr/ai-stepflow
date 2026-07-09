@@ -216,6 +216,10 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
     setPendingAction(null);
   }, [activeStepId, activeStepState]);
 
+  // Runner content is split into sub-tabs to cut vertical scrolling: the step detail head
+  // (status + actions) stays pinned; Console / Cost / History switch below it.
+  const [rtab, setRtab] = useState<'console' | 'cost' | 'history'>('console');
+
   return (
     <div className="runner">
       <div className="runner-head">
@@ -416,6 +420,13 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
           </div>
         </div>
 
+        <div className="runner-subtabs">
+          <button className={`runner-subtab ${rtab === 'console' ? 'on' : ''}`} onClick={() => setRtab('console')}><Icon.Terminal size={13} /> Console</button>
+          <button className={`runner-subtab ${rtab === 'cost' ? 'on' : ''}`} onClick={() => setRtab('cost')}><Icon.Zap size={13} /> Cost analysis</button>
+          <button className={`runner-subtab ${rtab === 'history' ? 'on' : ''}`} onClick={() => setRtab('history')}><Icon.Info size={13} /> History</button>
+        </div>
+
+        {rtab === 'console' && (<>
         <div className="runner-meta">
           <div className="meta-group">
             <span className="muted small">agent</span>
@@ -482,8 +493,10 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
           </div>
         )}
 
+        </>)}
+
         {/* Step-scoped Execution History, grouped per run — lives inside the step detail. */}
-        {historyGroups.length > 0 && (
+        {rtab === 'history' && (historyGroups.length > 0 ? (
           <div className="step-history">
             <div className="divider-label mb-4">Execution History</div>
             {historyGroups.map(group => (
@@ -522,8 +535,9 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
               </div>
             ))}
           </div>
-        )}
+        ) : <div className="run-empty">No execution history yet.</div>)}
 
+        {rtab === 'cost' && (
         <div className="runner-costs">
           <div className="divider-label">Cost Analysis</div>
           <div className="runner-costs-head">
@@ -582,6 +596,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
             </tbody>
           </table>
         </div>
+        )}
 
       </div>
     </div>
