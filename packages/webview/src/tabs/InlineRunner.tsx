@@ -183,7 +183,8 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
 
   // A single step can be reset once it has left its pristine initial state (ready/locked with no
   // history) — the escape hatch for a step wedged in a state with no valid action (e.g. no Finish).
-  const canResetStep = !isFinalized && !!activeStepState && !(
+  // Cannot reset if currently running.
+  const canResetStep = !isFinalized && !!activeStepState && activeStepState.executionStatus !== 'running' && !(
     (activeStepState.executionStatus === 'ready' || activeStepState.executionStatus === 'locked')
     && (activeStepState.history?.length ?? 0) === 0
   );
@@ -355,10 +356,10 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
             {!isFinalized && (
               <>
                 {stepActions.showWorking && (
-                  <span className="badge progress">
+                  <div className="badge progress working-badge">
                     <Icon.RotateCw size={10} style={{ marginRight: 4 }} className="spin" />
-                    AI working…
-                  </span>
+                    <span>AI working</span>
+                  </div>
                 )}
                 {aiReviewing && (
                   <span className="badge progress">

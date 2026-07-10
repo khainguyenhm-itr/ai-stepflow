@@ -800,6 +800,14 @@ textarea.input {
 .badge.success { color: #ffffff; background: var(--success); }
 .badge.running, .badge.progress { color: #ffffff; background: var(--running); }
 
+/* Enhanced "AI working" status badge with better visual feedback */
+.badge.working-badge {
+  gap: 6px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  box-shadow: 0 0 8px rgba(14, 112, 192, 0.3);
+}
+
 .error-banner {
   padding: 6px 10px;
   border: 1px solid var(--error);
