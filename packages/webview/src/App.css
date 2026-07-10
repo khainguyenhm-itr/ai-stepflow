@@ -2075,10 +2075,96 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 .detail-subhead h4 { margin: 0; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
 .detail-subhead .hint { color: var(--muted); font-size: 11px; margin-left: auto; }
 
-/* runs sub-table */
-.run-row-item { cursor: pointer; }
-.run-row-item:hover { background: var(--hover); }
-.run-row-item.sel { background: var(--active-sel); }
+/* runs expandable list */
+.runs-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.run-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background-color 0.15s ease-out;
+}
+
+.run-row:last-child { border-bottom: 0; }
+.run-row:hover { background: var(--hover); }
+.run-row.active { background: var(--active-sel); }
+.run-row.expanded { background: var(--hover); }
+
+.run-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  transition: transform 0.2s ease-out;
+  color: var(--muted);
+}
+
+.run-row.expanded .run-chevron {
+  transform: rotate(90deg);
+  color: var(--fg);
+}
+
+.run-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.run-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.run-title strong { white-space: nowrap; }
+.run-title .mono { flex-shrink: 0; }
+
+.run-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+}
+
+.run-progress {
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+/* Smooth expand/collapse animation */
+.run-detail-expand {
+  border-top: 1px solid var(--border);
+  background: var(--panel-bg, rgba(255,255,255,0.02));
+  animation: expandDown 0.25s ease-out;
+  overflow: hidden;
+}
+
+@keyframes expandDown {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 2000px;
+  }
+}
+
 .run-empty { text-align: center; color: var(--muted); padding: 20px; font-size: 12px; }
 
 /* ---- runner sub-tabs ---- */
