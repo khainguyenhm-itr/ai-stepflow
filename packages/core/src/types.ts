@@ -61,6 +61,25 @@ export interface SkillInput {
   aiConversation?: FlowAiMessage[];
 }
 
+/** An LLM review-kit prompt used by the deep-review layer (see `review.ts` `loadReviewKit`). */
+export interface ReviewKit {
+  name: string;
+  description: string;
+  content: string;
+  sourcePath: string;
+  /** True when the review kit file declares itself as built-in metadata. */
+  builtIn?: boolean;
+  /** File modification time in ms since epoch. */
+  modifiedAt?: number;
+}
+
+/** Fields the create/update forms send for a review kit (a subset of ReviewKit). */
+export interface ReviewKitInput {
+  name: string;
+  description?: string;
+  content?: string;
+}
+
 export interface FlowStep {
   id: string;
   title: string;

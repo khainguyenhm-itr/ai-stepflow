@@ -10,9 +10,11 @@ import { OverviewTab } from './tabs/OverviewTab';
 import { FlowsTab } from './tabs/FlowsTab';
 import { AgentsTab } from './tabs/AgentsTab';
 import { SkillsTab } from './tabs/SkillsTab';
+import { ReviewsTab } from './tabs/ReviewsTab';
 import { DetailModal } from './modals/DetailModal';
 import { AgentModal } from './modals/AgentModal';
 import { SkillModal } from './modals/SkillModal';
+import { ReviewModal } from './modals/ReviewModal';
 import { ConnectMcpModal } from './modals/ConnectMcpModal';
 import { RunInputsModal } from './modals/RunInputsModal';
 import { FlowBuilderModal } from './modals/FlowBuilderModal';
@@ -23,7 +25,7 @@ const App: React.FC = () => {
   const logic = useAppLogic();
   const {
     activeTab, setActiveTab,
-    flows, agents, skills, auditLogs, runSummaries,
+    flows, agents, skills, reviewKits, auditLogs, runSummaries,
     globalPath, projectPath, connectedMcpServers, defaultLibraryInstalled,
     recentWorkspaces, overviewScope, setOverviewScope, runTotalsAll, runTrendAll,
     activeFlow,
@@ -51,17 +53,21 @@ const App: React.FC = () => {
     detailItem, setDetailItem,
     agentModalOpen, setAgentModalOpen,
     skillModalOpen, setSkillModalOpen,
+    reviewModalOpen, setReviewModalOpen,
     connectMcpModalOpen, setConnectMcpModalOpen,
     editingSkillSource, setEditingSkillSource,
     editingAgentSource, setEditingAgentSource,
+    editingReviewSource, setEditingReviewSource,
     agentForm, setAgentForm,
     skillForm, setSkillForm,
+    reviewForm, setReviewForm,
     scopeFilters,
     viewFilters,
     sortOrders,
     groupBys, setGroupBys,
     agentFormError, setAgentFormError,
     skillFormError, setSkillFormError,
+    reviewFormError,
     draftLoading, setDraftLoading,
     agentAiPrompt, setAgentAiPrompt,
     agentAiMessages, setAgentAiMessages,
@@ -73,6 +79,7 @@ const App: React.FC = () => {
     getItemScope, getFlowScope, getAgentByName, getSkillByName,
     startFreshRun,
     submitAgentModal, openAgentEditor, submitSkillModal, openSkillEditor,
+    submitReviewModal, openReviewEditor,
     submitConnectMcp,
     submitRunInputs, runActiveStep, saveEditingFlow, saveStepEdit
   } = logic;
@@ -94,7 +101,8 @@ const App: React.FC = () => {
     { key: 'overview', label: 'Overview' },
     { key: 'flows', label: 'Workflows', count: flows.length },
     { key: 'agents', label: 'Agents', count: agents.length },
-    { key: 'skills', label: 'Skills', count: skills.length }
+    { key: 'skills', label: 'Skills', count: skills.length },
+    { key: 'reviews', label: 'Reviews', count: reviewKits.length }
   ];
 
   return (
@@ -297,6 +305,30 @@ const App: React.FC = () => {
         />
       )}
 
+      {activeTab === 'reviews' && (
+        <ReviewsTab
+          reviewKits={reviewKits}
+          globalPath={globalPath}
+          initialFilter={scopeFilters.reviews}
+          onScopeFilterChange={v => sendToVSCode('savePref', { key: 'scopeFilter:reviews', value: v })}
+          initialViewFilter={viewFilters.reviews}
+          onViewFilterChange={v => sendToVSCode('savePref', { key: 'viewFilter:reviews', value: v })}
+          initialSortOrder={sortOrders.reviews}
+          onSortOrderChange={v => sendToVSCode('savePref', { key: 'sortOrder:reviews', value: v })}
+          onOpenEditor={openReviewEditor}
+          onDetail={kit => setDetailItem({
+            type: 'Review',
+            title: kit.name,
+            description: kit.description,
+            sourcePath: kit.sourcePath,
+            meta: { Scope: getScope(kit.sourcePath) },
+            onDelete: () => sendToVSCode('deleteReviewKit', { review: kit })
+          })}
+          onNew={scope => openReviewEditor(undefined, scope)}
+          onInstallDefault={() => sendToVSCode('installReviewDefault', { isGlobal: scopeFilters.reviews === 'global' })}
+        />
+      )}
+
       <DetailModal item={detailItem} onClose={() => setDetailItem(null)} onOpenFile={path => sendToVSCode('openFile', { path })} />
 
       <AgentModal
@@ -363,6 +395,16 @@ const App: React.FC = () => {
           }
           sendToVSCode('generateDraft', { kind: 'skill', prompt, history: prevMessages });
         }}
+      />
+
+      <ReviewModal
+        open={reviewModalOpen}
+        editingSource={editingReviewSource}
+        form={reviewForm}
+        error={reviewFormError}
+        onClose={() => { setReviewModalOpen(false); setEditingReviewSource(null); }}
+        onChange={patch => setReviewForm(prev => ({ ...prev, ...patch }))}
+        onSubmit={submitReviewModal}
       />
 
       <ConnectMcpModal

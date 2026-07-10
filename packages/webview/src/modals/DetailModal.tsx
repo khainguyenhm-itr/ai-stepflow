@@ -2,7 +2,7 @@ import React from 'react';
 import { Modal, Icon } from '../components/primitives';
 
 export type DetailItem = {
-  type: 'Flow' | 'Agent' | 'Skill';
+  type: 'Flow' | 'Agent' | 'Skill' | 'Review';
   title: string;
   description: string;
   sourcePath: string;

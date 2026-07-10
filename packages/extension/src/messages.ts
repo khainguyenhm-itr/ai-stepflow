@@ -1,4 +1,4 @@
-import { Agent, AgentInput, Flow, FlowRunState, Skill, SkillInput, isFlowShape, isFlowRunStateShape, isAgentInputShape, isSkillInputShape } from '@ai-stepflow/core';
+import { Agent, AgentInput, Flow, FlowRunState, Skill, SkillInput, ReviewKit, ReviewKitInput, isFlowShape, isFlowRunStateShape, isAgentInputShape, isSkillInputShape } from '@ai-stepflow/core';
 
 export interface HumanReview {
   decision: 'approved' | 'rejected';
@@ -30,6 +30,7 @@ export type HostMessage =
       flows: Flow[];
       agents: Agent[];
       skills: Skill[];
+      reviewKits: ReviewKit[];
       connectedMcpServers: string[];
       auditLogs: Record<string, AuditEntry[]>;
       runSummaries: { flowId: string; runId: string; runName?: string; completedSteps: number; failedSteps?: number; totalSteps: number; mtimeMs: number; costUsd?: number; tokensUsed?: number; taskTimeMs?: number; reviewTimeMs?: number }[];
@@ -54,9 +55,10 @@ export type HostMessage =
   | { type: 'runDeleted'; flowId: string; runId: string }
   | { type: 'fileImported'; kind: 'agent'; item: { name: string; description: string; model: string; tools: string; systemPrompt: string } }
   | { type: 'fileImported'; kind: 'skill'; item: { name: string; description: string; instructions: string } }
+  | { type: 'fileImported'; kind: 'review'; item: { name: string; description: string; content: string } }
   | { type: 'draftGenerated'; kind: 'agent' | 'skill'; name?: string; description?: string; content?: string; reply?: string; error?: string }
   | { type: 'flowGenerated'; flow?: Flow; reply?: string; error?: string }
-  | { type: 'navigateToTab'; tab: 'flows' | 'agents' | 'skills' | 'overview' }
+  | { type: 'navigateToTab'; tab: 'flows' | 'agents' | 'skills' | 'reviews' | 'overview' }
   | { type: 'runClosed'; flowId?: string; runId?: string; finalized?: boolean };
 
 /** Every message the webview is allowed to send to the extension host. */
@@ -69,9 +71,12 @@ export type WebviewMessage =
   | { type: 'updateAgent'; agent: AgentInput; isGlobal?: boolean; originalSourcePath?: string }
   | { type: 'createSkill'; skill: SkillInput; isGlobal?: boolean }
   | { type: 'updateSkill'; skill: SkillInput; isGlobal?: boolean; originalSourcePath?: string }
+  | { type: 'createReviewKit'; review: ReviewKitInput; isGlobal?: boolean }
+  | { type: 'updateReviewKit'; review: ReviewKitInput; isGlobal?: boolean; originalSourcePath?: string }
   | { type: 'deleteFlow'; flow: Flow }
   | { type: 'deleteAgent'; agent: Agent }
   | { type: 'deleteSkill'; skill: Skill }
+  | { type: 'deleteReviewKit'; review: ReviewKit }
   | { type: 'updateRunState'; runState: FlowRunState; historyEvent?: { timestamp: string; status: string; message?: string; stepId: string } }
   | { type: 'switchRun'; flowId: string; runId: string }
   | { type: 'runStep'; stepId: string; flow?: Flow; runState?: FlowRunState; description?: string; historyEvent?: { timestamp: string; status: string; message?: string } }
@@ -88,6 +93,8 @@ export type WebviewMessage =
   | { type: 'exportRunReport' }
   | { type: 'importAgentFile' }
   | { type: 'importSkillFile' }
+  | { type: 'importReviewFile' }
+  | { type: 'installReviewDefault'; isGlobal?: boolean }
   | { type: 'generateDraft'; kind: 'agent' | 'skill'; prompt: string; history?: { role: 'user' | 'assistant'; content: string }[] }
   | { type: 'savePref'; key: string; value: string; global?: boolean }
   | { type: 'generateFlow'; description: string; flow?: Flow; history?: { role: 'user' | 'assistant'; content: string }[] }
@@ -128,6 +135,8 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   ready: () => true,
   importAgentFile: () => true,
   importSkillFile: () => true,
+  importReviewFile: () => true,
+  installReviewDefault: () => true,
   resetRun: () => true,
   resetStep: m => isString(m.stepId),
   closeRun: m => m.finalize === undefined || typeof m.finalize === 'boolean',
@@ -141,9 +150,12 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   updateAgent: m => isAgentLike(m.agent),
   createSkill: m => isSkillLike(m.skill),
   updateSkill: m => isSkillLike(m.skill),
+  createReviewKit: m => isObject(m.review) && isString((m.review as any).name),
+  updateReviewKit: m => isObject(m.review) && isString((m.review as any).name),
   deleteFlow: m => isObject(m.flow) && isString(m.flow.sourcePath),
   deleteAgent: m => isObject(m.agent) && isString(m.agent.sourcePath),
   deleteSkill: m => isObject(m.skill) && isString(m.skill.sourcePath),
+  deleteReviewKit: m => isObject(m.review) && isString((m.review as any).sourcePath),
   updateRunState: m => isFlowRunStateShape(m.runState),
   switchRun: m => isString(m.flowId) && isString(m.runId),
   runStep: m => isString(m.stepId)

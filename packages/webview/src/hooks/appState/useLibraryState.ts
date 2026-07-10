@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Flow, Agent, Skill } from '@ai-stepflow/core/types';
+import { Flow, Agent, Skill, ReviewKit } from '@ai-stepflow/core/types';
 import { isVSCodeWebview, sendToVSCode } from '../../vscode';
 import { Tab, SaveScope, ScopeFilter, ViewFilter, SortOrder } from './types';
 import { GroupBy } from '../../tagUtils';
@@ -11,6 +11,7 @@ export const useLibraryState = () => {
   const [flows, setFlows] = useState<Flow[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
+  const [reviewKits, setReviewKits] = useState<ReviewKit[]>([]);
 
   const [auditLogs, setAuditLogs] = useState<Record<string, any[]>>({});
   const [globalPath, setGlobalPath] = useState<string>('');
@@ -23,13 +24,13 @@ export const useLibraryState = () => {
   const [runTrendAll, setRunTrendAll] = useState<{ date: string; runs: number; completed: number; inProgress: number; costUsd: number; tokensUsed: number; taskTimeMs: number }[]>([]);
   const [runSummaries, setRunSummaries] = useState<{ flowId: string; runId: string; runName?: string; completedSteps: number; failedSteps?: number; totalSteps: number; mtimeMs: number; isClosed: boolean; costUsd?: number; tokensUsed?: number; taskTimeMs?: number; reviewTimeMs?: number }[]>([]);
 
-  const [scopeFilters, setScopeFilters] = useState<{ flows: ScopeFilter; agents: ScopeFilter; skills: ScopeFilter }>({ flows: 'all', agents: 'all', skills: 'all' });
-  const [viewFilters, setViewFilters] = useState<{ flows: ViewFilter; agents: ViewFilter; skills: ViewFilter }>({ flows: [], agents: [], skills: [] });
-  const [sortOrders, setSortOrders] = useState<{ flows: SortOrder; agents: SortOrder; skills: SortOrder }>({ flows: 'activity', agents: 'activity', skills: 'activity' });
-  const [groupBys, setGroupBys] = useState<{ agents: GroupBy; skills: GroupBy }>({ agents: 'list', skills: 'list' });
+  const [scopeFilters, setScopeFilters] = useState<{ flows: ScopeFilter; agents: ScopeFilter; skills: ScopeFilter; reviews: ScopeFilter }>({ flows: 'all', agents: 'all', skills: 'all', reviews: 'all' });
+  const [viewFilters, setViewFilters] = useState<{ flows: ViewFilter; agents: ViewFilter; skills: ViewFilter; reviews: ViewFilter }>({ flows: [], agents: [], skills: [], reviews: [] });
+  const [sortOrders, setSortOrders] = useState<{ flows: SortOrder; agents: SortOrder; skills: SortOrder; reviews: SortOrder }>({ flows: 'activity', agents: 'activity', skills: 'activity', reviews: 'activity' });
+  const [groupBys, setGroupBys] = useState<{ agents: GroupBy; skills: GroupBy; reviews: GroupBy }>({ agents: 'list', skills: 'list', reviews: 'list' });
 
   const [detailItem, setDetailItem] = useState<{
-    type: 'Flow' | 'Agent' | 'Skill';
+    type: 'Flow' | 'Agent' | 'Skill' | 'Review';
     title: string;
     description: string;
     sourcePath: string;
@@ -55,6 +56,7 @@ export const useLibraryState = () => {
     flows, setFlows,
     agents, setAgents,
     skills, setSkills,
+    reviewKits, setReviewKits,
 
     auditLogs, setAuditLogs,
     globalPath, setGlobalPath,

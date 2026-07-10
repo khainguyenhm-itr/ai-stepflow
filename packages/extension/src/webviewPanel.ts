@@ -154,6 +154,20 @@ export class CockpitPanel {
         vscode.window.showInformationMessage(`Skill '${message.skill.name}' updated.`);
         return;
       }
+      case 'createReviewKit':
+        await this.configManager.saveReviewKit(message.review, !!message.isGlobal);
+        await this._sendAllData();
+        vscode.window.showInformationMessage(`Review kit '${message.review.name}' created.`);
+        return;
+      case 'updateReviewKit': {
+        const newPath = await this.configManager.saveReviewKit(message.review, !!message.isGlobal);
+        if (message.originalSourcePath && path.normalize(message.originalSourcePath) !== path.normalize(newPath)) {
+          await this.configManager.deleteReviewKit(message.originalSourcePath);
+        }
+        await this._sendAllData();
+        vscode.window.showInformationMessage(`Review kit '${message.review.name}' updated.`);
+        return;
+      }
       case 'deleteFlow': {
         const choice = await vscode.window.showWarningMessage(
           `Delete flow '${message.flow.name}'? This removes ${message.flow.sourcePath}.`,
@@ -189,6 +203,18 @@ export class CockpitPanel {
         await this.configManager.deleteSkill(message.skill.sourcePath);
         await this._sendAllData();
         vscode.window.showInformationMessage(`Skill '${message.skill.name}' deleted.`);
+        return;
+      }
+      case 'deleteReviewKit': {
+        const choice = await vscode.window.showWarningMessage(
+          `Delete review kit '${message.review.name}'? This removes ${message.review.sourcePath}.`,
+          { modal: true },
+          'Delete'
+        );
+        if (choice !== 'Delete') return;
+        await this.configManager.deleteReviewKit(message.review.sourcePath);
+        await this._sendAllData();
+        vscode.window.showInformationMessage(`Review kit '${message.review.name}' deleted.`);
         return;
       }
       case 'updateRunState':
@@ -284,6 +310,14 @@ export class CockpitPanel {
       case 'importSkillFile':
         await this._handleImportFile('skill');
         return;
+      case 'importReviewFile':
+        await this._handleImportFile('review');
+        return;
+      case 'installReviewDefault':
+        await this.configManager.installDefaultReviewKit(!!message.isGlobal);
+        await this._sendAllData();
+        vscode.window.showInformationMessage('Default review kit installed.');
+        return;
       case 'savePref':
         if (message.global) {
           await this.configManager.saveGlobalUiPref(message.key, message.value);
@@ -348,7 +382,7 @@ export class CockpitPanel {
     }
   }
 
-  private async _handleImportFile(kind: 'agent' | 'skill'): Promise<void> {
+  private async _handleImportFile(kind: 'agent' | 'skill' | 'review'): Promise<void> {
     const picked = await vscode.window.showOpenDialog({
       canSelectMany: false,
       openLabel: `Import ${kind}`,
@@ -362,10 +396,15 @@ export class CockpitPanel {
       if (agent) {
         this.postMessage({ type: 'fileImported', kind, item: { name: agent.name, description: agent.description, model: agent.model, tools: agent.tools?.join(', ') ?? '', systemPrompt: agent.systemPrompt } });
       }
-    } else {
+    } else if (kind === 'skill') {
       const skill = await this.configManager.importSkillFromFile(fileUri.fsPath);
       if (skill) {
         this.postMessage({ type: 'fileImported', kind, item: { name: skill.name, description: skill.description, instructions: skill.instructions } });
+      }
+    } else {
+      const review = await this.configManager.importReviewFromFile(fileUri.fsPath);
+      if (review) {
+        this.postMessage({ type: 'fileImported', kind, item: { name: review.name, description: review.description, content: review.content } });
       }
     }
   }
@@ -578,10 +617,11 @@ export class CockpitPanel {
 
   private async _sendAllData() {
     try {
-      const [flows, agents, skills, runSummaries] = await Promise.all([
+      const [flows, agents, skills, reviewKits, runSummaries] = await Promise.all([
         this.configManager.loadFlows().catch(e => { console.error('AI StepFlow: loadFlows failed', e); return []; }),
         this.configManager.loadAgents().catch(e => { console.error('AI StepFlow: loadAgents failed', e); return []; }),
         this.configManager.loadSkills().catch(e => { console.error('AI StepFlow: loadSkills failed', e); return []; }),
+        this.configManager.loadReviewKits().catch(e => { console.error('AI StepFlow: loadReviewKits failed', e); return []; }),
         this.stateManager.listRunFiles().catch(e => { console.error('AI StepFlow: listRunFiles failed', e); return []; })
       ]);
 
@@ -606,7 +646,7 @@ export class CockpitPanel {
 
       this.postMessage({
         type: 'loadData',
-        flows, agents, skills,
+        flows, agents, skills, reviewKits,
         connectedMcpServers: [],
         auditLogs,
         runSummaries,
@@ -630,7 +670,7 @@ export class CockpitPanel {
       console.error('AI StepFlow: _sendAllData critical failure', err);
       this.postMessage({
         type: 'loadData',
-        flows: [], agents: [], skills: [],
+        flows: [], agents: [], skills: [], reviewKits: [],
         connectedMcpServers: [],
         auditLogs: {},
         runSummaries: [],

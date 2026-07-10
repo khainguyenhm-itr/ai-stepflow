@@ -1,4 +1,4 @@
-export type Tab = 'overview' | 'flows' | 'agents' | 'skills';
+export type Tab = 'overview' | 'flows' | 'agents' | 'skills' | 'reviews';
 export type SaveScope = 'project' | 'global';
 export type FlowAiMessage = { role: 'user' | 'assistant'; content: string };
 export type ScopeFilter = 'all' | 'project' | 'global';
