@@ -356,10 +356,9 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
             {!isFinalized && (
               <>
                 {stepActions.showWorking && (
-                  <div className="badge progress working-badge">
-                    <Icon.RotateCw size={10} style={{ marginRight: 4 }} className="spin" />
-                    <span>AI working</span>
-                  </div>
+                  <button className="btn progress" disabled title="AI is processing...">
+                    <span className="btn-glyph"><Icon.RotateCw size={14} className="spin" /></span>AI working
+                  </button>
                 )}
                 {aiReviewing && (
                   <span className="badge progress">
