@@ -2076,14 +2076,27 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 .detail-subhead .hint { color: var(--muted); font-size: 11px; margin-left: auto; }
 
 /* runs table with expandable rows */
-.run-row-item { cursor: pointer; transition: background-color 0.15s ease-out; }
-.run-row-item:hover { background: var(--hover); }
-.run-row-item.sel { background: var(--active-sel); }
-.run-row-item.expanded { background: var(--hover); }
+.run-row-item {
+  cursor: pointer;
+  transition: background-color 0.15s ease-out;
+}
+
+.run-row-item:hover {
+  background: var(--hover);
+}
+
+.run-row-item.sel {
+  background: var(--active-sel);
+}
+
+.run-row-item.expanded {
+  background: var(--hover);
+  border-bottom: 1px solid var(--focus);
+}
 
 .run-expand-cell {
-  width: 40px !important;
-  padding: 9px !important;
+  width: 32px !important;
+  padding: 8px 6px !important;
   text-align: center;
 }
 
@@ -2091,25 +2104,112 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 20px;
+  height: 20px;
   transition: transform 0.2s ease-out;
+  color: var(--muted);
+}
+
+.run-expand-btn:hover {
+  color: var(--fg);
 }
 
 .run-row-item.expanded .expand-btn {
   transform: rotate(90deg);
+  color: var(--fg);
 }
 
-/* Expandable detail row with smooth animation */
+/* Expandable detail row - seamless UI */
+.run-detail-row {
+  border: none !important;
+}
+
 .run-detail-row td {
   padding: 0 !important;
   border-bottom: none !important;
-  background: var(--panel-bg, rgba(255,255,255,0.02));
+  background: transparent;
+  border-top: 1px solid var(--border);
 }
 
 .run-detail-expand {
-  padding: 12px;
-  border-top: 1px solid var(--border);
   animation: expandDown 0.25s ease-out;
   overflow: hidden;
+}
+
+.run-detail-expand .runner {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.run-detail-expand .runner-head {
+  border-bottom: none;
+  padding: 8px 12px;
+  background: transparent;
+}
+
+.run-detail-expand .runner-head-info {
+  display: none;
+}
+
+.run-detail-expand .runner-head-actions {
+  gap: 8px;
+}
+
+.run-detail-expand .runner-strip {
+  margin: 0;
+  padding: 0 12px 8px;
+  gap: 6px;
+}
+
+.run-detail-expand .runner-detail {
+  padding: 0 12px 12px;
+}
+
+.run-detail-expand .runner-detail-head {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+
+.run-detail-expand .runner-detail-title {
+  flex-direction: row;
+  gap: 12px;
+}
+
+.run-detail-expand .runner-detail-step-label {
+  display: none;
+}
+
+.run-detail-expand .runner-detail-step-title {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.run-detail-expand .runner-meta {
+  margin: 8px 0;
+  gap: 16px;
+}
+
+.run-detail-expand .meta-group {
+  flex-direction: row;
+  gap: 12px;
+  align-items: center;
+  font-size: 11px;
+}
+
+.run-detail-expand .console-wrap {
+  margin: 8px 0;
+}
+
+.run-detail-expand .console-wrap .divider-label {
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+.run-detail-expand .console {
+  max-height: 200px;
+  font-size: 11px;
 }
 
 @keyframes expandDown {
@@ -2123,7 +2223,12 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
   }
 }
 
-.run-empty { text-align: center; color: var(--muted); padding: 20px; font-size: 12px; }
+.run-empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 20px;
+  font-size: 12px;
+}
 
 /* ---- runner sub-tabs ---- */
 .runner-subtabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin: 4px 0 12px; }

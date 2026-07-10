@@ -213,12 +213,11 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
                   <table className="dtable">
                     <thead>
                       <tr>
-                        <th style={{ width: 40 }}></th>
+                        <th style={{ width: 32 }}></th>
                         <th>Run</th>
                         <th style={{ width: 100 }}>Status</th>
-                        <th style={{ width: 90 }}>Progress</th>
-                        <th style={{ width: 110 }}>Started</th>
-                        <th style={{ width: 80 }}>Action</th>
+                        <th style={{ width: 80 }}>Progress</th>
+                        <th style={{ width: 90 }}>Started</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -255,7 +254,6 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
                               <td>{runStatusBadge(s)}</td>
                               <td className="mono">{s.completedSteps} / {s.totalSteps}</td>
                               <td className="muted small">{fmtAgo(s.mtimeMs)}</td>
-                              <td></td>
                             </tr>
 
                             {/* Expandable detail row */}
