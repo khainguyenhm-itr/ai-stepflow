@@ -118,7 +118,7 @@ export const useAppLogic = () => {
             return [];
           };
           const parseSortOrder = (v: string | undefined): SortOrder =>
-            v === 'desc' ? 'desc' : 'asc';
+            v === 'desc' || v === 'asc' || v === 'newest' || v === 'oldest' ? v : 'activity';
           libState.setViewFilters({
             flows: parseViewFilter(message.uiPrefs['viewFilter:flows']),
             agents: parseViewFilter(message.uiPrefs['viewFilter:agents']),

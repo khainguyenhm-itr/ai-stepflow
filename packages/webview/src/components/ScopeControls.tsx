@@ -5,7 +5,7 @@ export type SaveScope = 'project' | 'global';
 export type ScopeFilter = SaveScope | 'all';
 export type ViewFilterItem = 'built-in';
 export type ViewFilter = ReadonlyArray<ViewFilterItem>; // [] = "all items"
-export type SortOrder = 'asc' | 'desc' | 'newest' | 'oldest';
+export type SortOrder = 'activity' | 'asc' | 'desc' | 'newest' | 'oldest';
 
 // ── Legacy dropdown components (kept for any remaining uses) ─────────────────
 
@@ -62,7 +62,7 @@ interface UnifiedFilterPanelProps {
 }
 
 function activeCount(scope: ScopeFilter, view: ViewFilter, sort: SortOrder): number {
-  return (scope !== 'all' ? 1 : 0) + (view.length > 0 ? 1 : 0) + (sort !== 'asc' ? 1 : 0);
+  return (scope !== 'all' ? 1 : 0) + (view.length > 0 ? 1 : 0) + (sort !== 'activity' ? 1 : 0);
 }
 
 const Radio: React.FC<{ on: boolean }> = ({ on }) => (
@@ -101,8 +101,8 @@ export const UnifiedFilterPanel: React.FC<UnifiedFilterPanelProps> = ({
   const handleApply = () => { onApply(pScope, pView, pSort); setOpen(false); };
 
   const handleReset = () => {
-    setPScope('all'); setPView([]); setPSort('asc');
-    onApply('all', [], 'asc');
+    setPScope('all'); setPView([]); setPSort('activity');
+    onApply('all', [], 'activity');
     setOpen(false);
   };
 
@@ -144,6 +144,16 @@ export const UnifiedFilterPanel: React.FC<UnifiedFilterPanelProps> = ({
                   <Checkbox on={pView.includes('built-in')} />Built-in
                 </button>
               )}
+            </div>
+          </div>
+
+          {/* ── Default (smart) ── */}
+          <div className="fp-section">
+            <div className="fp-section-title">Default</div>
+            <div className="fp-options">
+              <button type="button" className="fp-option" onClick={() => setPSort('activity')}>
+                <Radio on={pSort === 'activity'} />Active &amp; recent
+              </button>
             </div>
           </div>
 

@@ -70,7 +70,7 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
       (agent.description ?? '').toLowerCase().includes(q)
     )
     .sort((a, b) => {
-      if (sortOrder === 'newest') return (b.modifiedAt ?? 0) - (a.modifiedAt ?? 0);
+      if (sortOrder === 'activity' || sortOrder === 'newest') return (b.modifiedAt ?? 0) - (a.modifiedAt ?? 0);
       if (sortOrder === 'oldest') return (a.modifiedAt ?? 0) - (b.modifiedAt ?? 0);
       return (Number(!!b.builtIn) - Number(!!a.builtIn)) ||
         (sortOrder === 'desc' ? b.name.localeCompare(a.name) : a.name.localeCompare(b.name));

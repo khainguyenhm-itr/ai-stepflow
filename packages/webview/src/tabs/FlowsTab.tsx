@@ -113,6 +113,18 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
   const matchesScopeFilter = (sourcePath: string) =>
     filter === 'all' || getItemScope(sourcePath) === filter;
 
+  // Per-flow activity: is any run live, and when did it last run.
+  const runMeta = React.useMemo(() => {
+    const m = new Map<string, { running: boolean; lastRun: number }>();
+    for (const r of runSummaries) {
+      const cur = m.get(r.flowId) ?? { running: false, lastRun: 0 };
+      const isRunning = !r.isClosed && r.completedSteps < r.totalSteps;
+      m.set(r.flowId, { running: cur.running || isRunning, lastRun: Math.max(cur.lastRun, r.mtimeMs) });
+    }
+    return m;
+  }, [runSummaries]);
+  const metaOf = (id: string) => runMeta.get(id) ?? { running: false, lastRun: 0 };
+
   const q = search.trim().toLowerCase();
   const visibleFlows = flows
     .filter(flow => matchesScopeFilter(flow.sourcePath))
@@ -121,10 +133,16 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
       flow.name.toLowerCase().includes(q) ||
       (flow.description ?? '').toLowerCase().includes(q)
     )
-    .sort((a, b) => sortOrder === 'desc'
-      ? b.name.localeCompare(a.name)
-      : a.name.localeCompare(b.name)
-    );
+    .sort((a, b) => {
+      if (sortOrder === 'asc' || sortOrder === 'desc')
+        return sortOrder === 'desc' ? b.name.localeCompare(a.name) : a.name.localeCompare(b.name);
+      const ma = metaOf(a.id), mb = metaOf(b.id);
+      if (sortOrder === 'oldest')
+        return (ma.lastRun || Infinity) - (mb.lastRun || Infinity) || a.name.localeCompare(b.name);
+      // 'activity' (default) pins live runs on top; 'newest' skips that.
+      if (sortOrder === 'activity' && ma.running !== mb.running) return ma.running ? -1 : 1;
+      return mb.lastRun - ma.lastRun || a.name.localeCompare(b.name);
+    });
 
   // ── Run stats for the header cards (this repo's run summaries) ──
   const DAY = 86_400_000;
