@@ -209,60 +209,83 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
               {runSummaries.length === 0 ? (
                 <div className="run-empty">No runs yet — click ▶ to create the first run.</div>
               ) : (
-                <div className="runs-list">
-                  {[...runSummaries].sort((a, b) => b.mtimeMs - a.mtimeMs).map(s => {
-                    const isExpanded = expandedRunId === s.runId;
-                    const isActive = runnerOpen && runState?.runId === s.runId;
-                    const runData = isActive ? runState : null;
-                    return (
-                      <React.Fragment key={s.runId}>
-                        <div
-                          className={`run-row ${isExpanded ? 'expanded' : ''} ${isActive ? 'active' : ''}`}
-                          onClick={() => {
-                            setExpandedRunId(isExpanded ? null : s.runId);
-                            if (!isActive) {
-                              sendToVSCode('switchRun', { flowId: flow.id, runId: s.runId });
-                            }
-                          }}
-                        >
-                          <span className="run-chevron">
-                            <Icon.ChevronRight size={14} />
-                          </span>
-                          <div className="run-info">
-                            <div className="run-title">
-                              <strong>{s.runName || s.runId.split('T')[0]}</strong>
-                              <span className="mono muted small">{s.runId.slice(-6)}</span>
-                            </div>
-                            <div className="run-meta">
-                              {runStatusBadge(s)}
-                              <span className="run-progress">{s.completedSteps} / {s.totalSteps}</span>
-                              <span className="muted small">{fmtAgo(s.mtimeMs)}</span>
-                            </div>
-                          </div>
-                        </div>
+                <div className="dwrap scroll-x">
+                  <table className="dtable">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 40 }}></th>
+                        <th>Run</th>
+                        <th style={{ width: 100 }}>Status</th>
+                        <th style={{ width: 90 }}>Progress</th>
+                        <th style={{ width: 110 }}>Started</th>
+                        <th style={{ width: 80 }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...runSummaries].sort((a, b) => b.mtimeMs - a.mtimeMs).map(s => {
+                        const isExpanded = expandedRunId === s.runId;
+                        const isActive = runnerOpen && runState?.runId === s.runId;
+                        const runData = isActive ? runState : null;
+                        return (
+                          <React.Fragment key={s.runId}>
+                            <tr
+                              className={`run-row-item ${isExpanded ? 'expanded' : ''} ${isActive ? 'sel' : ''}`}
+                              onClick={() => {
+                                if (!isActive) {
+                                  sendToVSCode('switchRun', { flowId: flow.id, runId: s.runId });
+                                }
+                              }}
+                            >
+                              <td className="run-expand-cell">
+                                <button
+                                  className="icon-btn expand-btn"
+                                  title={isExpanded ? 'Collapse' : 'Expand'}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedRunId(isExpanded ? null : s.runId);
+                                  }}
+                                >
+                                  <Icon.ChevronRight size={14} />
+                                </button>
+                              </td>
+                              <td>
+                                <strong>{s.runName || s.runId.split('T')[0]}</strong>
+                                <span className="mono muted small" style={{ marginLeft: 8 }}>{s.runId.slice(-6)}</span>
+                              </td>
+                              <td>{runStatusBadge(s)}</td>
+                              <td className="mono">{s.completedSteps} / {s.totalSteps}</td>
+                              <td className="muted small">{fmtAgo(s.mtimeMs)}</td>
+                              <td></td>
+                            </tr>
 
-                        {/* Expandable detail */}
-                        {isExpanded && runData && (
-                          <div className="run-detail-expand">
-                            <InlineRunner
-                              flow={flow}
-                              runState={runData}
-                              auditLogs={auditLogs}
-                              activeStepId={activeStepId}
-                              completedSteps={completedSteps}
-                              activeProgress={activeProgress}
-                              commandCopied={commandCopied}
-                              onSetActiveStep={onSetActiveStep}
-                              onRunStep={onRunStep}
-                              onOpenFile={onOpenFile}
-                              onCopyCommand={onCopyCommand}
-                              outputEndRef={outputEndRef}
-                            />
-                          </div>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
+                            {/* Expandable detail row */}
+                            {isExpanded && runData && (
+                              <tr className="run-detail-row">
+                                <td colSpan={6}>
+                                  <div className="run-detail-expand">
+                                    <InlineRunner
+                                      flow={flow}
+                                      runState={runData}
+                                      auditLogs={auditLogs}
+                                      activeStepId={activeStepId}
+                                      completedSteps={completedSteps}
+                                      activeProgress={activeProgress}
+                                      commandCopied={commandCopied}
+                                      onSetActiveStep={onSetActiveStep}
+                                      onRunStep={onRunStep}
+                                      onOpenFile={onOpenFile}
+                                      onCopyCommand={onCopyCommand}
+                                      outputEndRef={outputEndRef}
+                                    />
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
