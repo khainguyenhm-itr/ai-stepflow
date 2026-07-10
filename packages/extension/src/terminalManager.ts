@@ -23,6 +23,8 @@ export class TerminalManager {
   private _onDidCloseRunningStep: ((stepId: string) => void) | undefined;
   /** Callback to notify when the shell execution (claude session) ends while a step is running. */
   private _onDidEndRunningStep: ((stepId: string) => void) | undefined;
+  /** Fallback timeout timer when shell integration is unavailable. */
+  private _fallbackCompletionTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(private readonly configManager: ConfigManager) {
     this._disposables.push(
@@ -30,6 +32,11 @@ export class TerminalManager {
         if (event.execution === this._execution) {
           if (this._running && this._currentStepId && this._onDidEndRunningStep) {
             this._onDidEndRunningStep(this._currentStepId);
+          }
+          // Clear fallback timer if it was scheduled (shouldn't double-fire)
+          if (this._fallbackCompletionTimer) {
+            clearTimeout(this._fallbackCompletionTimer);
+            this._fallbackCompletionTimer = undefined;
           }
           this._reset();
         }
@@ -58,6 +65,10 @@ export class TerminalManager {
     this._execution = undefined;
     this._currentAgentName = undefined;
     this._currentStepId = undefined;
+    if (this._fallbackCompletionTimer) {
+      clearTimeout(this._fallbackCompletionTimer);
+      this._fallbackCompletionTimer = undefined;
+    }
   }
 
   /**
@@ -108,7 +119,10 @@ export class TerminalManager {
     if (shellIntegration) {
       this._execution = shellIntegration.executeCommand(this._shellQuoteArgs(launchArgs));
     } else {
+      // Fallback: shell integration unavailable. Schedule a timeout to detect command completion.
+      // This prevents steps from hanging indefinitely when shell integration is not ready.
       terminal.sendText(this._shellQuoteArgs(launchArgs), true);
+      if (stepId) this._scheduleFallbackCompletion(stepId);
     }
 
     if (prompt && !submit) {
@@ -145,6 +159,32 @@ export class TerminalManager {
         if (event.terminal === terminal) { clearTimeout(timer); listener.dispose(); resolve(event.shellIntegration); }
       });
     });
+  }
+
+  /**
+   * Schedule a fallback completion callback when shell integration is unavailable.
+   * This ensures steps don't hang indefinitely if shell integration times out.
+   * The timeout is conservatively set to allow claude commands to complete.
+   * If shell execution actually ends via onDidEndTerminalShellExecution, the timer is cleared.
+   */
+  private _scheduleFallbackCompletion(stepId: string): void {
+    // Clear any existing fallback timer
+    if (this._fallbackCompletionTimer) {
+      clearTimeout(this._fallbackCompletionTimer);
+    }
+
+    // Schedule completion callback after a conservative timeout
+    // Uses the configured run timeout (default 600s = 10 minutes) as the upper bound
+    const maxTimeoutMs = (vscode.workspace.getConfiguration('ai-stepflow').get<number>('run.timeoutSeconds', 600)) * 1000;
+    // But cap it at 30 seconds for interactive steps (they should finish quickly)
+    const timeoutMs = Math.min(maxTimeoutMs, 30_000);
+
+    this._fallbackCompletionTimer = setTimeout(() => {
+      if (this._running && this._currentStepId === stepId && this._onDidEndRunningStep) {
+        this._onDidEndRunningStep(stepId);
+      }
+      this._reset();
+    }, timeoutMs);
   }
 
   private _getTerminal(projectPath: string): vscode.Terminal {
