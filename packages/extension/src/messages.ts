@@ -32,7 +32,7 @@ export type HostMessage =
       skills: Skill[];
       connectedMcpServers: string[];
       auditLogs: Record<string, AuditEntry[]>;
-      runSummaries: { flowId: string; runId: string; runName?: string; completedSteps: number; totalSteps: number; mtimeMs: number; costUsd?: number; tokensUsed?: number; taskTimeMs?: number; reviewTimeMs?: number }[];
+      runSummaries: { flowId: string; runId: string; runName?: string; completedSteps: number; failedSteps?: number; totalSteps: number; mtimeMs: number; costUsd?: number; tokensUsed?: number; taskTimeMs?: number; reviewTimeMs?: number }[];
       globalPath: string;
       projectPath: string;
       uiPrefs: Record<string, string>;

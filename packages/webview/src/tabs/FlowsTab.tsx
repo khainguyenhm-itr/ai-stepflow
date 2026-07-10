@@ -201,10 +201,6 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
         </div>
       </div>
 
-      <p className="flow-help muted small">
-        Flow = định nghĩa · Run = lần chạy. Bấm tên flow để xem flow graph; mở tab Runs để chọn một run và vào runner.
-      </p>
-
       <div className="flow-stats">
         <div className="flow-stat">
           <div className="flow-stat-label">Active runs</div>
@@ -261,9 +257,9 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
         <div className="dwrap scroll-x">
           <table className="dtable">
             <thead><tr>
-              <th style={{ width: '13%' }}>Status</th><th style={{ width: '34%' }}>Name</th>
-              <th style={{ width: '9%' }}>Runs</th><th style={{ width: '10%' }}>Scope</th>
-              <th style={{ width: '15%' }}>Steps</th><th style={{ width: '19%' }} />
+              <th style={{ width: '10%' }}>Status</th><th style={{ width: '37%' }}>Name</th>
+              <th style={{ width: '12%' }}>Runs</th><th style={{ width: '10%' }}>Scope</th>
+              <th style={{ width: '12%' }}>Steps</th><th style={{ width: '19%' }} />
             </tr></thead>
           {visibleFlows.map(flow => (
             <FlowBoard

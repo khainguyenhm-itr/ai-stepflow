@@ -10,6 +10,8 @@ export interface RunSummary {
   runName?: string;
   filePath: string;
   completedSteps: number;
+  /** Steps whose execution failed. */
+  failedSteps: number;
   totalSteps: number;
   mtimeMs: number;
   isClosed: boolean;
@@ -294,6 +296,7 @@ export class StateManager {
           runName: run.runName,
           filePath,
           completedSteps: steps.filter(step => step.completionStatus === 'done').length,
+          failedSteps: steps.filter(step => step.executionStatus === 'failed').length,
           totalSteps: steps.length,
           mtimeMs: stat.mtimeMs,
           isClosed: !!run.isClosed,

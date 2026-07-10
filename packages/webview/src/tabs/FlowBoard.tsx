@@ -9,6 +9,7 @@ import { FlowGraphCanvas } from '../components/FlowGraphCanvas';
 type RunSummary = {
   flowId: string; runId: string; runName?: string;
   completedSteps: number; totalSteps: number; mtimeMs: number; isClosed: boolean;
+  costUsd?: number; tokensUsed?: number; taskTimeMs?: number; failedSteps?: number;
 };
 
 interface FlowBoardProps {
@@ -47,6 +48,16 @@ const fmtAgo = (ms: number): string => {
   return `${Math.floor(diff / 86_400_000)}d ago`;
 };
 
+const fmtDur = (ms?: number): string => {
+  if (!ms || ms <= 0) return '—';
+  if (ms < 1000) return `${ms}ms`;
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+};
+
 export const FlowBoard: React.FC<FlowBoardProps> = ({
   flow,
   activeFlow,
@@ -75,16 +86,29 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
   const runnerOpen = activeFlow?.id === flow.id && !!runState && runnerVisible;
   const [graphOpen, setGraphOpen] = useState(false);
   const [runsOpen, setRunsOpen] = useState(runnerOpen);
-  const [expandedRunId, setExpandedRunId] = useState<string | null>(runState?.runId || null);
   const [confirmRemoveIndex, setConfirmRemoveIndex] = useState<number | null>(null);
+  const [runMenuOpen, setRunMenuOpen] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const runMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { if (runnerOpen) setRunsOpen(true); }, [runnerOpen, runState?.runId]);
+  useEffect(() => {
+    if (!runMenuOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (runMenuRef.current && !runMenuRef.current.contains(e.target as Node)) setRunMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [runMenuOpen]);
+
+  // Run-level actions target the currently-open run, so they render on that row only.
+  const activeSteps = runnerOpen && runState ? Object.values(runState.steps) : [];
+  const runFinalized = !!runState?.isClosed;
+  const runFlowDone = activeSteps.length > 0 && activeSteps.every(s => s.completionStatus === 'done');
+  const runCanReset = !runFinalized && activeSteps.some(s => s.executionStatus !== 'ready' && s.executionStatus !== 'locked');
 
   const activeRuns = runSummaries.filter(s => !s.isClosed);
   const total = flow.steps.length;
-  const latest = [...runSummaries].sort((a, b) => b.mtimeMs - a.mtimeMs)[0];
-  const doneCount = latest ? Math.min(latest.completedSteps, total) : 0;
 
   let statusKey: 'run' | 'ok' | 'idle' = 'idle';
   let statusLabel = 'Idle';
@@ -101,12 +125,6 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
       }
       return next;
     });
-  };
-
-  const runStatusBadge = (s: RunSummary) => {
-    if (s.isClosed) return <span className="badge ok">Finalized</span>;
-    if (s.completedSteps >= s.totalSteps) return <span className="badge ok">Done</span>;
-    return <span className="badge run">In progress</span>;
   };
 
   return (
@@ -127,14 +145,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
         </td>
         <td className="mono muted">{runSummaries.length} {runSummaries.length === 1 ? 'run' : 'runs'}</td>
         <td>{scopeBadge}</td>
-        <td>
-          <span className="pipe">
-            {flow.steps.map((s, i) => (
-              <span key={s.id} className={`seg ${i < doneCount ? 'done' : (i === doneCount && statusKey === 'run' ? 'active' : '')}`} />
-            ))}
-            <span className="pipe-num">{total}</span>
-          </span>
-        </td>
+        <td className="mono muted">{total} {total === 1 ? 'step' : 'steps'}</td>
         <td className="drow-actions-cell">
           <span className="drow-actions">
             <button className="icon-btn" title="New run" onClick={() => onRun(flow)}><Icon.Play size={14} /></button>
@@ -209,61 +220,106 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
               {runSummaries.length === 0 ? (
                 <div className="run-empty">No runs yet — click ▶ to create the first run.</div>
               ) : (
-                <div className="dwrap scroll-x">
-                  <table className="dtable">
+                <div className="runs-table-wrap">
+                  <table className="runs-table">
                     <thead>
                       <tr>
-                        <th style={{ width: 32 }}></th>
-                        <th>Run</th>
-                        <th style={{ width: 100 }}>Status</th>
-                        <th style={{ width: 80 }}>Progress</th>
-                        <th style={{ width: 90 }}>Started</th>
+                        <th className="rt-chev"></th>
+                        <th className="rt-status">Status</th>
+                        <th className="rt-run">Run</th>
+                        <th className="rt-cost">Cost</th>
+                        <th className="rt-tokens">Tokens</th>
+                        <th className="rt-task">Task</th>
+                        <th className="rt-progress">Steps</th>
+                        <th className="rt-started">Started</th>
+                        <th className="rt-actions"></th>
                       </tr>
                     </thead>
                     <tbody>
                       {[...runSummaries].sort((a, b) => b.mtimeMs - a.mtimeMs).map(s => {
-                        const isExpanded = expandedRunId === s.runId;
                         const isActive = runnerOpen && runState?.runId === s.runId;
-                        const runData = isActive ? runState : null;
+                        const done = s.completedSteps >= s.totalSteps;
+                        const failed = (s.failedSteps ?? 0) > 0;
+                        const statusKey = s.isClosed ? 'done' : failed ? 'fail' : done ? 'ok' : 'run';
+                        const statusLabel = s.isClosed ? 'Finalized' : failed ? 'Failed' : done ? 'Done' : 'Running';
                         return (
                           <React.Fragment key={s.runId}>
                             <tr
-                              className={`run-row-item ${isExpanded ? 'expanded' : ''} ${isActive ? 'sel' : ''}`}
-                              onClick={() => {
-                                if (!isActive) {
-                                  sendToVSCode('switchRun', { flowId: flow.id, runId: s.runId });
-                                }
-                              }}
+                              className={`run-row ${isActive ? 'open' : ''}`}
+                              title={new Date(s.mtimeMs).toLocaleString()}
+                              onClick={() => sendToVSCode(isActive ? 'closeRun' : 'switchRun', isActive ? { finalize: false } : { flowId: flow.id, runId: s.runId })}
                             >
-                              <td className="run-expand-cell">
-                                <button
-                                  className="icon-btn expand-btn"
-                                  title={isExpanded ? 'Collapse' : 'Expand'}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setExpandedRunId(isExpanded ? null : s.runId);
-                                  }}
-                                >
-                                  <Icon.ChevronRight size={14} />
-                                </button>
+                              <td className="rt-chev"><span className="rt-chevron"><Icon.ChevronRight size={14} /></span></td>
+                              <td className="rt-status">
+                                <span className={`run-status ${statusKey === 'run' || statusKey === 'fail' ? '' : 'muted'}`}>
+                                  <span className={`ddot ${statusKey}`} />
+                                  <span>{statusLabel}</span>
+                                </span>
                               </td>
-                              <td>
-                                <strong>{s.runName || s.runId.split('T')[0]}</strong>
-                                <span className="mono muted small" style={{ marginLeft: 8 }}>{s.runId.slice(-6)}</span>
+                              <td className="rt-name">
+                                <span className="run-name">{s.runName || s.runId.split('T')[0]}</span>
+                                <span className="run-id mono">·{s.runId.slice(-6)}</span>
                               </td>
-                              <td>{runStatusBadge(s)}</td>
-                              <td className="mono">{s.completedSteps} / {s.totalSteps}</td>
-                              <td className="muted small">{fmtAgo(s.mtimeMs)}</td>
+                              <td className="rt-cost mono">{s.costUsd && s.costUsd > 0 ? `$${s.costUsd.toFixed(2)}` : '—'}</td>
+                              <td className="rt-tokens mono">{s.tokensUsed && s.tokensUsed > 0 ? s.tokensUsed.toLocaleString() : '—'}</td>
+                              <td className="rt-task mono">{fmtDur(s.taskTimeMs)}</td>
+                              <td className="rt-progress">
+                                <span className="pipe">
+                                  {Array.from({ length: s.totalSteps }).map((_, i) => {
+                                    const cls = i < s.completedSteps ? 'done'
+                                      : i === s.completedSteps && failed && !s.isClosed ? 'fail'
+                                      : i === s.completedSteps && !done && !s.isClosed ? 'active'
+                                      : '';
+                                    return <span key={i} className={`seg ${cls}`} />;
+                                  })}
+                                  <span className="pipe-num">{s.completedSteps}/{s.totalSteps}</span>
+                                </span>
+                              </td>
+                              <td className="rt-started">{fmtAgo(s.mtimeMs)}</td>
+                              <td className="rt-actions" onClick={e => e.stopPropagation()}>
+                                {isActive && !runFinalized && (
+                                  <div className="run-row-actions">
+                                    {runFlowDone && (
+                                      <button className="icon-btn done-check" title="Finalize run — mark done & clear active status" onClick={() => sendToVSCode('closeRun', { finalize: true })}>
+                                        <Icon.Check size={15} />
+                                      </button>
+                                    )}
+                                    <div className="more-menu" ref={runMenuRef}>
+                                      <button className="icon-btn" title="More actions" aria-haspopup="menu" aria-expanded={runMenuOpen} onClick={() => setRunMenuOpen(o => !o)}>
+                                        <Icon.More size={16} />
+                                      </button>
+                                      {runMenuOpen && (
+                                        <div className="more-menu-list" role="menu">
+                                          {!runFlowDone && runCanReset && (
+                                            <button className="more-menu-item" role="menuitem" onClick={() => { setRunMenuOpen(false); sendToVSCode('resetRun', {}); }}>
+                                              <Icon.RotateCw size={14} />Reset all steps
+                                            </button>
+                                          )}
+                                          <button className="more-menu-item" role="menuitem" onClick={() => { setRunMenuOpen(false); sendToVSCode('verifyRun', {}); }}>
+                                            <Icon.Check size={14} />Verify
+                                          </button>
+                                          <button className="more-menu-item" role="menuitem" onClick={() => { setRunMenuOpen(false); sendToVSCode('exportRunReport', {}); }}>
+                                            <Icon.Copy size={14} />Report
+                                          </button>
+                                          <div className="more-menu-sep" />
+                                          <button className="more-menu-item danger" role="menuitem" onClick={() => { setRunMenuOpen(false); sendToVSCode('deleteRun', {}); }}>
+                                            <Icon.Trash2 size={14} />Delete run
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </td>
                             </tr>
 
-                            {/* Expandable detail row */}
-                            {isExpanded && runData && (
-                              <tr className="run-detail-row">
-                                <td colSpan={6}>
-                                  <div className="run-detail-expand">
+                            {isActive && runState && (
+                              <tr className="run-detail">
+                                <td colSpan={9}>
+                                  <div className="run-drawer">
                                     <InlineRunner
                                       flow={flow}
-                                      runState={runData}
+                                      runState={runState}
                                       auditLogs={auditLogs}
                                       activeStepId={activeStepId}
                                       completedSteps={completedSteps}

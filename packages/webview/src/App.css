@@ -105,11 +105,13 @@ body {
   height: 3px;
 }
 
-/* Modals: hide scrollbar thumb — content still scrolls, bar stays invisible. */
+/* Pages & modals: hide scrollbar thumb — content still scrolls, bar stays invisible. */
+.page,
 .modal-body {
   scrollbar-width: none;
 }
 
+.page::-webkit-scrollbar,
 .modal-body::-webkit-scrollbar {
   display: none;
 }
@@ -1367,6 +1369,17 @@ textarea.input {
 .more-menu-item.danger { color: var(--error); }
 .more-menu-sep { height: 1px; background: var(--border); margin: 4px 0; }
 
+/* Step strip sits on one row with the Auto-review toggle (no more runner header). */
+.runner-striprow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.runner-striprow .runner-strip { flex: 1 1 auto; min-width: 0; padding: 0; }
+.runner-striprow .auto-review-toggle { flex: 0 0 auto; }
+
 .runner-strip {
   display: flex;
   align-items: center;
@@ -1535,7 +1548,7 @@ textarea.input {
   margin: 0;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: 6px;
   color: var(--fg);
   background: var(--vscode-terminal-background, var(--vscode-editor-background, #1e1e1e));
   font-family: var(--mono);
@@ -1544,6 +1557,16 @@ textarea.input {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* Cost / History reports reuse the console look, with more room and no wrapping. */
+.console.report { max-height: 360px; padding: 14px 16px; white-space: pre; overflow: auto; }
+
+/* History event coloring (mirrors the mockup console): muted time, tinted status. */
+.console.report .ev-time { color: var(--muted); }
+.console.report .ev-ok { color: var(--success); }
+.console.report .ev-run { color: var(--running); }
+.console.report .ev-err { color: var(--error); }
+.console.report .ev-muted { color: var(--muted); }
 
 /* The automated-review transcript, shown beneath the run output. */
 .console.ai-review {
@@ -1568,18 +1591,27 @@ textarea.input {
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .runner-cost-table th,
 .runner-cost-table td {
-  padding: 6px 8px;
+  padding: 7px 10px;
   border-top: 1px solid var(--border);
   text-align: left;
 }
 
-.runner-cost-table th {
+.runner-cost-table thead th {
+  border-top: 0;
+  background: var(--panel-2);
   color: var(--muted);
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 10.5px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .runner-cost-table tr.active {
@@ -1589,9 +1621,7 @@ textarea.input {
 .error-text { color: var(--error, var(--vscode-errorForeground, #f48771)); }
 
 .step-history {
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
+  margin-top: 0;
 }
 
 .history-run-group {
@@ -2041,7 +2071,7 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 /* Workflows tab — help line & run-stat cards */
 .flow-help { margin: 10px 0 0; }
 .flow-stats {
-  display: grid; gap: 10px; margin: 12px 0 4px;
+  display: grid; gap: 10px; margin: 12px 0 14px;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 .flow-stat {
@@ -2075,153 +2105,88 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 .detail-subhead h4 { margin: 0; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
 .detail-subhead .hint { color: var(--muted); font-size: 11px; margin-left: auto; }
 
-/* runs table with expandable rows */
-.run-row-item {
-  cursor: pointer;
-  transition: background-color 0.15s ease-out;
+/* ================= Runs — Docker-style table (inside the flow "Runs" panel) ================= */
+.runs-table-wrap { border: 1px solid var(--border); border-radius: 8px; background: var(--panel); overflow: hidden; }
+/* table-layout:fixed locks column widths so the wide expanded drawer (console, cost
+   table) can't re-flow and break the collapsed rows' columns. */
+.runs-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.runs-table thead th {
+  text-align: left; font-weight: 600; font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--muted); padding: 9px 14px; background: var(--panel-2); border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.runs-table td { padding: 11px 14px; vertical-align: middle; }
+.runs-table .run-row > td { overflow: hidden; }
+.rt-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.runs-table .run-row { cursor: pointer; border-bottom: 1px solid var(--border); transition: background .12s ease-out; }
+.runs-table tbody tr:last-child { border-bottom: 0; }
+.run-row:hover { background: var(--hover); }
+.run-row.open { background: var(--panel-2); }
+
+/* Balanced column widths (sum = 100%); table-layout:fixed scales them to the panel. */
+.rt-chev { width: 4%; padding-right: 0 !important; }
+.rt-run { width: 21%; }
+.rt-chevron { display: inline-flex; color: var(--muted); transition: transform .18s ease-out; }
+.run-row.open .rt-chevron { transform: rotate(90deg); color: var(--fg); }
+
+.rt-status { width: 12%; }
+.run-status { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.run-status.muted { color: var(--muted); }
+.run-status .ddot { flex: none; }
+.ddot.done { background: var(--muted); }
+
+.rt-name .run-name { font-weight: 600; }
+.rt-name .run-id { font-size: 11px; color: var(--muted); margin-left: 2px; }
+
+.rt-progress { width: 15%; }
+/* Numeric run metrics — right-aligned, tabular, muted */
+.rt-cost, .rt-tokens, .rt-task { text-align: right; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rt-cost { width: 9%; }
+.rt-tokens { width: 11%; }
+.rt-task { width: 9%; }
+.runs-table th.rt-cost, .runs-table th.rt-tokens, .runs-table th.rt-task { text-align: right; }
+.run-prog { display: flex; align-items: center; gap: 9px; }
+.run-prog-bar { flex: 1; min-width: 60px; height: 5px; border-radius: 999px; background: var(--badge-bg); overflow: hidden; }
+.run-prog-fill { display: block; height: 100%; border-radius: inherit; transition: width .2s ease-out; }
+.run-prog-fill.run { background: var(--running); }
+.run-prog-fill.ok { background: var(--success); }
+.run-prog-num { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.rt-started { width: 10%; color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+.rt-actions { width: 9%; text-align: right; overflow: visible !important; }
+/* Flat icon actions — no button box, matching the flow-row action icons. */
+.run-row-actions { display: inline-flex; align-items: center; gap: 2px; }
+.run-row-actions .icon-btn.done-check { color: var(--success); }
+.run-row-actions .icon-btn[aria-expanded="true"] { background: var(--hover); color: var(--fg); }
+
+/* Detail drawer that slides open under the selected run */
+.run-detail > td { padding: 0; background: var(--panel-2); }
+.run-drawer { border-top: 1px solid var(--border); animation: runsDrawer .2s ease-out; }
+.run-drawer .runner { border-top: 0; background: transparent; }
+
+@keyframes runsDrawer {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.run-row-item:hover {
-  background: var(--hover);
-}
+/* runner header stats — replaces the run name/status that the row already shows */
+.runner-stats { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; color: var(--muted); font-size: 12px; }
+.runner-stats b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+.runner-stats .sep { opacity: .5; }
 
-.run-row-item.sel {
-  background: var(--active-sel);
-}
+/* selected-step card */
+.step-card { border: 1px solid var(--border); border-radius: 8px; background: var(--panel); overflow: hidden; }
+.step-card-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 11px 14px; }
+.step-card-title { font-size: 14px; font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; }
+.step-card-head .runner-detail-actions { margin-left: auto; padding-top: 0; }
 
-.run-row-item.expanded {
-  background: var(--hover);
-  border-bottom: 1px solid var(--focus);
-}
-
-.run-expand-cell {
-  width: 32px !important;
-  padding: 8px 6px !important;
-  text-align: center;
-}
-
-.expand-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  transition: transform 0.2s ease-out;
-  color: var(--muted);
-}
-
-.run-expand-btn:hover {
-  color: var(--fg);
-}
-
-.run-row-item.expanded .expand-btn {
-  transform: rotate(90deg);
-  color: var(--fg);
-}
-
-/* Expandable detail row - seamless UI */
-.run-detail-row {
-  border: none !important;
-}
-
-.run-detail-row td {
-  padding: 0 !important;
-  border-bottom: none !important;
-  background: transparent;
-  border-top: 1px solid var(--border);
-}
-
-.run-detail-expand {
-  animation: expandDown 0.25s ease-out;
-  overflow: hidden;
-}
-
-.run-detail-expand .runner {
-  border: none;
-  border-radius: 0;
-  background: transparent;
-}
-
-.run-detail-expand .runner-head {
-  border-bottom: none;
-  padding: 8px 12px;
-  background: transparent;
-}
-
-.run-detail-expand .runner-head-info {
-  display: none;
-}
-
-.run-detail-expand .runner-head-actions {
-  gap: 8px;
-}
-
-.run-detail-expand .runner-strip {
-  margin: 0;
-  padding: 0 12px 8px;
-  gap: 6px;
-}
-
-.run-detail-expand .runner-detail {
-  padding: 0 12px 12px;
-}
-
-.run-detail-expand .runner-detail-head {
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 8px;
-}
-
-.run-detail-expand .runner-detail-title {
-  flex-direction: row;
-  gap: 12px;
-}
-
-.run-detail-expand .runner-detail-step-label {
-  display: none;
-}
-
-.run-detail-expand .runner-detail-step-title {
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.run-detail-expand .runner-meta {
-  margin: 8px 0;
-  gap: 16px;
-}
-
-.run-detail-expand .meta-group {
-  flex-direction: row;
-  gap: 12px;
-  align-items: center;
-  font-size: 11px;
-}
-
-.run-detail-expand .console-wrap {
-  margin: 8px 0;
-}
-
-.run-detail-expand .console-wrap .divider-label {
-  font-size: 11px;
-  margin-bottom: 4px;
-}
-
-.run-detail-expand .console {
-  max-height: 200px;
-  font-size: 11px;
-}
-
-@keyframes expandDown {
-  from {
-    opacity: 0;
-    max-height: 0;
-  }
-  to {
-    opacity: 1;
-    max-height: 2000px;
-  }
-}
+/* meta grid — two columns of bordered cells */
+.step-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.step-meta .mcell { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 14px; border-top: 1px solid var(--border); font-size: 12px; }
+.step-meta .mcell:nth-child(odd) { border-right: 1px solid var(--border); }
+.step-meta .mk { flex: none; width: 58px; color: var(--muted); }
+.step-meta .mcell .small { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+.step-meta .mcell .placeholder { color: var(--muted); }
 
 .run-empty {
   text-align: center;
