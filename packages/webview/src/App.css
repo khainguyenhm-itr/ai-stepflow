@@ -364,13 +364,11 @@ textarea.input::-webkit-scrollbar-thumb:hover,
 
 .btn.progress {
   border-color: var(--running);
-  color: #ffffff;
-  background: var(--running);
+  color: var(--running);
 }
 
 .btn.progress:hover:not(:disabled) {
-  background: var(--running);
-  opacity: 0.9;
+  background: color-mix(in srgb, var(--running) 12%, transparent);
 }
 
 .btn.block {
