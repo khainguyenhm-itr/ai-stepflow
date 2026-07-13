@@ -625,8 +625,10 @@ export class RunOrchestrator {
     const reviewerAgent = reviewer?.agent ? (await this.configManager.loadAgents()).find(a => a.name === reviewer.agent) : undefined;
 
     // Read the review kit + artifacts first so we only flip to the transient "review running"
-    // state when an actual LLM call is going to happen.
-    const reviewKit = deep ? machine.loadReviewKit(projectPath) : '';
+    // state when an actual LLM call is going to happen. The active kit is picked in the sidebar
+    // (Project Settings → Review Kit); an empty/unset pref falls back to the bundled default.
+    const activeKit = deep ? (await this.configManager.loadUiPrefs().catch(() => ({} as Record<string, string>)))['review:activeKit'] : '';
+    const reviewKit = deep ? machine.loadReviewKit(projectPath, activeKit || undefined) : '';
     const artifacts = deep ? machine.readProducedArtifacts(step, projectPath, this._runState.inputs || {}, flow.name, this._runSlug()) : { text: '', count: 0 };
     if (deep && reviewKit && artifacts.count > 0) {
       await this._setRunState(s => machine.applyAiReview(s, flow, stepId, 'ai_review_running', ''));

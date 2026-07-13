@@ -89,7 +89,12 @@ function buildSidebarHtml() {
         currentStep: { title: 'Write Docs', status: 'running' }
       },
       runFiles: [],
-      totalRunFiles: 0
+      totalRunFiles: 0,
+      uiPrefs: { 'review:activeKit': 'aisf-review-default.md' },
+      reviewKits: [
+        { name: 'AISF Review Default', file: 'aisf-review-default.md', scope: 'global' },
+        { name: 'Strict Security Review', file: 'strict-security.md', scope: 'project' }
+      ]
     }}));
   });`;
 

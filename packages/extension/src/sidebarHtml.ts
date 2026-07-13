@@ -337,6 +337,15 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
             <option value="concise">Concise</option>
           </select></span>
         </div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Review Kit</div>
+            <div class="setting-desc">Kit the deep AI-review layer uses to judge artifacts</div>
+          </div>
+          <span class="select-wrap sm"><select id="review-kit-select" class="input sm">
+            <option value="">Default</option>
+          </select></span>
+        </div>
         <div class="setting-row gx-row" id="gitnexus-setting-row" style="display:none">
           <div class="gx-head">
             <div style="min-width:0">
@@ -1071,6 +1080,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
         renderRuns(m.runFiles, m.totalRunFiles);
         const styleSelect = document.getElementById('ai-style-select');
         if (styleSelect && m.uiPrefs) styleSelect.value = m.uiPrefs['ai:responseStyle'] || 'default';
+        renderReviewKits(m.reviewKits || [], (m.uiPrefs || {})['review:activeKit'] || '');
       } else if (m.type === 'mcp') {
         mcpReceived = true;
         setMcpData(m.mcp);
@@ -1092,6 +1102,21 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
 
   document.getElementById('ai-style-select').addEventListener('change', function() {
     vscode.postMessage({ type: 'savePref', key: 'ai:responseStyle', value: this.value });
+  });
+
+  // Populate the review-kit picker from installed kits; value is the kit filename
+  // ('' = fall back to the bundled default). Selection persists as a project ui-pref.
+  function renderReviewKits(kits, active) {
+    const sel = document.getElementById('review-kit-select');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">Default</option>' +
+      kits.map(k => '<option value="' + esc(k.file) + '">' + esc(k.name) +
+        (k.scope === 'global' ? ' (global)' : '') + '</option>').join('');
+    sel.value = kits.some(k => k.file === active) ? active : '';
+  }
+
+  document.getElementById('review-kit-select').addEventListener('change', function() {
+    vscode.postMessage({ type: 'savePref', key: 'review:activeKit', value: this.value });
   });
 
   document.getElementById('gitnexus-analyze-btn').addEventListener('click', function() {

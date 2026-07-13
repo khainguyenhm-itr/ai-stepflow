@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { ConfigManager } from './configManager.js';
 import type { BundledKind } from './configManager.js';
@@ -203,7 +203,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     if (!this._view) return;
 
     try {
-      const [flows, agents, skills, runFiles, activeRun, defaultItems, uiPrefs, gitnexus] = await Promise.all([
+      const [flows, agents, skills, runFiles, activeRun, defaultItems, uiPrefs, gitnexus, reviewKits] = await Promise.all([
         this.configManager.loadFlows().catch(() => []),
         this.configManager.loadAgents().catch(() => []),
         this.configManager.loadSkills().catch(() => []),
@@ -211,8 +211,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         this.stateManager.loadLatestRun().catch(() => undefined),
         this.configManager.listBundledDefaults().catch(() => []),
         this.configManager.loadUiPrefs().catch(() => ({} as Record<string, string>)),
-        this._actions.readGitnexusStatus().catch(() => ({ indexed: false, stale: false, files: 0, indexedAt: null, registryName: null, groups: [], currentGroup: null, currentAlias: null } as GitnexusStatus))
+        this._actions.readGitnexusStatus().catch(() => ({ indexed: false, stale: false, files: 0, indexedAt: null, registryName: null, groups: [], currentGroup: null, currentAlias: null } as GitnexusStatus)),
+        this.configManager.loadReviewKits().catch(() => [])
       ]);
+      // Flatten review kits to the picker's shape: filename (the loadReviewKit lookup key) + scope.
+      const globalRoot = this.configManager.getGlobalPath();
+      const reviewKitOptions = reviewKits.map(kit => ({
+        name: kit.name,
+        file: basename(kit.sourcePath),
+        scope: kit.sourcePath.startsWith(globalRoot) ? 'global' : 'project'
+      }));
       const flowName = (id: string) => flows.find(f => f.id === id)?.name || id;
       const visibleRunFiles = runFiles.filter(file => !file.isClosed);
 
@@ -265,6 +273,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         stats: { flows: flows.length, agents: agents.length, skills: skills.length },
         defaultItems: annotatedItems,
         uiPrefs,
+        reviewKits: reviewKitOptions,
         gitnexus,
         mcp: this._cachedMcp,
         plugins: this._cachedPlugins,
