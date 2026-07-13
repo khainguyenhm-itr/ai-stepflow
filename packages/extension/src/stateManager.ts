@@ -129,6 +129,20 @@ export class StateManager {
     try { await fs.unlink(filePath); } catch { /* ignore if not found */ }
   }
 
+  /**
+   * Delete the per-step AI review reports (written by {@link saveReviewReport} when a step is
+   * rejected) for the given steps of a run. Exact per-step filenames — not a prefix glob — so a run
+   * whose slug is a prefix of another's never has its reports deleted by mistake. No-op if absent.
+   */
+  public async deleteReviewReports(run: FlowRunState, stepIds: string[]): Promise<void> {
+    if (!this.projectPath) return;
+    const dir = path.join(this.projectPath, '.ai-stepflow', 'reports', 'reviews');
+    await Promise.all(stepIds.map(async stepId => {
+      const filePath = path.join(dir, `${this.runFileBase(run)}-${this.slugify(stepId)}.md`);
+      try { await fs.unlink(filePath); } catch { /* ignore if not found */ }
+    }));
+  }
+
   /** Saves an event to a local audit log that is never committed to the repo. */
   public async appendAuditLog(flowId: string, runId: string, stepId: string, event: { timestamp: string; status: string; message?: string }): Promise<void> {
     const dir = await this.getLocalStorageDir();

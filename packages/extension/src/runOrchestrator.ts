@@ -386,6 +386,7 @@ export class RunOrchestrator {
       this.stateManager.clearAuditLog(flow.id, oldRunId),
       this.stateManager.deleteRunFile(this._runState),
       this.stateManager.deleteReportFile(this._runState),
+      this.stateManager.deleteReviewReports(this._runState, flow.steps.map(s => s.id)),
     ]);
     this.post({ type: 'resetAuditLog', flowId: flow.id });
     await this._setRunState(freshState);
@@ -437,6 +438,7 @@ export class RunOrchestrator {
       this.stateManager.clearAuditLog(flow.id, runId),
       this.stateManager.deleteRunFile(this._runState),
       this.stateManager.deleteReportFile(this._runState),
+      this.stateManager.deleteReviewReports(this._runState, flow.steps.map(s => s.id)),
     ]);
 
     this._currentFlow = undefined;
@@ -526,6 +528,10 @@ export class RunOrchestrator {
     // Delete the artifacts this step (and its now-reset dependents) produced, so the re-run
     // regenerates them instead of an AI review reading a stale file from the previous attempt.
     const deleted = this._deleteFiles(this._producedFilePaths(ids));
+
+    // Also drop any AI review reports these steps left behind when rejected, so a re-run doesn't
+    // carry stale verdicts. runName/runId are unchanged by resetStep, so the run slug still matches.
+    await this.stateManager.deleteReviewReports(this._runState, ids);
 
     await this.stateManager.clearAuditLog(flow.id, runId, ids);
     this.post({ type: 'resetAuditLog', flowId: flow.id, runId, stepIds: ids });
