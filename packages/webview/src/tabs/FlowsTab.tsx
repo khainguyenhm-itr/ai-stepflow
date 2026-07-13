@@ -156,9 +156,8 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
   const tokensToday = sum(runsToday.map(r => r.tokensUsed || 0));
   const tokensYest = sum(runSummaries.filter(r => inDay(r.mtimeMs, todayStart - DAY)).map(r => r.tokensUsed || 0));
   const costToday = sum(runsToday.map(r => r.costUsd || 0));
-  const avgBase = runsToday.length ? runsToday : runSummaries;
-  const avgTaskMs = avgBase.length ? sum(avgBase.map(r => r.taskTimeMs || 0)) / avgBase.length : 0;
-  const avgReviewMs = avgBase.length ? sum(avgBase.map(r => r.reviewTimeMs || 0)) / avgBase.length : 0;
+  const taskMsToday = sum(runsToday.map(r => r.taskTimeMs || 0));
+  const reviewMsToday = sum(runsToday.map(r => r.reviewTimeMs || 0));
   const tokenDelta = tokensYest > 0 ? Math.round(((tokensToday - tokensYest) / tokensYest) * 100) : null;
 
   type Run = (typeof runSummaries)[number];
@@ -245,10 +244,10 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
           </div>
         </div>
         <div className="flow-stat">
-          <div className="flow-stat-label">Avg run time</div>
-          <div className="flow-stat-value">{fmtDuration(avgTaskMs)}</div>
+          <div className="flow-stat-label">Task time (today)</div>
+          <div className="flow-stat-value">{fmtDuration(taskMsToday)}</div>
           <div className="flow-stat-foot">
-            <span className="muted small">{avgReviewMs > 0 ? `+ ${fmtDuration(avgReviewMs)} review` : (runsToday.length ? 'today' : 'all runs')}</span>
+            <span className="muted small">{reviewMsToday > 0 ? `+ ${fmtDuration(reviewMsToday)} review` : (runsToday.length ? 'today' : 'no runs today')}</span>
             <Sparkline data={series(r => r.taskTimeMs || 0)} color="var(--warn)" />
           </div>
         </div>
