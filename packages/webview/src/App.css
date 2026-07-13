@@ -30,6 +30,8 @@
 
   --success: #3fb950;
   --running: #58a6ff;
+  --review-ai: #a371f7;
+  --review-human: #39c5cf;
   --badge-bg: #30363d;
   --badge-fg: #c9d1d9;
   /* Outline for secondary buttons, derived from the foreground color. */
@@ -371,6 +373,15 @@ textarea.input::-webkit-scrollbar-thumb:hover,
 
 .btn.progress:hover:not(:disabled) {
   background: color-mix(in srgb, var(--running) 12%, transparent);
+}
+
+.btn.review {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.btn.review:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
 }
 
 .btn.block {
@@ -1567,6 +1578,9 @@ textarea.input {
 .console.report .ev-run { color: var(--running); }
 .console.report .ev-err { color: var(--error); }
 .console.report .ev-muted { color: var(--muted); }
+/* Review-actor tag: AI/validator vs human decisions get distinct colors in the log. */
+.console.report .ev-actor-ai { color: var(--review-ai); font-weight: 600; }
+.console.report .ev-actor-human { color: var(--review-human); font-weight: 600; }
 
 /* The automated-review transcript, shown beneath the run output. */
 .console.ai-review {

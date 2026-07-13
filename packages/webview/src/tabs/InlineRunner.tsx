@@ -112,6 +112,12 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
       if (finishGate) actions.showFinish = true;
       else actions.showReview = true;
       actions.showRerun = true;
+    } else if (reviewStatus === 'rejected') {
+      // AI review rejected the step and the run halted. A rejection isn't always a hard stop — the
+      // human may judge the artifact acceptable — so surface an override gate: Approve to accept it
+      // anyway and advance, Reject to keep it rejected, or Re-run to fix and retry.
+      actions.showReview = true;
+      actions.showRerun = true;
     } else {
       // Fallback for terminal states without a review gate (ready, failed, cancelled, rejected)
       if (hasRunBefore) actions.showRerun = true;
@@ -231,6 +237,16 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
     if (/(reject|fail|error|stop|abort)/.test(s)) return 'ev-err';
     return 'ev-muted';
   };
+  // Infer who made a review decision from the audit message, so an AI/validator approve|reject is
+  // visually distinct from a human one in the log. Gated on approve|reject so non-review rows that
+  // mention "user"/"reviewing" (e.g. "Terminal closed by user") are never mistaken for reviews.
+  const reviewActor = (message: string | undefined): 'ai' | 'human' | null => {
+    const m = (message || '').toLowerCase();
+    if (!/(approv|reject)/.test(m)) return null;
+    if (/by user|human review/.test(m)) return 'human';
+    if (/review|validator/.test(m)) return 'ai';
+    return null;
+  };
   const historyNodes = (() => {
     const nodes: React.ReactNode[] = [];
     historyGroups.forEach((group, gi) => {
@@ -243,11 +259,12 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
       group.events.forEach((e, ei) => {
         const time = new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         const status = String(e.status);
+        const actor = reviewActor(e.message);
         nodes.push(
           <React.Fragment key={`ev-${gi}-${ei}`}>
             <span className="ev-time">{time}</span>{'  '}
             <span className={statusClass(status)}>{status.padEnd(statusW)}</span>
-            {e.message ? `  ${e.message}` : ''}{'\n'}
+            {e.message ? <>{'  '}<span className={actor ? `ev-actor-${actor}` : undefined}>{e.message}</span></> : ''}{'\n'}
           </React.Fragment>
         );
       });
@@ -314,10 +331,9 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
                   </button>
                 )}
                 {aiReviewing && (
-                  <span className="badge progress">
-                    <Icon.RotateCw size={10} style={{ marginRight: 4 }} className="spin" />
-                    AI reviewing…
-                  </span>
+                  <button className="btn review" disabled title="AI is reviewing...">
+                    <span className="btn-glyph"><Icon.RotateCw size={14} className="spin" /></span>AI reviewing
+                  </button>
                 )}
 
                 {stepActions.showCancel && (
@@ -409,7 +425,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
         )}
         {reviewStatus === 'rejected' && (
           <div className="result-banner error">
-            <Icon.X size={13} /> Rejected — fix the issues and re-run the step.
+            <Icon.X size={13} /> Rejected by review. Re-run to fix, or approve anyway to override and continue.
           </div>
         )}
         {reviewStatus === 'waiting_human' && finishGate && (
