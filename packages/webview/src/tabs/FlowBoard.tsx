@@ -85,7 +85,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
   const columns = getFlowColumns(flow);
   const runnerOpen = activeFlow?.id === flow.id && !!runState && runnerVisible;
   const [graphOpen, setGraphOpen] = useState(false);
-  const [runsOpen, setRunsOpen] = useState(runnerOpen);
+  const [runsOpen, setRunsOpen] = useState(false);
   const [runsTab, setRunsTab] = useState<'running' | 'done'>('running');
   const [confirmRemoveIndex, setConfirmRemoveIndex] = useState<number | null>(null);
   const [runMenuOpen, setRunMenuOpen] = useState(false);
@@ -94,7 +94,6 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
 
   useEffect(() => {
     if (!runnerOpen) return;
-    setRunsOpen(true);
     // Surface the open run: switch to the tab that contains it.
     const s = runSummaries.find(r => r.runId === runState?.runId);
     if (s) setRunsTab(isFinished(s) ? 'done' : 'running');
