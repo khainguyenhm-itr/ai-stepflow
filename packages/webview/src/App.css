@@ -1948,7 +1948,7 @@ textarea.input {
 /* Overview — scope switch */
 .ov-scope-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 2px; overflow: hidden; }
 .ov-scope-btn {
-  display: inline-flex; align-items: center;
+  display: inline-flex; align-items: center; gap: 6px;
   padding: 4px 12px; font-size: inherit; line-height: 1.4; font-family: inherit;
   background: transparent; color: var(--fg);
   border: none; border-right: 1px solid var(--border); cursor: pointer;
@@ -2098,25 +2098,17 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 .detail-row .detail { padding: 14px 16px; border-top: 2px solid var(--focus); }
 .detail-row.runs-dr .detail { border-top: none; }
 .drow.graph-on { background: var(--hover); }
-.name-cell { cursor: pointer; }
-.name-cell .chev-inline { transition: transform .15s; display: inline-flex; vertical-align: middle; margin-right: 4px; color: var(--muted); }
-.drow.graph-on .name-cell .chev-inline { transform: rotate(90deg); }
 .detail-subhead { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .detail-subhead h4 { margin: 0; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
 .detail-subhead .hint { color: var(--muted); font-size: 11px; margin-left: auto; }
+.detail-subhead .new-run-btn { margin-left: auto; }
 
-/* Runs split into Running / Done tabs */
-.runs-tabs { display: inline-flex; gap: 4px; }
-.runs-tab {
-  border: 0; background: none; font: inherit; font-size: 12.5px; font-weight: 600;
-  cursor: pointer; padding: 6px 12px; color: var(--muted);
-  border-bottom: 2px solid transparent; margin-bottom: -1px;
-  display: inline-flex; align-items: center; gap: 7px;
-}
-.runs-tab:hover { color: var(--fg); }
-.runs-tab.on { color: var(--fg); border-bottom-color: var(--focus); }
 /* extra breathing room between the tab strip and the runs table */
 .runs-dr .detail-subhead { margin-bottom: 18px; }
+/* Runs Running/Done switch: sized to match the New run button; active is the primary blue so the current tab is obvious. */
+.runs-dr .ov-scope-btn { padding: 6px 16px; font-weight: 600; color: var(--muted); }
+.runs-dr .ov-scope-btn:hover { color: var(--fg); }
+.runs-dr .ov-scope-btn.active { background: var(--btn-bg); color: var(--btn-fg); }
 .runs-table .run-empty-row td { text-align: center; color: var(--muted); padding: 22px; font-size: 12px; }
 
 /* ================= Runs — Docker-style table (inside the flow "Runs" panel) ================= */
@@ -2170,7 +2162,6 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 .rt-actions { width: 9%; text-align: right; overflow: visible !important; }
 /* Flat icon actions — no button box, matching the flow-row action icons. */
 .run-row-actions { display: inline-flex; align-items: center; gap: 2px; }
-.run-row-actions .icon-btn.done-check { color: var(--success); }
 .run-row-actions .icon-btn[aria-expanded="true"] { background: var(--hover); color: var(--fg); }
 
 /* Detail drawer that slides open under the selected run */

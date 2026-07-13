@@ -181,8 +181,8 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
             {isActive && !runFinalized && (
               <div className="run-row-actions">
                 {runFlowDone && (
-                  <button className="icon-btn done-check" title="Finalize run — mark done & clear active status" onClick={() => sendToVSCode('closeRun', { finalize: true })}>
-                    <Icon.Check size={15} />
+                  <button className="btn success" title="Finalize run — mark it done and clear the active status" onClick={() => sendToVSCode('closeRun', { finalize: true })}>
+                    <Icon.Check size={14} />Done
                   </button>
                 )}
                 <div className="more-menu" ref={runMenuRef}>
@@ -252,9 +252,9 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
             <span className="dstatus-label">{statusLabel}</span>
           </span>
         </td>
-        <td className="name-cell" onClick={() => setGraphOpen(o => !o)} title="Show flow graph">
+        <td className="name-cell">
           <div className="dname">
-            <span className="dn"><span className="chev-inline"><Icon.ChevronRight size={14} /></span>{flow.name}</span>
+            <span className="dn">{flow.name}</span>
             <span className="dsub">{flow.description || 'No description.'}</span>
           </div>
         </td>
@@ -263,7 +263,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
         <td className="mono muted">{total} {total === 1 ? 'step' : 'steps'}</td>
         <td className="drow-actions-cell">
           <span className="drow-actions">
-            <button className="icon-btn" title={statusKey === 'run' ? 'Running — start another run' : 'New run'} onClick={() => onRun(flow)}>{statusKey === 'run' ? <Icon.Pause size={14} /> : <Icon.Play size={14} />}</button>
+            <button className={`icon-btn ${graphOpen ? 'active' : ''}`} title="Flow graph" onClick={() => setGraphOpen(o => !o)}><Icon.GitBranch size={14} /></button>
             <button className={`icon-btn ${runsOpen ? 'active' : ''}`} title="Runs" onClick={toggleRuns}><Icon.List size={14} /></button>
 
             <button className="icon-btn pencil" title="Edit flow" onClick={() => onEdit(flow)}><Icon.Pencil size={14} /></button>
@@ -327,15 +327,15 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
           <td colSpan={6}>
             <div className="detail">
               <div className="detail-subhead">
-                <div className="runs-tabs" role="tablist">
-                  <button className={`runs-tab ${runsTab === 'running' ? 'on' : ''}`} role="tab" aria-selected={runsTab === 'running'} onClick={() => setRunsTab('running')}>
+                <div className="ov-scope-switch" role="tablist" aria-label="Runs filter">
+                  <button className={`ov-scope-btn${runsTab === 'running' ? ' active' : ''}`} role="tab" aria-selected={runsTab === 'running'} onClick={() => setRunsTab('running')}>
                     <Icon.Zap size={14} />Running
                   </button>
-                  <button className={`runs-tab ${runsTab === 'done' ? 'on' : ''}`} role="tab" aria-selected={runsTab === 'done'} onClick={() => setRunsTab('done')}>
+                  <button className={`ov-scope-btn${runsTab === 'done' ? ' active' : ''}`} role="tab" aria-selected={runsTab === 'done'} onClick={() => setRunsTab('done')}>
                     <Icon.Check size={14} />Done
                   </button>
                 </div>
-                <span className="hint">tạo run mới bằng ▶ trên dòng flow</span>
+                <button className="btn primary new-run-btn" title="New run" onClick={() => onRun(flow)}><Icon.Play size={13} />New run</button>
               </div>
 
               <div className="runs-table-wrap">
