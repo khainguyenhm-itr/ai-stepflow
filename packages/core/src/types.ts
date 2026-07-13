@@ -113,6 +113,9 @@ export interface FlowStep {
     /** Optional file the review is based on (relative to the project or absolute).
      *  Empty means the review covers the step output in the terminal. */
     filePath?: string;
+    /** Review-kit filename for the deep LLM review. Overrides the project-wide active kit
+     *  (`review:activeKit` pref); unset falls back to that pref, then the bundled default. */
+    reviewKit?: string;
     reviewers?: {
       type: "human" | "ai";
       agent?: string;

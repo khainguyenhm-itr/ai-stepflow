@@ -27,7 +27,8 @@ const reviewSchema = z
     filePath: z.string().optional(),
     reviewers: z.array(reviewerSchema).optional(),
     approvalRequired: z.boolean().optional(),
-    checklist: z.array(z.coerce.string()).optional()
+    checklist: z.array(z.coerce.string()).optional(),
+    reviewKit: z.coerce.string().optional()
   })
   .default({})
   // Every step is reviewed: there is no "no review" state. Coerce any legacy

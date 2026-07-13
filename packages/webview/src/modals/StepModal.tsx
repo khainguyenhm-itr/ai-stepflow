@@ -1,5 +1,5 @@
 import React from 'react';
-import { FlowStep, Agent, Skill } from '@ai-stepflow/core/types';
+import { FlowStep, Agent, Skill, ReviewKit } from '@ai-stepflow/core/types';
 import { Modal, Field, CheckRow } from '../components/primitives';
 import { getStepSkills } from '../flowUtils';
 import { SaveScope } from '../components/ScopeControls';
@@ -12,6 +12,7 @@ interface StepModalProps {
   error: string | null;
   agents: Agent[];
   skills: Skill[];
+  reviewKits: ReviewKit[];
   flowSteps: FlowStep[];
   onClose: () => void;
   onSave: () => void;
@@ -27,6 +28,7 @@ export const StepModal: React.FC<StepModalProps> = ({
   error,
   agents,
   skills,
+  reviewKits,
   flowSteps,
   onClose,
   onSave,
@@ -38,14 +40,7 @@ export const StepModal: React.FC<StepModalProps> = ({
   const parseList = (value: string): string[] =>
     value.split(/\r?\n|,/).map(item => item.trim()).filter(Boolean);
 
-  const aiReviewer = step.review.reviewers?.find(r => r.type === 'ai');
-  const setAiReviewer = (patch: { agent?: string; skill?: string }) => {
-    const next = { agent: aiReviewer?.agent, skill: aiReviewer?.skill, ...patch };
-    const reviewer: NonNullable<FlowStep['review']['reviewers']>[number] = { type: 'ai' };
-    if (next.agent) reviewer.agent = next.agent;
-    if (next.skill) reviewer.skill = next.skill;
-    onChange({ review: { ...step.review, reviewers: [reviewer] } });
-  };
+  const kitFile = (kit: ReviewKit): string => kit.sourcePath.split(/[\\/]/).pop() || kit.name;
 
   return (
     <Modal
@@ -148,27 +143,15 @@ export const StepModal: React.FC<StepModalProps> = ({
                 onChange={e => onChange({ review: { ...step.review, validatorTimeoutMs: e.target.value ? Number(e.target.value) : undefined } })}
               />
             </Field>
-            <Field label="Reviewer agent" hint="optional — runs the auto review under this agent">
+            <Field label="Review kit" hint="optional — leave as default to use the kit set in Project Settings; pick one here to override for this step">
               <select
                 className="select"
-                value={aiReviewer?.agent || ''}
-                onChange={e => setAiReviewer({ agent: e.target.value || undefined })}
+                value={step.review.reviewKit || ''}
+                onChange={e => onChange({ review: { ...step.review, reviewKit: e.target.value || undefined } })}
               >
-                <option value="">(default agent)</option>
-                {agents.map(agent => (
-                  <option key={agent.name} value={agent.name}>{agent.name} ({getItemScope(agent.sourcePath) === 'global' ? 'global' : 'repo'})</option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Reviewer skill" hint="optional — the review is run as this skill (/skill)">
-              <select
-                className="select"
-                value={aiReviewer?.skill || ''}
-                onChange={e => setAiReviewer({ skill: e.target.value || undefined })}
-              >
-                <option value="">(no skill)</option>
-                {skills.map(skill => (
-                  <option key={skill.name} value={skill.name}>{skill.name} ({getItemScope(skill.sourcePath) === 'global' ? 'global' : 'repo'})</option>
+                <option value="">(default — project setting)</option>
+                {reviewKits.map(kit => (
+                  <option key={kit.sourcePath || kit.name} value={kitFile(kit)}>{kit.name} ({getItemScope(kit.sourcePath) === 'global' ? 'global' : 'repo'})</option>
                 ))}
               </select>
             </Field>

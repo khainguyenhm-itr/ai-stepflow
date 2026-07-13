@@ -553,6 +553,7 @@ const App: React.FC = () => {
         error={stepError}
         agents={agents}
         skills={skills}
+        reviewKits={reviewKits}
         flowSteps={editingFlow?.steps || []}
         onClose={() => { setEditingStep(null); if (stepEditFromBoard) setEditingFlow(null); }}
         onSave={saveStepEdit}
