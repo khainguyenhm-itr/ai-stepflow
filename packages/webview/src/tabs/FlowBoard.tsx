@@ -86,12 +86,19 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
   const runnerOpen = activeFlow?.id === flow.id && !!runState && runnerVisible;
   const [graphOpen, setGraphOpen] = useState(false);
   const [runsOpen, setRunsOpen] = useState(runnerOpen);
+  const [runsTab, setRunsTab] = useState<'running' | 'done'>('running');
   const [confirmRemoveIndex, setConfirmRemoveIndex] = useState<number | null>(null);
   const [runMenuOpen, setRunMenuOpen] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
   const runMenuRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { if (runnerOpen) setRunsOpen(true); }, [runnerOpen, runState?.runId]);
+  useEffect(() => {
+    if (!runnerOpen) return;
+    setRunsOpen(true);
+    // Surface the open run: switch to the tab that contains it.
+    const s = runSummaries.find(r => r.runId === runState?.runId);
+    if (s) setRunsTab(isFinished(s) ? 'done' : 'running');
+  }, [runnerOpen, runState?.runId]);
   useEffect(() => {
     if (!runMenuOpen) return;
     const onDocClick = (e: MouseEvent) => {
@@ -108,13 +115,17 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
   const runCanReset = !runFinalized && activeSteps.some(s => s.executionStatus !== 'ready' && s.executionStatus !== 'locked');
 
   const activeRuns = runSummaries.filter(s => !s.isClosed);
+  // A run is "finished" once finalized or all its steps completed; everything else is still running.
+  const isFinished = (s: RunSummary) => s.isClosed || s.completedSteps >= s.totalSteps;
+  const runningRuns = runSummaries.filter(s => !isFinished(s)).sort((a, b) => b.mtimeMs - a.mtimeMs);
+  const doneRuns = runSummaries.filter(isFinished).sort((a, b) => b.mtimeMs - a.mtimeMs);
   const total = flow.steps.length;
 
-  let statusKey: 'run' | 'ok' | 'idle' = 'idle';
-  let statusLabel = 'Idle';
+  // Flow-level status reflects only whether a run is active — "Done" is a per-run state, not a flow state.
+  let statusKey: 'run' | 'idle' = 'idle';
+  let statusLabel = 'Ready';
   if (runnerOpen && runState) { statusKey = 'run'; statusLabel = 'Running'; }
   else if (activeRuns.length > 0) { statusKey = 'run'; statusLabel = 'In progress'; }
-  else if (runSummaries.length > 0) { statusKey = 'ok'; statusLabel = 'Done'; }
 
   const toggleRuns = () => {
     setRunsOpen(prev => {
@@ -126,6 +137,111 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
       return next;
     });
   };
+
+  const renderRunRow = (s: RunSummary) => {
+    const isActive = runnerOpen && runState?.runId === s.runId;
+    const done = s.completedSteps >= s.totalSteps;
+    const failed = (s.failedSteps ?? 0) > 0;
+    const statusKey = s.isClosed ? 'done' : failed ? 'fail' : done ? 'ok' : 'run';
+    const statusLabel = s.isClosed ? 'Finalized' : failed ? 'Failed' : done ? 'Done' : 'Running';
+    return (
+      <React.Fragment key={s.runId}>
+        <tr
+          className={`run-row ${isActive ? 'open' : ''}`}
+          title={new Date(s.mtimeMs).toLocaleString()}
+          onClick={() => sendToVSCode(isActive ? 'closeRun' : 'switchRun', isActive ? { finalize: false } : { flowId: flow.id, runId: s.runId })}
+        >
+          <td className="rt-chev"><span className="rt-chevron"><Icon.ChevronRight size={14} /></span></td>
+          <td className="rt-status">
+            <span className={`run-status ${statusKey === 'run' || statusKey === 'fail' ? '' : 'muted'}`}>
+              <span className={`ddot ${statusKey}`} />
+              <span>{statusLabel}</span>
+            </span>
+          </td>
+          <td className="rt-name">
+            <span className="run-name">{s.runName || s.runId.split('T')[0]}</span>
+            <span className="run-id mono">·{s.runId.slice(-6)}</span>
+          </td>
+          <td className="rt-cost mono">{s.costUsd && s.costUsd > 0 ? `$${s.costUsd.toFixed(2)}` : '—'}</td>
+          <td className="rt-tokens mono">{s.tokensUsed && s.tokensUsed > 0 ? s.tokensUsed.toLocaleString() : '—'}</td>
+          <td className="rt-task mono">{fmtDur(s.taskTimeMs)}</td>
+          <td className="rt-progress">
+            <span className="pipe">
+              {Array.from({ length: s.totalSteps }).map((_, i) => {
+                const cls = i < s.completedSteps ? 'done'
+                  : i === s.completedSteps && failed && !s.isClosed ? 'fail'
+                  : i === s.completedSteps && !done && !s.isClosed ? 'active'
+                  : '';
+                return <span key={i} className={`seg ${cls}`} />;
+              })}
+              <span className="pipe-num">{s.completedSteps}/{s.totalSteps}</span>
+            </span>
+          </td>
+          <td className="rt-started">{fmtAgo(s.mtimeMs)}</td>
+          <td className="rt-actions" onClick={e => e.stopPropagation()}>
+            {isActive && !runFinalized && (
+              <div className="run-row-actions">
+                {runFlowDone && (
+                  <button className="icon-btn done-check" title="Finalize run — mark done & clear active status" onClick={() => sendToVSCode('closeRun', { finalize: true })}>
+                    <Icon.Check size={15} />
+                  </button>
+                )}
+                <div className="more-menu" ref={runMenuRef}>
+                  <button className="icon-btn" title="More actions" aria-haspopup="menu" aria-expanded={runMenuOpen} onClick={() => setRunMenuOpen(o => !o)}>
+                    <Icon.More size={16} />
+                  </button>
+                  {runMenuOpen && (
+                    <div className="more-menu-list" role="menu">
+                      {!runFlowDone && runCanReset && (
+                        <button className="more-menu-item" role="menuitem" onClick={() => { setRunMenuOpen(false); sendToVSCode('resetRun', {}); }}>
+                          <Icon.RotateCw size={14} />Reset all steps
+                        </button>
+                      )}
+                      <button className="more-menu-item" role="menuitem" onClick={() => { setRunMenuOpen(false); sendToVSCode('verifyRun', {}); }}>
+                        <Icon.Check size={14} />Verify
+                      </button>
+                      <button className="more-menu-item" role="menuitem" onClick={() => { setRunMenuOpen(false); sendToVSCode('exportRunReport', {}); }}>
+                        <Icon.Copy size={14} />Report
+                      </button>
+                      <div className="more-menu-sep" />
+                      <button className="more-menu-item danger" role="menuitem" onClick={() => { setRunMenuOpen(false); sendToVSCode('deleteRun', {}); }}>
+                        <Icon.Trash2 size={14} />Delete run
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </td>
+        </tr>
+
+        {isActive && runState && (
+          <tr className="run-detail">
+            <td colSpan={9}>
+              <div className="run-drawer">
+                <InlineRunner
+                  flow={flow}
+                  runState={runState}
+                  auditLogs={auditLogs}
+                  activeStepId={activeStepId}
+                  completedSteps={completedSteps}
+                  activeProgress={activeProgress}
+                  commandCopied={commandCopied}
+                  onSetActiveStep={onSetActiveStep}
+                  onRunStep={onRunStep}
+                  onOpenFile={onOpenFile}
+                  onCopyCommand={onCopyCommand}
+                  outputEndRef={outputEndRef}
+                />
+              </div>
+            </td>
+          </tr>
+        )}
+      </React.Fragment>
+    );
+  };
+
+  const rows = runsTab === 'running' ? runningRuns : doneRuns;
 
   return (
     <tbody className="flow-tbody">
@@ -148,7 +264,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
         <td className="mono muted">{total} {total === 1 ? 'step' : 'steps'}</td>
         <td className="drow-actions-cell">
           <span className="drow-actions">
-            <button className="icon-btn" title="New run" onClick={() => onRun(flow)}><Icon.Play size={14} /></button>
+            <button className="icon-btn" title={statusKey === 'run' ? 'Running — start another run' : 'New run'} onClick={() => onRun(flow)}>{statusKey === 'run' ? <Icon.Pause size={14} /> : <Icon.Play size={14} />}</button>
             <button className={`icon-btn ${runsOpen ? 'active' : ''}`} title="Runs" onClick={toggleRuns}><Icon.List size={14} /></button>
 
             <button className="icon-btn pencil" title="Edit flow" onClick={() => onEdit(flow)}><Icon.Pencil size={14} /></button>
@@ -212,136 +328,43 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
           <td colSpan={6}>
             <div className="detail">
               <div className="detail-subhead">
-                <h4>Runs</h4>
-                <span className="badge idle">{runSummaries.length} total</span>
+                <div className="runs-tabs" role="tablist">
+                  <button className={`runs-tab ${runsTab === 'running' ? 'on' : ''}`} role="tab" aria-selected={runsTab === 'running'} onClick={() => setRunsTab('running')}>
+                    Running <span className="runs-tab-count">{runningRuns.length}</span>
+                  </button>
+                  <button className={`runs-tab ${runsTab === 'done' ? 'on' : ''}`} role="tab" aria-selected={runsTab === 'done'} onClick={() => setRunsTab('done')}>
+                    Done <span className="runs-tab-count">{doneRuns.length}</span>
+                  </button>
+                </div>
                 <span className="hint">tạo run mới bằng ▶ trên dòng flow</span>
               </div>
 
-              {runSummaries.length === 0 ? (
-                <div className="run-empty">No runs yet — click ▶ to create the first run.</div>
-              ) : (
-                <div className="runs-table-wrap">
-                  <table className="runs-table">
-                    <thead>
-                      <tr>
-                        <th className="rt-chev"></th>
-                        <th className="rt-status">Status</th>
-                        <th className="rt-run">Run</th>
-                        <th className="rt-cost">Cost</th>
-                        <th className="rt-tokens">Tokens</th>
-                        <th className="rt-task">Task</th>
-                        <th className="rt-progress">Steps</th>
-                        <th className="rt-started">Started</th>
-                        <th className="rt-actions"></th>
+              <div className="runs-table-wrap">
+                <table className="runs-table">
+                  <thead>
+                    <tr>
+                      <th className="rt-chev"></th>
+                      <th className="rt-status">Status</th>
+                      <th className="rt-run">Run</th>
+                      <th className="rt-cost">Cost</th>
+                      <th className="rt-tokens">Tokens</th>
+                      <th className="rt-task">Task</th>
+                      <th className="rt-progress">Steps</th>
+                      <th className="rt-started">Started</th>
+                      <th className="rt-actions"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.length === 0 ? (
+                      <tr className="run-empty-row">
+                        <td colSpan={9}>Không có data hiển thị</td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {[...runSummaries].sort((a, b) => b.mtimeMs - a.mtimeMs).map(s => {
-                        const isActive = runnerOpen && runState?.runId === s.runId;
-                        const done = s.completedSteps >= s.totalSteps;
-                        const failed = (s.failedSteps ?? 0) > 0;
-                        const statusKey = s.isClosed ? 'done' : failed ? 'fail' : done ? 'ok' : 'run';
-                        const statusLabel = s.isClosed ? 'Finalized' : failed ? 'Failed' : done ? 'Done' : 'Running';
-                        return (
-                          <React.Fragment key={s.runId}>
-                            <tr
-                              className={`run-row ${isActive ? 'open' : ''}`}
-                              title={new Date(s.mtimeMs).toLocaleString()}
-                              onClick={() => sendToVSCode(isActive ? 'closeRun' : 'switchRun', isActive ? { finalize: false } : { flowId: flow.id, runId: s.runId })}
-                            >
-                              <td className="rt-chev"><span className="rt-chevron"><Icon.ChevronRight size={14} /></span></td>
-                              <td className="rt-status">
-                                <span className={`run-status ${statusKey === 'run' || statusKey === 'fail' ? '' : 'muted'}`}>
-                                  <span className={`ddot ${statusKey}`} />
-                                  <span>{statusLabel}</span>
-                                </span>
-                              </td>
-                              <td className="rt-name">
-                                <span className="run-name">{s.runName || s.runId.split('T')[0]}</span>
-                                <span className="run-id mono">·{s.runId.slice(-6)}</span>
-                              </td>
-                              <td className="rt-cost mono">{s.costUsd && s.costUsd > 0 ? `$${s.costUsd.toFixed(2)}` : '—'}</td>
-                              <td className="rt-tokens mono">{s.tokensUsed && s.tokensUsed > 0 ? s.tokensUsed.toLocaleString() : '—'}</td>
-                              <td className="rt-task mono">{fmtDur(s.taskTimeMs)}</td>
-                              <td className="rt-progress">
-                                <span className="pipe">
-                                  {Array.from({ length: s.totalSteps }).map((_, i) => {
-                                    const cls = i < s.completedSteps ? 'done'
-                                      : i === s.completedSteps && failed && !s.isClosed ? 'fail'
-                                      : i === s.completedSteps && !done && !s.isClosed ? 'active'
-                                      : '';
-                                    return <span key={i} className={`seg ${cls}`} />;
-                                  })}
-                                  <span className="pipe-num">{s.completedSteps}/{s.totalSteps}</span>
-                                </span>
-                              </td>
-                              <td className="rt-started">{fmtAgo(s.mtimeMs)}</td>
-                              <td className="rt-actions" onClick={e => e.stopPropagation()}>
-                                {isActive && !runFinalized && (
-                                  <div className="run-row-actions">
-                                    {runFlowDone && (
-                                      <button className="icon-btn done-check" title="Finalize run — mark done & clear active status" onClick={() => sendToVSCode('closeRun', { finalize: true })}>
-                                        <Icon.Check size={15} />
-                                      </button>
-                                    )}
-                                    <div className="more-menu" ref={runMenuRef}>
-                                      <button className="icon-btn" title="More actions" aria-haspopup="menu" aria-expanded={runMenuOpen} onClick={() => setRunMenuOpen(o => !o)}>
-                                        <Icon.More size={16} />
-                                      </button>
-                                      {runMenuOpen && (
-                                        <div className="more-menu-list" role="menu">
-                                          {!runFlowDone && runCanReset && (
-                                            <button className="more-menu-item" role="menuitem" onClick={() => { setRunMenuOpen(false); sendToVSCode('resetRun', {}); }}>
-                                              <Icon.RotateCw size={14} />Reset all steps
-                                            </button>
-                                          )}
-                                          <button className="more-menu-item" role="menuitem" onClick={() => { setRunMenuOpen(false); sendToVSCode('verifyRun', {}); }}>
-                                            <Icon.Check size={14} />Verify
-                                          </button>
-                                          <button className="more-menu-item" role="menuitem" onClick={() => { setRunMenuOpen(false); sendToVSCode('exportRunReport', {}); }}>
-                                            <Icon.Copy size={14} />Report
-                                          </button>
-                                          <div className="more-menu-sep" />
-                                          <button className="more-menu-item danger" role="menuitem" onClick={() => { setRunMenuOpen(false); sendToVSCode('deleteRun', {}); }}>
-                                            <Icon.Trash2 size={14} />Delete run
-                                          </button>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                )}
-                              </td>
-                            </tr>
-
-                            {isActive && runState && (
-                              <tr className="run-detail">
-                                <td colSpan={9}>
-                                  <div className="run-drawer">
-                                    <InlineRunner
-                                      flow={flow}
-                                      runState={runState}
-                                      auditLogs={auditLogs}
-                                      activeStepId={activeStepId}
-                                      completedSteps={completedSteps}
-                                      activeProgress={activeProgress}
-                                      commandCopied={commandCopied}
-                                      onSetActiveStep={onSetActiveStep}
-                                      onRunStep={onRunStep}
-                                      onOpenFile={onOpenFile}
-                                      onCopyCommand={onCopyCommand}
-                                      outputEndRef={outputEndRef}
-                                    />
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
-                          </React.Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                    ) : (
+                      rows.map(renderRunRow)
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </td>
         </tr>

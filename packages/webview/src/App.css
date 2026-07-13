@@ -2096,7 +2096,7 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 /* ---- flow expand rows (graph / runs) ---- */
 .detail-row > td { padding: 0; background: var(--panel-2); }
 .detail-row .detail { padding: 14px 16px; border-top: 2px solid var(--focus); }
-.detail-row.runs-dr .detail { border-top-color: var(--success); }
+.detail-row.runs-dr .detail { border-top: none; }
 .drow.graph-on { background: var(--hover); }
 .name-cell { cursor: pointer; }
 .name-cell .chev-inline { transition: transform .15s; display: inline-flex; vertical-align: middle; margin-right: 4px; color: var(--muted); }
@@ -2104,6 +2104,26 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 .detail-subhead { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .detail-subhead h4 { margin: 0; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
 .detail-subhead .hint { color: var(--muted); font-size: 11px; margin-left: auto; }
+
+/* Runs split into Running / Done tabs */
+.runs-tabs { display: inline-flex; gap: 4px; }
+.runs-tab {
+  border: 0; background: none; font: inherit; font-size: 12.5px; font-weight: 600;
+  cursor: pointer; padding: 6px 12px; color: var(--muted);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  display: inline-flex; align-items: center; gap: 7px;
+}
+.runs-tab:hover { color: var(--fg); }
+.runs-tab.on { color: var(--fg); border-bottom-color: var(--focus); }
+.runs-tab-count {
+  min-width: 18px; padding: 0 6px; border-radius: 999px;
+  background: var(--badge-bg); color: var(--muted);
+  font-size: 11px; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600;
+}
+.runs-tab.on .runs-tab-count { background: var(--focus); color: #fff; }
+/* extra breathing room between the tab strip and the runs table */
+.runs-dr .detail-subhead { margin-bottom: 18px; }
+.runs-table .run-empty-row td { text-align: center; color: var(--muted); padding: 22px; font-size: 12px; }
 
 /* ================= Runs — Docker-style table (inside the flow "Runs" panel) ================= */
 .runs-table-wrap { border: 1px solid var(--border); border-radius: 8px; background: var(--panel); overflow: hidden; }
