@@ -461,20 +461,17 @@ export class RunOrchestrator {
       }
       return;
     }
-    // Terminal (interactive) run — mark cancelled first so onDidEndRunningStep is a no-op if it
-    // fires during disposal, then dispose the terminal (onDidCloseRunningStep will set state).
+    // Terminal (interactive) run — flip the state to cancelled BEFORE disposing the terminal, so
+    // the close/end handlers see a non-'running' step and become no-ops. We can't rely on
+    // onDidCloseRunningStep to set the state: TerminalManager.cancelStep clears its _terminal ref
+    // synchronously, so the later onDidCloseTerminal identity check fails and the callback never
+    // fires — which would leave the step wedged at "running" (Stop button appears to do nothing).
     this._cancelledStepIds.add(stepId);
-    const closed = this.terminals.cancelStep(stepId);
-    if (closed) {
-      this.post({ type: 'stepUpdate', stepId, append: true, output: '\n[run cancelled by user]\n' });
-    } else if (this._currentFlow && this._runState && this._runState.steps[stepId]?.executionStatus === 'running') {
-      // No live terminal to close for this step (it was already gone, or the shell-integration
-      // wait hasn't registered it yet), so onDidCloseRunningStep will never fire. The step is still
-      // wedged at "running" — transition it directly so the UI unwedges instead of the Stop button
-      // appearing to do nothing.
+    if (this._currentFlow && this._runState && this._runState.steps[stepId]?.executionStatus === 'running') {
       await this._setRunState(machine.markCancelled(this._runState, this._currentFlow, stepId), { stepId, status: 'cancelled', message: 'Cancelled by user' });
-      this.post({ type: 'stepUpdate', stepId, append: true, output: '\n[run cancelled by user]\n' });
     }
+    this.terminals.cancelStep(stepId);
+    this.post({ type: 'stepUpdate', stepId, append: true, output: '\n[run cancelled by user]\n' });
   }
 
   /**

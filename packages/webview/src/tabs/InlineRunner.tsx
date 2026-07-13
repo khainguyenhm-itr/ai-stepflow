@@ -192,29 +192,33 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
 
   // Cost + History render as aligned monospace reports (same look as the console block).
   const costReport = (() => {
-    const rows = stepCosts.map(({ step, state, costUsd, tokensUsed }, i) => {
+    const rows = stepCosts.map(({ step, state, costUsd, tokensUsed, taskMs, reviewMs }, i) => {
       const running = state?.executionStatus === 'running';
       const hasRun = !!state && state.executionStatus !== 'ready' && state.executionStatus !== 'locked';
+      const stepMs = taskMs + reviewMs;
       return {
         label: `${i + 1} ${step.title || step.id}`,
         model: state?.modelUsed || (running ? '…' : hasRun ? 'interactive' : '—'),
         tokens: tokensUsed > 0 ? tokensUsed.toLocaleString() : running ? '…' : '—',
         cost: costUsd > 0 ? `$${costUsd.toFixed(4)}` : running ? '…' : '—',
+        time: stepMs > 0 ? formatDuration(stepMs) : running ? '…' : '—',
         active: activeStepId === step.id,
       };
     });
     const totalTokStr = totalTokens > 0 ? totalTokens.toLocaleString() : '—';
     const totalCostStr = totalCostUsd > 0 ? `$${totalCostUsd.toFixed(4)}` : '—';
+    const totalTimeStr = totalTaskMs + totalReviewMs > 0 ? formatDuration(totalTaskMs + totalReviewMs) : '—';
     const labelW = Math.max(4, ...rows.map(r => r.label.length), 5) + 6;
     const modelW = Math.max(5, ...rows.map(r => r.model.length)) + 6;
     const tokW = Math.max(6, ...rows.map(r => r.tokens.length), totalTokStr.length) + 4;
     const costW = Math.max(4, ...rows.map(r => r.cost.length), totalCostStr.length);
-    const line = (l: string, m: string, t: string, c: string, tail = '') =>
-      l.padEnd(labelW) + m.padEnd(modelW) + t.padStart(tokW) + '    ' + c.padStart(costW) + tail;
-    const out = [line('Step', 'Model', 'Tokens', 'Cost'), ''];
-    rows.forEach(r => out.push(line(r.label, r.model, r.tokens, r.cost, r.active ? '   ◀ active' : '')));
-    out.push(' '.repeat(labelW + modelW) + '─'.repeat(tokW + 4 + costW));
-    out.push(line('Total', '', totalTokStr, totalCostStr));
+    const timeW = Math.max(4, ...rows.map(r => r.time.length), totalTimeStr.length) + 4;
+    const line = (l: string, m: string, t: string, c: string, d: string, tail = '') =>
+      l.padEnd(labelW) + m.padEnd(modelW) + t.padStart(tokW) + '    ' + c.padStart(costW) + '    ' + d.padStart(timeW) + tail;
+    const out = [line('Step', 'Model', 'Tokens', 'Cost', 'Time'), ''];
+    rows.forEach(r => out.push(line(r.label, r.model, r.tokens, r.cost, r.time, r.active ? '   ◀ active' : '')));
+    out.push(' '.repeat(labelW + modelW) + '─'.repeat(tokW + 4 + costW + 4 + timeW));
+    out.push(line('Total', '', totalTokStr, totalCostStr, totalTimeStr));
     return out.join('\n');
   })();
 
