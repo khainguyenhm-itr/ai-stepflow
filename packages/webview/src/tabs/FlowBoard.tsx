@@ -329,10 +329,10 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
               <div className="detail-subhead">
                 <div className="runs-tabs" role="tablist">
                   <button className={`runs-tab ${runsTab === 'running' ? 'on' : ''}`} role="tab" aria-selected={runsTab === 'running'} onClick={() => setRunsTab('running')}>
-                    Running <span className="runs-tab-count">{runningRuns.length}</span>
+                    <Icon.Zap size={14} />Running
                   </button>
                   <button className={`runs-tab ${runsTab === 'done' ? 'on' : ''}`} role="tab" aria-selected={runsTab === 'done'} onClick={() => setRunsTab('done')}>
-                    Done <span className="runs-tab-count">{doneRuns.length}</span>
+                    <Icon.Check size={14} />Done
                   </button>
                 </div>
                 <span className="hint">tạo run mới bằng ▶ trên dòng flow</span>
