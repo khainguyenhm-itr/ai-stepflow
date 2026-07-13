@@ -23,12 +23,22 @@ import { locateProducedFile } from './artifactLocator.js';
 export const DEFAULT_REVIEW_VALIDATOR = 'aisf-produces-complete.mjs';
 /** Layer-2 LLM review prompt (adapts to the produced artifact's type). */
 export const DEFAULT_REVIEW_KIT = 'aisf-review-default.md';
-/** Verifying an artifact is light work — default the reviewer to a small, cheap model. */
-export const DEFAULT_REVIEW_MODEL = 'haiku';
-/** Cap per-file content fed to the LLM reviewer so a large artifact can't blow up the prompt. */
-export const REVIEW_ARTIFACT_CHAR_CAP = 3000;
+/**
+ * Default reviewer model. A verdict is only as good as the model that reads the artifact, so the
+ * review defaults to Opus — it catches subtle correctness/completeness gaps a small model misses.
+ * The call is a single non-agentic turn (`maxTurns: 1`) reading a capped payload, so it stays fast
+ * despite the larger model. Override per-step via an AI reviewer agent's `model`.
+ */
+export const DEFAULT_REVIEW_MODEL = 'opus';
+/**
+ * Per-file / combined caps on the content fed to the LLM reviewer. Generous on purpose — Opus has
+ * a large context window and the review is a single turn, so we'd rather give the reviewer the full
+ * artifact than a truncated view. The caps only exist as a backstop against a pathologically huge
+ * file blowing up the prompt; normal artifacts pass through whole.
+ */
+export const REVIEW_ARTIFACT_CHAR_CAP = 60000;
 /** Cap the combined review payload across all produced files. */
-export const REVIEW_TOTAL_CHAR_CAP = 12000;
+export const REVIEW_TOTAL_CHAR_CAP = 200000;
 
 /**
  * Truncate `content` to `maxChars` while preserving both the head and the tail of the
@@ -229,7 +239,17 @@ export async function reviewStepArtifacts(opts: ReviewOptions): Promise<ReviewRe
     return { status: 'waiting_human', note: `Deep review could not run: ${reason}.`, source: 'review-setup' };
   }
 
-  const systemPrompt = `${reviewKit}\n\nRespond with ONLY a single-line minified JSON object with these keys:\n{"decision":"pass"|"reject","reason":"<one-line summary>","correct":["<what the artifact gets right>"],"issues":["<what is wrong or missing>"],"suggestions":["<concrete fix for each issue>"]}.\nThe arrays may be empty but must always be present.`;
+  const systemPrompt = `${reviewKit}\n\n` +
+    `You are a pragmatic reviewer. PASS the artifact whenever it is correct and captures the ` +
+    `step's intent — do NOT nitpick style, wording, formatting, or minor/non-blocking gaps. ` +
+    `REJECT only for a genuine blocking defect: it is wrong, or it misses something essential to ` +
+    `the step's purpose. When in doubt, pass. Decide quickly and do not over-analyze. Ignore any ` +
+    `truncation markers ("…[truncated]…") — judge what is present.\n\n` +
+    `Respond with ONLY a single-line minified JSON object with these keys:\n` +
+    `{"decision":"pass"|"reject","reason":"<one concise line — the deciding factor>",` +
+    `"correct":["<what the artifact gets right>"],"issues":["<only blocking problems, most severe first>"],` +
+    `"suggestions":["<one concrete fix per blocking issue>"]}.\n` +
+    `Keep every string to one short line. The arrays may be empty but must always be present. No prose outside the JSON.`;
   const userMessage = `Review the artifact(s) produced by step "${step.title || step.id}".\n\n${artifacts.text}`;
   const result = await opts.runner({
     systemPrompt,

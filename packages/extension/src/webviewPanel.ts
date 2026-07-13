@@ -257,6 +257,9 @@ export class CockpitPanel {
       case 'setAutoReview':
         await this._runner.setAutoReview(message.enabled);
         return;
+      case 'editRun':
+        await this._runner.editRunMeta(message.runName, message.inputs);
+        return;
       case 'resetRun': {
         const choice = await vscode.window.showWarningMessage(
           'Reset all steps to their initial state? This discards every step\'s output, review decisions and history for this run, and DELETES the artifact files this run produced.',

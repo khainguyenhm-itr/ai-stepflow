@@ -107,8 +107,15 @@ export class RunOrchestrator {
       const projectPath = this.configManager.getProjectPath() || '';
       const inputs = runState.inputs || {};
       const stale = machine.findStaleProducedFile(step, projectPath, inputs, runState.steps[stepId]?.startedAt, flow.name, this._runSlug());
-      const sig = stale ? null : machine.producedArtifactsSignature(step, projectPath, inputs, flow.name, this._runSlug());
-      if (!sig) { this._readinessSnapshots.delete(stepId); return false; } // missing or stale → keep waiting
+      const artifactSig = stale ? null : machine.producedArtifactsSignature(step, projectPath, inputs, flow.name, this._runSlug());
+      if (!artifactSig) { this._readinessSnapshots.delete(stepId); return false; } // missing or stale → keep waiting
+      // Fold the session transcript's change-signature into the quiescence check. The declared
+      // artifact can go quiet early (written up front) while the agent keeps working — writing
+      // OTHER files, running tests, iterating — so an artifact-only quiet window fires the review
+      // before the terminal has actually finished. The `<sessionId>.jsonl` transcript is appended
+      // on every message/tool-call, so it reflects ALL the agent's activity: the step is done only
+      // once BOTH the artifact and the transcript have held steady for ARTIFACT_QUIET_MS.
+      const sig = `${artifactSig}|${this._sessionTranscriptSignature(stepId)}`;
       const prev = this._readinessSnapshots.get(stepId);
       const now = Date.now();
       if (!prev || prev.sig !== sig) { this._readinessSnapshots.set(stepId, { sig, since: now }); return false; }
@@ -320,6 +327,25 @@ export class RunOrchestrator {
   }
 
   /**
+   * Edit the current run's human-facing name and inputs (the same fields set when creating a run).
+   * Locked once any step has started — `runName` drives the per-run output slug and `inputs` drive
+   * produces/requires path + prompt resolution, so changing them after artifacts exist would orphan
+   * or desync them. Same pristine guard as {@link setAutoReview}. Reuses the reset remap path
+   * (`previousRunId` = current runId) so the run summary row's displayed name updates in place.
+   */
+  async editRunMeta(runName: string | undefined, inputs: Record<string, string>): Promise<void> {
+    if (!this._currentFlow || !this._runState) return;
+    const anyStepStarted = Object.values(this._runState.steps).some(
+      s => (s.history?.length ?? 0) > 0 || (s.executionStatus !== 'ready' && s.executionStatus !== 'locked')
+    );
+    if (anyStepStarted) return;
+    const runId = this._runState.runId;
+    const name = runName?.trim() || undefined;
+    await this._setRunState(s => ({ ...s, runName: name, inputs }));
+    this.post({ type: 'restoreRun', flow: this._currentFlow, runState: this._runState, previousRunId: runId });
+  }
+
+  /**
    * Finalize a step whose "Mark step done" was pressed. Gates requires/produces, then either
    * completes (no review needed, or already approved) and advances the DAG, or opens the review gate.
    */
@@ -350,6 +376,9 @@ export class RunOrchestrator {
     const oldRunId = this._runState.runId;
     const freshState = machine.initRunState(flow, {
       runId: new Date().toISOString(),
+      // Reset re-runs the SAME run from a clean slate, so keep its human-facing name and inputs.
+      // Dropping runName made the run fall back to the timestamp runId for its display/output slug.
+      runName: this._runState.runName,
       projectPath: this._runState.projectPath,
       inputs: this._runState.inputs,
     });
@@ -810,6 +839,27 @@ export class RunOrchestrator {
   /** Per-run output subfolder slug, so each run's artifacts stay separate. */
   private _runSlug(): string {
     return runOutputSlug(this._runState?.runName, this._runState?.runId);
+  }
+
+  /**
+   * Change-signature (mtime + size) of a step's pinned Claude session transcript
+   * `~/.claude/projects/<hash>/<sessionId>.jsonl`, or '' when there is no session id or file yet.
+   * Used by the readiness probe as the authoritative "agent still working" signal: the transcript
+   * grows on every message/tool-call, so a step that appears done by its declared artifact but is
+   * still active keeps this signature changing until the agent truly goes idle.
+   */
+  private _sessionTranscriptSignature(stepId: string): string {
+    const sessionId = this._runState?.steps[stepId]?.sessionId;
+    const projectPath = this.configManager.getProjectPath();
+    if (!sessionId || !projectPath) return '';
+    try {
+      const hash = projectPath.replace(/[^a-zA-Z0-9]/g, '-');
+      const file = path.join(os.homedir(), '.claude', 'projects', hash, `${sessionId}.jsonl`);
+      const st = fs.statSync(file);
+      return `${st.mtimeMs}:${st.size}`;
+    } catch {
+      return '';
+    }
   }
 
   private _validateRequires(step: FlowStep): { ok: boolean; message?: string } {

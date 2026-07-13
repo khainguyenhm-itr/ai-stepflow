@@ -12,6 +12,7 @@ export const useRunState = () => {
   const [standaloneRunDescription, setStandaloneRunDescription] = useState('');
 
   const [runInputsTarget, setRunInputsTarget] = useState<Flow | null>(null);
+  const [runInputsEditing, setRunInputsEditing] = useState(false);
   const [runName, setRunName] = useState('');
   const [runInputValues, setRunInputValues] = useState<Record<string, string>>({});
   const [runInputsError, setRunInputsError] = useState<string | null>(null);
@@ -33,6 +34,7 @@ export const useRunState = () => {
     standaloneRun, setStandaloneRun,
     standaloneRunDescription, setStandaloneRunDescription,
     runInputsTarget, setRunInputsTarget,
+    runInputsEditing, setRunInputsEditing,
     runName, setRunName,
     runInputValues, setRunInputValues,
     runInputsError, setRunInputsError,

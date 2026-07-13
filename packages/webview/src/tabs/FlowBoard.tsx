@@ -26,6 +26,7 @@ interface FlowBoardProps {
   globalPath: string;
   projectPath: string;
   onRun: (flow: Flow) => void;
+  onEditRun: () => void;
   onEdit: (flow: Flow) => void;
   onDetail: (flow: Flow) => void;
   onBoardStepEditor: (flow: Flow, index: number) => void;
@@ -70,6 +71,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
   activeProgress,
   commandCopied,
   onRun,
+  onEditRun,
   onEdit,
   onDetail,
   onBoardStepEditor,
@@ -112,6 +114,10 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
   const runFinalized = !!runState?.isClosed;
   const runFlowDone = activeSteps.length > 0 && activeSteps.every(s => s.completionStatus === 'done');
   const runCanReset = !runFinalized && activeSteps.some(s => s.executionStatus !== 'ready' && s.executionStatus !== 'locked');
+  // Editing the run name/inputs is only safe before any step has started — after that they'd be out
+  // of sync with the output slug + resolved artifact paths. Mirrors the backend pristine guard.
+  const runCanEdit = !runFinalized && activeSteps.length > 0
+    && activeSteps.every(s => (s.executionStatus === 'ready' || s.executionStatus === 'locked') && !(s.history?.length));
 
   const activeRuns = runSummaries.filter(s => !s.isClosed);
   // A run is "finished" once finalized or all its steps completed; everything else is still running.
@@ -191,6 +197,11 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
                   </button>
                   {runMenuOpen && (
                     <div className="more-menu-list" role="menu">
+                      {runCanEdit && (
+                        <button className="more-menu-item" role="menuitem" title="Edit this run's name and inputs (only before any step has started)" onClick={() => { setRunMenuOpen(false); onEditRun(); }}>
+                          <Icon.Pencil size={14} />Edit name & inputs
+                        </button>
+                      )}
                       {!runFlowDone && runCanReset && (
                         <button className="more-menu-item" role="menuitem" onClick={() => { setRunMenuOpen(false); sendToVSCode('resetRun', {}); }}>
                           <Icon.RotateCw size={14} />Reset all steps

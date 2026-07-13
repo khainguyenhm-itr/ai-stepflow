@@ -47,6 +47,7 @@ const App: React.FC = () => {
     flowAiMessages, setFlowAiMessages,
     flowAiLoading, setFlowAiLoading,
     runInputsTarget, setRunInputsTarget,
+    runInputsEditing, setRunInputsEditing,
     runName, setRunName,
     runInputValues, setRunInputValues,
     runInputsError,
@@ -81,7 +82,7 @@ const App: React.FC = () => {
     submitAgentModal, openAgentEditor, submitSkillModal, openSkillEditor,
     submitReviewModal, openReviewEditor,
     submitConnectMcp,
-    submitRunInputs, runActiveStep, saveEditingFlow, saveStepEdit
+    submitRunInputs, openRunEditor, runActiveStep, saveEditingFlow, saveStepEdit
   } = logic;
 
   useVsCodeBridge(handleHostMessage, seedPreview);
@@ -161,6 +162,7 @@ const App: React.FC = () => {
           globalPath={globalPath}
           projectPath={projectPath}
           onRun={startFreshRun}
+          onEditRun={openRunEditor}
           onEdit={flow => {
             setEditingFlow(JSON.parse(JSON.stringify(flow)));
             setEditingFlowScope(getFlowScope(flow));
@@ -429,10 +431,11 @@ const App: React.FC = () => {
 
       <RunInputsModal
         target={runInputsTarget}
+        editing={runInputsEditing}
         runName={runName}
         values={runInputValues}
         error={runInputsError}
-        onClose={() => setRunInputsTarget(null)}
+        onClose={() => { setRunInputsTarget(null); setRunInputsEditing(false); }}
         onRunNameChange={setRunName}
         onValueChange={(k, v) => setRunInputValues(prev => ({ ...prev, [k]: v }))}
         onSubmit={submitRunInputs}

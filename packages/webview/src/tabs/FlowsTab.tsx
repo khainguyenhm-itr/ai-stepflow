@@ -49,6 +49,7 @@ interface FlowsTabProps {
   globalPath: string;
   projectPath: string;
   onRun: (flow: Flow) => void;
+  onEditRun: () => void;
   onEdit: (flow: Flow) => void;
   onDetail: (flow: Flow) => void;
   onNew: (flow: Flow, scope: SaveScope) => void;
@@ -82,6 +83,7 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
   globalPath,
   projectPath,
   onRun,
+  onEditRun,
   onEdit,
   onDetail,
   onNew,
@@ -271,12 +273,12 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
           ) : undefined}
         />
       ) : (
-        <div className="dwrap scroll-x">
+        <div className="dwrap">
           <table className="dtable">
             <thead><tr>
-              <th style={{ width: '10%' }}>Status</th><th style={{ width: '42%' }}>Name</th>
-              <th style={{ width: '10%' }}>Runs</th><th style={{ width: '9%' }}>Scope</th>
-              <th style={{ width: '10%' }}>Steps</th><th style={{ width: '12%' }}>Started</th><th style={{ width: '7%' }} />
+              <th style={{ width: '8%' }}>Status</th><th style={{ width: '36%' }}>Name</th>
+              <th style={{ width: '8%' }}>Runs</th><th style={{ width: '10%' }}>Scope</th>
+              <th style={{ width: '11%' }}>Steps</th><th style={{ width: '13%' }}>Started</th><th style={{ width: '14%' }} />
             </tr></thead>
           {visibleFlows.map(flow => (
             <FlowBoard
@@ -295,6 +297,7 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
               globalPath={globalPath}
               projectPath={projectPath}
               onRun={onRun}
+              onEditRun={onEditRun}
               onEdit={onEdit}
               onDetail={onDetail}
               onBoardStepEditor={onBoardStepEditor}

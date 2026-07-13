@@ -78,6 +78,24 @@ export const useAppLogic = () => {
     runState.setRunInputValues(Object.fromEntries(inputNames.map(name => [name, ''])));
     runState.setRunName('');
     runState.setRunInputsError(null);
+    runState.setRunInputsEditing(false);
+    runState.setRunInputsTarget(flow);
+  };
+
+  /**
+   * Open the run-inputs modal in EDIT mode for the active run, prefilled with its current name and
+   * inputs. Only meaningful while the run is pristine (the backend re-checks and no-ops otherwise);
+   * the FlowBoard menu only surfaces the entry point when no step has started.
+   */
+  const openRunEditor = () => {
+    const flow = runState.activeFlow;
+    const rs = runState.runState;
+    if (!flow || !rs) return;
+    const inputNames = Object.keys(flow.inputs || {});
+    runState.setRunInputValues(Object.fromEntries(inputNames.map(name => [name, (rs.inputs || {})[name] || ''])));
+    runState.setRunName(rs.runName || '');
+    runState.setRunInputsError(null);
+    runState.setRunInputsEditing(true);
     runState.setRunInputsTarget(flow);
   };
 
@@ -508,6 +526,13 @@ export const useAppLogic = () => {
 
   const submitRunInputs = () => {
     if (!runState.runInputsTarget) return;
+    if (runState.runInputsEditing) {
+      // Edit mode: patch the active run's name + inputs in place (backend enforces the pristine gate).
+      sendToVSCode('editRun', { runName: runState.runName.trim() || undefined, inputs: runState.runInputValues });
+      runState.setRunInputsTarget(null);
+      runState.setRunInputsEditing(false);
+      return;
+    }
     initRunState(runState.runInputsTarget, runState.runName.trim() || undefined, runState.runInputValues);
     runState.setRunInputsTarget(null);
     runState.setRunnerVisible(true);
@@ -638,6 +663,6 @@ export const useAppLogic = () => {
     submitAgentModal, openAgentEditor, submitSkillModal, openSkillEditor,
     submitReviewModal, openReviewEditor,
     submitConnectMcp,
-    submitRunInputs, runActiveStep, saveEditingFlow, saveStepEdit
+    submitRunInputs, openRunEditor, runActiveStep, saveEditingFlow, saveStepEdit
   };
 };

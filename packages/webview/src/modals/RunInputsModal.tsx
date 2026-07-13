@@ -4,6 +4,7 @@ import { Modal, Field } from '../components/primitives';
 
 interface RunInputsModalProps {
   target: Flow | null;
+  editing?: boolean;
   runName: string;
   values: Record<string, string>;
   error: string | null;
@@ -15,6 +16,7 @@ interface RunInputsModalProps {
 
 export const RunInputsModal: React.FC<RunInputsModalProps> = ({
   target,
+  editing = false,
   runName,
   values,
   error,
@@ -24,14 +26,14 @@ export const RunInputsModal: React.FC<RunInputsModalProps> = ({
   onSubmit
 }) => (
   <Modal
-    title={target ? `New run: ${target.name}` : 'New run'}
+    title={target ? `${editing ? 'Edit run' : 'New run'}: ${target.name}` : (editing ? 'Edit run' : 'New run')}
     open={!!target}
     onClose={onClose}
     width={480}
     footer={(
       <>
         <button className="btn" onClick={onClose}>Cancel</button>
-        <button className="btn primary" onClick={onSubmit}>Start Independent Run</button>
+        <button className="btn primary" onClick={onSubmit}>{editing ? 'Save Changes' : 'Start Independent Run'}</button>
       </>
     )}
   >
