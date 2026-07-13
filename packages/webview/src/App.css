@@ -2115,12 +2115,6 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 }
 .runs-tab:hover { color: var(--fg); }
 .runs-tab.on { color: var(--fg); border-bottom-color: var(--focus); }
-.runs-tab-count {
-  min-width: 18px; padding: 0 6px; border-radius: 999px;
-  background: var(--badge-bg); color: var(--muted);
-  font-size: 11px; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600;
-}
-.runs-tab.on .runs-tab-count { background: var(--focus); color: #fff; }
 /* extra breathing room between the tab strip and the runs table */
 .runs-dr .detail-subhead { margin-bottom: 18px; }
 .runs-table .run-empty-row td { text-align: center; color: var(--muted); padding: 22px; font-size: 12px; }
