@@ -3,9 +3,9 @@ import { Icon } from './primitives';
 
 export type SaveScope = 'project' | 'global';
 export type ScopeFilter = SaveScope | 'all';
-export type ViewFilterItem = 'bookmarked' | 'built-in';
+export type ViewFilterItem = 'built-in';
 export type ViewFilter = ReadonlyArray<ViewFilterItem>; // [] = "all items"
-export type SortOrder = 'asc' | 'desc' | 'newest' | 'oldest';
+export type SortOrder = 'activity' | 'asc' | 'desc' | 'newest' | 'oldest';
 
 // ── Legacy dropdown components (kept for any remaining uses) ─────────────────
 
@@ -25,7 +25,7 @@ export const ViewFilterSelect: React.FC<{ value: ViewFilter; onChange: (v: ViewF
       onChange(v === 'all' ? [] : [v as ViewFilterItem]);
     }}>
       <option value="all">All Items</option>
-      <option value="bookmarked">Bookmarked</option>
+
       {showBuiltIn && <option value="built-in">Built-in</option>}
     </select>
   );
@@ -62,7 +62,7 @@ interface UnifiedFilterPanelProps {
 }
 
 function activeCount(scope: ScopeFilter, view: ViewFilter, sort: SortOrder): number {
-  return (scope !== 'all' ? 1 : 0) + (view.length > 0 ? 1 : 0) + (sort !== 'asc' ? 1 : 0);
+  return (scope !== 'all' ? 1 : 0) + (view.length > 0 ? 1 : 0) + (sort !== 'activity' ? 1 : 0);
 }
 
 const Radio: React.FC<{ on: boolean }> = ({ on }) => (
@@ -101,8 +101,8 @@ export const UnifiedFilterPanel: React.FC<UnifiedFilterPanelProps> = ({
   const handleApply = () => { onApply(pScope, pView, pSort); setOpen(false); };
 
   const handleReset = () => {
-    setPScope('all'); setPView([]); setPSort('asc');
-    onApply('all', [], 'asc');
+    setPScope('all'); setPView([]); setPSort('activity');
+    onApply('all', [], 'activity');
     setOpen(false);
   };
 
@@ -111,7 +111,7 @@ export const UnifiedFilterPanel: React.FC<UnifiedFilterPanelProps> = ({
   return (
     <div className="fp-wrap" ref={wrapRef}>
       <button className={`btn fp-btn${open ? ' active' : ''}`} type="button" onClick={() => setOpen(v => !v)}>
-        <Icon.Settings size={13} />
+        <Icon.Sliders size={13} />
         Filters
         {n > 0 && <span className="fp-badge">{n}</span>}
         <Icon.ChevronDown size={11} />
@@ -138,14 +138,22 @@ export const UnifiedFilterPanel: React.FC<UnifiedFilterPanelProps> = ({
               <button type="button" className="fp-option" onClick={() => setPView([])}>
                 <Checkbox on={pView.length === 0} />All items
               </button>
-              <button type="button" className="fp-option" onClick={() => toggleView('bookmarked')}>
-                <Checkbox on={pView.includes('bookmarked')} />Bookmarked
-              </button>
+
               {showBuiltIn && (
                 <button type="button" className="fp-option" onClick={() => toggleView('built-in')}>
                   <Checkbox on={pView.includes('built-in')} />Built-in
                 </button>
               )}
+            </div>
+          </div>
+
+          {/* ── Default (smart) ── */}
+          <div className="fp-section">
+            <div className="fp-section-title">Default</div>
+            <div className="fp-options">
+              <button type="button" className="fp-option" onClick={() => setPSort('activity')}>
+                <Radio on={pSort === 'activity'} />Active &amp; recent
+              </button>
             </div>
           </div>
 

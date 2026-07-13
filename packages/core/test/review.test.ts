@@ -71,11 +71,29 @@ test('deep LLM review parses a pass verdict', async () => {
   assert.equal(result.note, 'looks good');
 });
 
-test('deep LLM review with an unparseable verdict waits for a human', async () => {
+test('deep LLM review leans pass on a non-empty reply with no rejection signal', async () => {
   const result = await reviewStepArtifacts({
     workspaceRoot: '/tmp', step: step(), runState, deep: true,
     reviewKit: 'kit', artifacts: { text: 'content', count: 1 },
     runner: stubRunner('I think it is probably fine?')
+  });
+  assert.equal(result.status, 'approved');
+});
+
+test('deep LLM review rejects when the reply signals rejection, even without valid JSON', async () => {
+  const result = await reviewStepArtifacts({
+    workspaceRoot: '/tmp', step: step(), runState, deep: true,
+    reviewKit: 'kit', artifacts: { text: 'content', count: 1 },
+    runner: stubRunner('This should be rejected — the tests are missing.')
+  });
+  assert.equal(result.status, 'rejected');
+});
+
+test('deep LLM review still waits for a human when the reply is empty', async () => {
+  const result = await reviewStepArtifacts({
+    workspaceRoot: '/tmp', step: step(), runState, deep: true,
+    reviewKit: 'kit', artifacts: { text: 'content', count: 1 },
+    runner: stubRunner('')
   });
   assert.equal(result.status, 'waiting_human');
 });

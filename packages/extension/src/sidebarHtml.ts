@@ -23,20 +23,23 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     :root {
       --r: 3px;
       --r-sm: 2px;
-      --border: var(--vscode-panel-border, #3c3c3c);
-      --panel: var(--vscode-sideBar-background, #252526);
-      --panel-2: var(--vscode-editorWidget-background, #2d2d2d);
-      --hover: var(--vscode-list-hoverBackground, #2a2d2e);
-      --focus: var(--vscode-focusBorder, #007fd4);
-      --btn: var(--vscode-button-background, #0e639c);
-      --btn-fg: var(--vscode-button-foreground, #fff);
-      --btn-h: var(--vscode-button-hoverBackground, #1177bb);
-      --error: var(--vscode-errorForeground, #f48771);
-      --badge: var(--vscode-badge-background, #4d4d4d);
-      --badge-fg: var(--vscode-badge-foreground, #fff);
-      --muted: var(--vscode-descriptionForeground, #9d9d9d);
-      --success: var(--vscode-charts-green, #73c991);
-      --fg: var(--vscode-foreground, #cccccc);
+      /* Pinned "GitHub Dark" palette — identical to the webview (packages/webview/src/App.css)
+         so the sidebar and the main cockpit read as one product regardless of VS Code theme. */
+      --bg: #0d1117;
+      --border: #30363d;
+      --panel: #161b22;
+      --panel-2: #1c2128;
+      --hover: #1c2128;
+      --focus: #388bfd;
+      --btn: #1f6feb;
+      --btn-fg: #ffffff;
+      --btn-h: #388bfd;
+      --error: #f85149;
+      --badge: #30363d;
+      --badge-fg: #c9d1d9;
+      --muted: #8b949e;
+      --success: #3fb950;
+      --fg: #c9d1d9;
     }
     *, *::before, *::after { box-sizing: border-box; }
     html, body { height: 100%; overflow: hidden; margin: 0; padding: 0; }
@@ -121,7 +124,8 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
 
     /* ── section ── */
     .sec { margin-top: 8px; }
-    .sec-hdr { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
+    .stats-sec { margin-bottom: 4px; }
+    .sec-hdr { display: flex; align-items: center; gap: 6px; margin-bottom: 0px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
     .sec-label { flex: 1; font-size: 12px; font-weight: 700; color: var(--fg); }
     .sec-count { display: inline-flex; align-items: center; height: 15px; padding: 0 5px; border-radius: 9px; font-size: 9px; font-weight: 700; color: var(--badge-fg); background: var(--badge); }
     .sec-count:empty { display: none; }
@@ -156,7 +160,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
 
     /* search row inside box */
     .box-search { padding: 5px 8px; border-bottom: 1px solid var(--border); background: var(--panel); }
-    .search { width: 100%; padding: 3px 7px; border: 1px solid var(--vscode-input-border, var(--border)); border-radius: var(--r-sm); background: var(--vscode-input-background); color: var(--vscode-input-foreground); font-size: 11.5px; font-family: inherit; outline: none; }
+    .search { width: 100%; padding: 3px 7px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg); color: var(--fg); font-size: 11.5px; font-family: inherit; outline: none; }
     .search:focus { border-color: var(--focus); }
     .search::placeholder { color: var(--vscode-input-placeholderForeground, #818181); }
 
@@ -196,7 +200,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     .menu > summary::-webkit-details-marker { display: none; }
     .menu-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1px solid transparent; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 14px; font-weight: 700; cursor: pointer; line-height: 1; font-family: inherit; }
     .menu-btn:hover, .menu[open] .menu-btn { color: var(--fg); background: var(--hover); border-color: var(--border); }
-    .menu-pop { position: fixed; z-index: 9999; min-width: 130px; max-width: calc(100vw - 12px); padding: 3px; border: 1px solid var(--border); border-radius: var(--r); background: var(--vscode-dropdown-background, var(--panel-2)); box-shadow: 0 6px 20px rgba(0,0,0,.36); }
+    .menu-pop { position: fixed; z-index: 9999; min-width: 130px; max-width: calc(100vw - 12px); padding: 3px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); box-shadow: 0 6px 20px rgba(0,0,0,.36); }
     .menu-item { display: flex; align-items: center; width: 100%; min-height: 26px; border: 0; border-radius: var(--r-sm); padding: 4px 8px; background: transparent; color: var(--fg); font-size: 11.5px; font-family: inherit; text-align: left; cursor: pointer; }
     .menu-item:hover { background: var(--hover); }
     .menu-item.danger { color: var(--error); }
@@ -207,7 +211,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     .select-wrap.sm { min-width: 80px; }
     .gx-ctl .select-wrap { flex: 1 1 auto; min-width: 0; display: block; }
     .select-wrap::after { content: ''; position: absolute; right: 9px; top: 50%; transform: translateY(-50%); width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid #aaa; pointer-events: none; }
-    .input { width: 100%; height: 22px; padding: 0 24px 0 8px; border: 1px solid var(--vscode-dropdown-border, var(--border)); border-radius: var(--r); background: var(--panel-2); color: var(--vscode-dropdown-foreground, var(--fg)); font-size: 12px; font-family: inherit; outline: none; appearance: none; -webkit-appearance: none; cursor: pointer; box-shadow: inset 0 1px 2px rgba(0,0,0,.2); }
+    .input { width: 100%; height: 22px; padding: 0 24px 0 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); color: var(--fg); font-size: 12px; font-family: inherit; outline: none; appearance: none; -webkit-appearance: none; cursor: pointer; box-shadow: inset 0 1px 2px rgba(0,0,0,.2); }
     .input.sm { font-size: 11px; }
     .input:focus { border-color: var(--focus); outline: 1px solid var(--focus); }
     .input:hover { border-color: var(--focus); }
@@ -262,8 +266,12 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
   <div class="body">
 
     <!-- library stats -->
-    <section class="sec">
+    <section class="sec stats-sec">
       <div class="stats" id="stats"></div>
+    </section>
+
+    <!-- default library -->
+    <section class="sec">
       <div id="defaults-toggle"></div>
       <div id="defaults-panel" style="display:none"></div>
     </section>
@@ -327,6 +335,15 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
           <span class="select-wrap sm"><select id="ai-style-select" class="input sm">
             <option value="default">Default</option>
             <option value="concise">Concise</option>
+          </select></span>
+        </div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Review Kit</div>
+            <div class="setting-desc">Kit the deep AI-review layer uses to judge artifacts</div>
+          </div>
+          <span class="select-wrap sm"><select id="review-kit-select" class="input sm">
+            <option value="">Default</option>
           </select></span>
         </div>
         <div class="setting-row gx-row" id="gitnexus-setting-row" style="display:none">
@@ -1063,6 +1080,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
         renderRuns(m.runFiles, m.totalRunFiles);
         const styleSelect = document.getElementById('ai-style-select');
         if (styleSelect && m.uiPrefs) styleSelect.value = m.uiPrefs['ai:responseStyle'] || 'default';
+        renderReviewKits(m.reviewKits || [], (m.uiPrefs || {})['review:activeKit'] || '');
       } else if (m.type === 'mcp') {
         mcpReceived = true;
         setMcpData(m.mcp);
@@ -1084,6 +1102,21 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
 
   document.getElementById('ai-style-select').addEventListener('change', function() {
     vscode.postMessage({ type: 'savePref', key: 'ai:responseStyle', value: this.value });
+  });
+
+  // Populate the review-kit picker from installed kits; value is the kit filename
+  // ('' = fall back to the bundled default). Selection persists as a project ui-pref.
+  function renderReviewKits(kits, active) {
+    const sel = document.getElementById('review-kit-select');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">Default</option>' +
+      kits.map(k => '<option value="' + esc(k.file) + '">' + esc(k.name) +
+        (k.scope === 'global' ? ' (global)' : '') + '</option>').join('');
+    sel.value = kits.some(k => k.file === active) ? active : '';
+  }
+
+  document.getElementById('review-kit-select').addEventListener('change', function() {
+    vscode.postMessage({ type: 'savePref', key: 'review:activeKit', value: this.value });
   });
 
   document.getElementById('gitnexus-analyze-btn').addEventListener('click', function() {

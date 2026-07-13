@@ -83,17 +83,29 @@ export function seedStartedSteps(steps: Record<string, StepRunState>): Set<strin
 
 /** Pull a {decision, reason} verdict out of an automated reviewer's reply. */
 export function parseVerdict(text: string): { decision: 'pass' | 'reject'; reason?: string } | undefined {
-  if (!text) return undefined;
+  // Empty / whitespace-only means the reviewer produced nothing to judge on — leave it undefined so
+  // the caller can route to a human. Any real reply, however malformed, resolves to pass|reject: an
+  // auto-review step must not stall on formatting. We lean pass and only reject on an explicit signal.
+  if (!text || !text.trim()) return undefined;
+  // Strict: a well-formed JSON object with a recognized decision wins and carries its reason.
   const match = text.match(/\{[\s\S]*?\}/);
-  if (!match) return undefined;
-  try {
-    const obj = JSON.parse(match[0]);
-    const decision = String(obj.decision ?? '').toLowerCase();
-    const reason = typeof obj.reason === 'string' ? obj.reason : undefined;
-    if (decision === 'pass' || decision === 'approved') return { decision: 'pass', reason };
-    if (decision === 'reject' || decision === 'rejected') return { decision: 'reject', reason };
-  } catch { /* not JSON */ }
-  return undefined;
+  if (match) {
+    try {
+      const obj = JSON.parse(match[0]);
+      const decision = String(obj.decision ?? '').toLowerCase();
+      const reason = typeof obj.reason === 'string' ? obj.reason : undefined;
+      if (decision === 'pass' || decision === 'approved') return { decision: 'pass', reason };
+      if (decision === 'reject' || decision === 'rejected') return { decision: 'reject', reason };
+    } catch { /* not JSON — fall through to lenient recovery */ }
+  }
+  // Lenient: recover a decision from malformed output (missing braces, single quotes, trailing prose).
+  const field = text.match(/"?decision"?\s*[:=]\s*"?(pass|approved|reject|rejected)\b/i);
+  if (field) return { decision: /^rej/i.test(field[1]) ? 'reject' : 'pass' };
+  // Fallback: an explicit rejection signal rejects; anything else passes rather than blocking the run.
+  if (/\b(reject|rejected|fail|failed|not\s+pass)\b|không\s*đạt|không\s*pass|từ\s*chối/i.test(text)) {
+    return { decision: 'reject' };
+  }
+  return { decision: 'pass' };
 }
 
 /**

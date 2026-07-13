@@ -14,17 +14,22 @@ export const useBuilderState = () => {
 
   const [agentModalOpen, setAgentModalOpen] = useState(false);
   const [skillModalOpen, setSkillModalOpen] = useState(false);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [connectMcpModalOpen, setConnectMcpModalOpen] = useState(false);
   const [editingSkillSource, setEditingSkillSource] = useState<string | null>(null);
   const [editingAgentSource, setEditingAgentSource] = useState<string | null>(null);
+  const [editingReviewSource, setEditingReviewSource] = useState<string | null>(null);
 
   const emptyAgentForm = { name: '', description: '', model: 'claude-sonnet-4-6', tools: [] as string[], systemPrompt: '', scope: 'project' as SaveScope, maxTurns: undefined as number | undefined, tags: [] as string[] };
   const emptySkillForm = { name: '', description: '', instructions: '', scope: 'project' as SaveScope, tags: [] as string[] };
-  
+  const emptyReviewForm = { name: '', description: '', content: '', scope: 'project' as SaveScope };
+
   const [agentForm, setAgentForm] = useState(emptyAgentForm);
   const [skillForm, setSkillForm] = useState(emptySkillForm);
+  const [reviewForm, setReviewForm] = useState(emptyReviewForm);
   const [agentFormError, setAgentFormError] = useState<string | null>(null);
   const [skillFormError, setSkillFormError] = useState<string | null>(null);
+  const [reviewFormError, setReviewFormError] = useState<string | null>(null);
   const [draftLoading, setDraftLoading] = useState<'agent' | 'skill' | null>(null);
 
   return {
@@ -38,14 +43,18 @@ export const useBuilderState = () => {
     newInputName, setNewInputName,
     agentModalOpen, setAgentModalOpen,
     skillModalOpen, setSkillModalOpen,
+    reviewModalOpen, setReviewModalOpen,
     connectMcpModalOpen, setConnectMcpModalOpen,
     editingSkillSource, setEditingSkillSource,
     editingAgentSource, setEditingAgentSource,
+    editingReviewSource, setEditingReviewSource,
     agentForm, setAgentForm,
     skillForm, setSkillForm,
+    reviewForm, setReviewForm,
     agentFormError, setAgentFormError,
     skillFormError, setSkillFormError,
+    reviewFormError, setReviewFormError,
     draftLoading, setDraftLoading,
-    emptyAgentForm, emptySkillForm
+    emptyAgentForm, emptySkillForm, emptyReviewForm
   };
 };

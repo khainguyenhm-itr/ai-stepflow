@@ -89,7 +89,12 @@ function buildSidebarHtml() {
         currentStep: { title: 'Write Docs', status: 'running' }
       },
       runFiles: [],
-      totalRunFiles: 0
+      totalRunFiles: 0,
+      uiPrefs: { 'review:activeKit': 'aisf-review-default.md' },
+      reviewKits: [
+        { name: 'AISF Review Default', file: 'aisf-review-default.md', scope: 'global' },
+        { name: 'Strict Security Review', file: 'strict-security.md', scope: 'project' }
+      ]
     }}));
   });`;
 
@@ -115,6 +120,20 @@ function buildFrameHtml() {
     .body-pane { flex: 1; min-width: 0; overflow: hidden; }
     iframe { border: 0; width: 100%; height: 100%; display: block; }
   </style>
+  <script>
+    let lastVersion = 0;
+    setInterval(async () => {
+      try {
+        const res = await fetch('/_build-version');
+        const data = await res.json();
+        if (data.version > lastVersion && lastVersion > 0) {
+          console.log('[live-reload] Build updated, refreshing...');
+          location.reload();
+        }
+        lastVersion = data.version;
+      } catch (e) {}
+    }, 500);
+  </script>
 </head>
 <body>
   <div class="layout">
@@ -127,6 +146,7 @@ function buildFrameHtml() {
 
 // Cache sidebar HTML at startup
 let sidebarHtml;
+let buildVersion = 0;
 try {
   sidebarHtml = buildSidebarHtml();
 } catch (err) {
@@ -136,6 +156,15 @@ try {
   </body></html>`;
 }
 
+// Monitor webview build output for changes → bump version to force reload
+import { watch } from 'fs';
+watch(join(root), { recursive: true }, (evt, file) => {
+  if (file?.endsWith('.js') || file?.endsWith('.css')) {
+    buildVersion++;
+    console.log(`[reload] Build changed (v${buildVersion})`);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // HTTP server
 // ---------------------------------------------------------------------------
@@ -143,6 +172,13 @@ const server = createServer((request, response) => {
   const activePort = server.address()?.port || preferredPort;
   const url = new URL(request.url || '/', `http://localhost:${activePort}`);
   const pathname = decodeURIComponent(url.pathname);
+
+  // Reload API endpoint
+  if (pathname === '/_build-version') {
+    response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    response.end(JSON.stringify({ version: buildVersion }));
+    return;
+  }
 
   // Combined preview (root)
   if (pathname === '/') {

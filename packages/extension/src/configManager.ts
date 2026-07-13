@@ -4,7 +4,7 @@ import * as os from 'os';
 import { promises as fs } from 'fs';
 import { parse, parseDocument, Document, isMap } from 'yaml';
 import matter from 'gray-matter';
-import { Agent, Skill, Flow, parseFlow, formatFlowError, AgentInput, SkillInput } from '@ai-stepflow/core';
+import { Agent, Skill, Flow, parseFlow, formatFlowError, AgentInput, SkillInput, normalizeTools, ReviewKit, ReviewKitInput } from '@ai-stepflow/core';
 
 export type BundledKind = 'agents' | 'skills' | 'reviews' | 'validators';
 
@@ -655,6 +655,101 @@ export class ConfigManager {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Review kits — markdown prompts read by the deep-LLM-review layer
+  // ({@link loadReviewKit} in packages/core/src/review.ts). Unlike agents/skills/
+  // flows, review kits live under `.claude/reviews` in BOTH scopes (never
+  // `.ai-stepflow`), so they need their own dir resolution and managed-path guard.
+  // ---------------------------------------------------------------------------
+
+  /** Global dir first so a project copy overrides a global one with the same name. */
+  private reviewScopedDirs(): string[] {
+    const dirs = [path.join(this.globalPath, 'reviews')];
+    if (this.projectPath) dirs.push(path.join(this.projectPath, '.claude', 'reviews'));
+    return dirs;
+  }
+
+  private resolveReviewTargetDir(isGlobal: boolean): string {
+    if (isGlobal) return path.join(this.globalPath, 'reviews');
+    if (!this.projectPath) {
+      throw new Error('No workspace folder is open; cannot save to the current repo. Save globally instead.');
+    }
+    return path.join(this.projectPath, '.claude', 'reviews');
+  }
+
+  /** True when the path lives inside one of the `.claude/reviews` directories this extension manages. */
+  private isManagedReviewPath(targetPath: string): boolean {
+    const normalized = path.normalize(targetPath);
+    return this.reviewScopedDirs().some(root => normalized.startsWith(path.normalize(root) + path.sep));
+  }
+
+  private assertManagedReviewPath(targetPath: string): void {
+    if (!this.isManagedReviewPath(targetPath)) {
+      throw new Error(`Refusing to delete a file outside the managed config directories: ${targetPath}`);
+    }
+  }
+
+  public async loadReviewKits(): Promise<ReviewKit[]> {
+    const kits = new Map<string, ReviewKit>();
+    for (const dir of this.reviewScopedDirs()) {
+      const files = await this.listFiles(dir, name => name.endsWith('.md'));
+      for (const file of files) {
+        const kit = await this.parseReviewFile(path.join(dir, file));
+        if (kit) kits.set(kit.name, kit);
+      }
+    }
+    return Array.from(kits.values());
+  }
+
+  public async saveReviewKit(review: ReviewKitInput, isGlobal: boolean = false): Promise<string> {
+    const targetDir = this.resolveReviewTargetDir(isGlobal);
+    await fs.mkdir(targetDir, { recursive: true });
+
+    const filePath = path.join(targetDir, `${this.slugify(review.name)}.md`);
+    const frontmatter = matter.stringify(review.content || '', {
+      name: review.name,
+      description: review.description || ''
+    });
+
+    await fs.writeFile(filePath, frontmatter, 'utf8');
+    return filePath;
+  }
+
+  public async deleteReviewKit(sourcePath: string): Promise<void> {
+    this.assertManagedReviewPath(sourcePath);
+    await fs.rm(sourcePath, { force: true });
+  }
+
+  /** Parse any review-kit markdown file the user picked for import. */
+  public async importReviewFromFile(filePath: string): Promise<ReviewKit | undefined> {
+    return this.parseReviewFile(filePath);
+  }
+
+  /** Install the bundled default review kit to global or project scope. */
+  public async installDefaultReviewKit(isGlobal: boolean = true): Promise<void> {
+    await this.installBundledItem('reviews', 'aisf-review-default.md', isGlobal);
+  }
+
+  private async parseReviewFile(filePath: string): Promise<ReviewKit | undefined> {
+    try {
+      const [content, stat] = await Promise.all([fs.readFile(filePath, 'utf8'), fs.stat(filePath).catch(() => null)]);
+      // Strip leading HTML comment (e.g. built-in marker) so gray-matter can find --- frontmatter
+      const stripped = content.replace(/^<!--[\s\S]*?-->\s*\n/, '');
+      const { data, content: body } = matter(stripped);
+      return {
+        name: data.name || path.basename(filePath, '.md'),
+        description: data.description || '',
+        content: body.trim(),
+        sourcePath: filePath,
+        builtIn: this.hasBuiltInMarker(content),
+        ...(stat ? { modifiedAt: stat.mtimeMs } : {})
+      };
+    } catch (e) {
+      console.error(`Error parsing review file ${filePath}:`, e);
+      return undefined;
+    }
+  }
+
   /** True when the path lives inside one of the directories this extension manages. */
   private isManagedPath(targetPath: string): boolean {
     const normalized = path.normalize(targetPath);
@@ -846,7 +941,7 @@ export class ConfigManager {
         name: data.name || path.basename(filePath, '.md'),
         description: data.description || '',
         model: data.model || 'sonnet',
-        tools: data.tools,
+        tools: normalizeTools(data.tools),
         systemPrompt: body.trim(),
         sourcePath: filePath,
         ...(tags ? { tags } : {}),

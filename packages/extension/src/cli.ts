@@ -8,6 +8,7 @@ import {
   renderRunReport,
   Flow, FlowRunState, FlowStep,
   reviewStepArtifacts,
+  loadReviewKit,
   resolveStepRunner,
   renderVerifyReportMarkdown, verifyRun,
   resolveTemplates, resolveMaxTurns
@@ -83,14 +84,28 @@ async function saveReport(projectPath: string, run: FlowRunState, content: strin
   return filePath;
 }
 
+async function readActiveReviewKitPref(projectPath: string): Promise<string> {
+  try {
+    const raw = await fs.readFile(path.join(projectPath, '.ai-stepflow', 'ui-prefs.json'), 'utf8');
+    const prefs = JSON.parse(raw) as Record<string, string>;
+    return prefs['review:activeKit'] || '';
+  } catch {
+    return '';
+  }
+}
+
 async function runAiReview(runState: FlowRunState, step: FlowStep, projectPath: string): Promise<{ status: 'approved' | 'rejected' | 'waiting_human'; output: string }> {
   // Shared two-layer review (deterministic validator + optional LLM on the artifacts), identical
-  // to the extension so a flow reviews the same way headless or in the UI.
+  // to the extension so a flow reviews the same way headless or in the UI. Review-kit priority
+  // mirrors the UI: step override → project active-kit pref → bundled default.
+  const deep = step.review.deep !== false;
+  const kitName = deep ? (step.review.reviewKit || (await readActiveReviewKitPref(projectPath))) : '';
   const result = await reviewStepArtifacts({
     workspaceRoot: projectPath,
     step,
     runState,
-    deep: step.review.deep !== false,
+    deep,
+    reviewKit: deep ? loadReviewKit(projectPath, kitName || undefined) : '',
     runner: opts => runClaudeStreaming({ ...opts, maxTurns: 1 }).completed,
     onText: chunk => process.stdout.write(chunk)
   });

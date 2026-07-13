@@ -1,43 +1,42 @@
 /* ------------------------------------------------------------------ */
-/* AI StepFlow — minimal VS Code-native theme.                         */
-/* Every color/font comes from VS Code theme variables, with dark      */
-/* fallbacks so the browser preview still looks like VS Code Dark+.    */
+/* AI StepFlow — fixed "GitHub Dark" palette matching the design       */
+/* artifact. Colors are pinned (not derived from --vscode-* theme      */
+/* variables) so the UI always looks like the artifact regardless of   */
+/* the user's VS Code theme.                                           */
 /* ------------------------------------------------------------------ */
 
 :root {
-  --bg: var(--vscode-editor-background, #1e1e1e);
-  --fg: var(--vscode-editor-foreground, #cccccc);
-  --muted: var(--vscode-descriptionForeground, #9d9d9d);
-  --border: var(--vscode-panel-border, #3c3c3c);
-  --panel: var(--vscode-sideBar-background, #252526);
-  --panel-2: var(--vscode-editorWidget-background, #2d2d2d);
-  --input-bg: var(--vscode-input-background, #3c3c3c);
-  --input-fg: var(--vscode-input-foreground, #cccccc);
-  --input-border: var(--vscode-input-border, #3c3c3c);
-  --focus: var(--vscode-focusBorder, #007fd4);
-  --btn-bg: var(--vscode-button-background, #0e639c);
-  --btn-fg: var(--vscode-button-foreground, #ffffff);
-  --btn-hover: var(--vscode-button-hoverBackground, #1177bb);
-  --btn-2-bg: var(--vscode-button-secondaryBackground, #3a3d41);
-  --btn-2-fg: var(--vscode-button-secondaryForeground, #cccccc);
-  --btn-2-hover: var(--vscode-button-secondaryHoverBackground, #45494e);
-  --hover: var(--vscode-list-hoverBackground, #2a2d2e);
-  --active-sel: var(--vscode-list-activeSelectionBackground, #094771);
-  --link: var(--vscode-textLink-foreground, #3794ff);
-  --error: var(--vscode-errorForeground, #f48771);
-  --warn: var(--vscode-editorWarning-foreground, #cca700);
-  --bookmark: var(--vscode-editorWarning-foreground, #cca700);
-  --success: var(--vscode-charts-green, #73c991);
-  --running: var(--vscode-charts-blue, #3794ff);
-  --badge-bg: var(--vscode-badge-background, #4d4d4d);
-  --badge-fg: var(--vscode-badge-foreground, #ffffff);
-  /* Outline for secondary buttons. Derived from the foreground color because
-     themes like Dark+ set --vscode-input-border to transparent, which made
-     outlined buttons look flat/borderless. */
+  --bg: #0d1117;
+  --fg: #c9d1d9;
+  --muted: #8b949e;
+  --border: #30363d;
+  --panel: #161b22;
+  --panel-2: #1c2128;
+  --input-bg: #0d1117;
+  --input-fg: #c9d1d9;
+  --input-border: #30363d;
+  --focus: #388bfd;
+  --btn-bg: #1f6feb;
+  --btn-fg: #ffffff;
+  --btn-hover: #388bfd;
+  --btn-2-bg: #21262d;
+  --btn-2-fg: #c9d1d9;
+  --btn-2-hover: #30363d;
+  --hover: #1c2128;
+  --active-sel: #30363d;
+  --link: #58a6ff;
+  --error: #f85149;
+  --warn: #d29922;
+
+  --success: #3fb950;
+  --running: #58a6ff;
+  --badge-bg: #30363d;
+  --badge-fg: #c9d1d9;
+  /* Outline for secondary buttons, derived from the foreground color. */
   --btn-outline: color-mix(in srgb, var(--fg) 40%, transparent);
-  --font: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", sans-serif);
-  --mono: var(--vscode-editor-font-family, "SF Mono", Monaco, Menlo, Consolas, "Courier New", monospace);
-  --font-size: var(--vscode-font-size, 13px);
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-size: 13px;
 }
 
 * {
@@ -106,11 +105,13 @@ body {
   height: 3px;
 }
 
-/* Modals: hide scrollbar thumb — content still scrolls, bar stays invisible. */
+/* Pages & modals: hide scrollbar thumb — content still scrolls, bar stays invisible. */
+.page,
 .modal-body {
   scrollbar-width: none;
 }
 
+.page::-webkit-scrollbar,
 .modal-body::-webkit-scrollbar {
   display: none;
 }
@@ -361,6 +362,15 @@ textarea.input::-webkit-scrollbar-thumb:hover,
 
 .btn.success:hover:not(:disabled) {
   background: color-mix(in srgb, var(--success) 12%, transparent);
+}
+
+.btn.progress {
+  border-color: var(--running);
+  color: var(--running);
+}
+
+.btn.progress:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--running) 12%, transparent);
 }
 
 .btn.block {
@@ -749,12 +759,16 @@ textarea.input {
   white-space: nowrap;
 }
 
-/* Scope badges (global/repo) are informational only — keep them neutral
-   instead of the theme's accent badge color. */
+/* Scope badges (global/repo) — blue-tinted uppercase chip, matching the
+   artifact's REPO badge. */
 .badge.scope {
-  color: var(--muted);
-  background: transparent;
-  border: 1px solid var(--btn-outline);
+  color: var(--link);
+  background: rgba(56, 139, 253, 0.15);
+  border: 1px solid rgba(56, 139, 253, 0.4);
+  border-radius: 4px;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.04em;
   line-height: 14px;
 }
 
@@ -986,17 +1000,7 @@ textarea.input {
   flex: 0 0 auto;
 }
 
-.card-head-actions .icon-btn.bookmark,
-.panel-head-actions .icon-btn.bookmark {
-  color: var(--muted);
-}
 
-.card-head-actions .icon-btn.bookmark:hover,
-.card-head-actions .icon-btn.bookmark.active,
-.panel-head-actions .icon-btn.bookmark:hover,
-.panel-head-actions .icon-btn.bookmark.active {
-  color: var(--bookmark);
-}
 
 .card-description {
   display: -webkit-box;
@@ -1365,6 +1369,17 @@ textarea.input {
 .more-menu-item.danger { color: var(--error); }
 .more-menu-sep { height: 1px; background: var(--border); margin: 4px 0; }
 
+/* Step strip sits on one row with the Auto-review toggle (no more runner header). */
+.runner-striprow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.runner-striprow .runner-strip { flex: 1 1 auto; min-width: 0; padding: 0; }
+.runner-striprow .auto-review-toggle { flex: 0 0 auto; }
+
 .runner-strip {
   display: flex;
   align-items: center;
@@ -1533,7 +1548,7 @@ textarea.input {
   margin: 0;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: 6px;
   color: var(--fg);
   background: var(--vscode-terminal-background, var(--vscode-editor-background, #1e1e1e));
   font-family: var(--mono);
@@ -1542,6 +1557,16 @@ textarea.input {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* Cost / History reports reuse the console look, with more room and no wrapping. */
+.console.report { max-height: 360px; padding: 14px 16px; white-space: pre; overflow: auto; }
+
+/* History event coloring (mirrors the mockup console): muted time, tinted status. */
+.console.report .ev-time { color: var(--muted); }
+.console.report .ev-ok { color: var(--success); }
+.console.report .ev-run { color: var(--running); }
+.console.report .ev-err { color: var(--error); }
+.console.report .ev-muted { color: var(--muted); }
 
 /* The automated-review transcript, shown beneath the run output. */
 .console.ai-review {
@@ -1566,18 +1591,27 @@ textarea.input {
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .runner-cost-table th,
 .runner-cost-table td {
-  padding: 6px 8px;
+  padding: 7px 10px;
   border-top: 1px solid var(--border);
   text-align: left;
 }
 
-.runner-cost-table th {
+.runner-cost-table thead th {
+  border-top: 0;
+  background: var(--panel-2);
   color: var(--muted);
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 10.5px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .runner-cost-table tr.active {
@@ -1587,9 +1621,7 @@ textarea.input {
 .error-text { color: var(--error, var(--vscode-errorForeground, #f48771)); }
 
 .step-history {
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
+  margin-top: 0;
 }
 
 .history-run-group {
@@ -1916,7 +1948,7 @@ textarea.input {
 /* Overview — scope switch */
 .ov-scope-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 2px; overflow: hidden; }
 .ov-scope-btn {
-  display: inline-flex; align-items: center;
+  display: inline-flex; align-items: center; gap: 6px;
   padding: 4px 12px; font-size: inherit; line-height: 1.4; font-family: inherit;
   background: transparent; color: var(--fg);
   border: none; border-right: 1px solid var(--border); cursor: pointer;
@@ -1983,3 +2015,193 @@ textarea.input {
 
 /* Overview — date-range filter */
 .ov-filter { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+
+/* ================= Docker-style data tables ================= */
+.dwrap { border: 1px solid var(--border); border-radius: 4px; background: var(--panel); overflow: hidden; }
+.dwrap + .dwrap { margin-top: 10px; }
+.scroll-x { overflow-x: auto; }
+.dtable { width: 100%; border-collapse: collapse; font-size: var(--font-size); table-layout: fixed; }
+.dtable td, .dtable th { overflow: hidden; }
+.dtable td.drow-actions-cell { overflow: visible; }
+.dname { max-width: 100%; }
+.dname .dn { min-width: 0; }
+.dtable thead th {
+  text-align: left; font-weight: 600; font-size: 11px; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--muted); padding: 8px 12px; border-bottom: 1px solid var(--border);
+  background: var(--panel-2); white-space: nowrap;
+}
+.dtable tbody tr { border-bottom: 1px solid var(--border); }
+.dtable tbody tr:last-child { border-bottom: 0; }
+.dtable td { padding: 9px 12px; vertical-align: middle; }
+.drow { cursor: default; }
+.drow.clickable { cursor: pointer; }
+.drow:hover { background: var(--hover); }
+.drow:hover .drow-actions { opacity: 1; }
+td.drow-actions-cell { text-align: right; white-space: nowrap; }
+.drow-actions { display: inline-flex; gap: 2px; opacity: .45; transition: opacity .12s; }
+
+.dname { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.dname .dn { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.dname .dsub { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.dname .dn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dtools { display: flex; gap: 4px; flex-wrap: wrap; }
+.dtool { font-family: var(--mono); font-size: 11px; background: var(--badge-bg); color: var(--badge-fg); border-radius: 3px; padding: 0 6px; line-height: 17px; }
+.dmodel { font-family: var(--mono); color: var(--muted); }
+
+/* status dot + label */
+.dstatus { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.ddot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--muted); }
+.ddot.run { background: var(--running); box-shadow: 0 0 0 3px color-mix(in srgb, var(--running) 22%, transparent); animation: ddot-pulse 1.6s ease-in-out infinite; }
+.ddot.ok { background: var(--success); }
+.ddot.warn { background: var(--warn); }
+.ddot.fail { background: var(--error); }
+.ddot.idle { background: var(--muted); }
+@keyframes ddot-pulse { 0%,100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--running) 22%, transparent); } 50% { box-shadow: 0 0 0 5px transparent; } }
+@media (prefers-reduced-motion: reduce) { .ddot.run { animation: none; } }
+.dstatus-label { color: var(--muted); }
+
+/* mini pipeline */
+.pipe { display: inline-flex; align-items: center; gap: 3px; }
+.pipe .seg { width: 14px; height: 5px; border-radius: 3px; background: var(--badge-bg); flex: none; }
+.pipe .seg.done { background: var(--success); }
+.pipe .seg.active { background: var(--running); }
+.pipe .seg.fail { background: var(--error); }
+.pipe .pipe-num { color: var(--muted); font-size: 12px; margin-left: 4px; font-variant-numeric: tabular-nums; }
+
+/* Workflows tab — help line & run-stat cards */
+.flow-help { margin: 10px 0 0; }
+.flow-stats {
+  display: grid; gap: 10px; margin: 12px 0 14px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+.flow-stat {
+  display: flex; flex-direction: column; gap: 6px;
+  border: 1px solid var(--border); border-radius: 3px;
+  padding: 12px 14px; background: var(--panel);
+}
+.flow-stat-label { font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.flow-stat-value { font-size: 24px; font-weight: 600; line-height: 1; }
+.flow-stat-value .sub { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 5px; }
+.flow-stat-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; margin-top: auto; }
+.flow-spark { display: block; flex: none; opacity: .9; }
+
+/* badge variants mapped to theme */
+.badge.built-in { color: #1e1e1e; background: var(--warn); }
+.badge.ok { color: #fff; background: var(--success); }
+.badge.run { color: #fff; background: var(--running); }
+.badge.warn { color: #1e1e1e; background: var(--warn); }
+.badge.fail { color: #fff; background: var(--error); }
+.badge.idle { color: var(--muted); background: transparent; border: 1px solid var(--btn-outline); }
+
+/* ---- flow expand rows (graph / runs) ---- */
+.detail-row > td { padding: 0; background: var(--panel-2); }
+.detail-row .detail { padding: 14px 16px; border-top: 2px solid var(--focus); }
+.detail-row.runs-dr .detail { border-top: none; }
+.drow.graph-on { background: var(--hover); }
+.detail-subhead { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.detail-subhead h4 { margin: 0; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.detail-subhead .hint { color: var(--muted); font-size: 11px; margin-left: auto; }
+.detail-subhead .new-run-btn { margin-left: auto; }
+
+/* extra breathing room between the tab strip and the runs table */
+.runs-dr .detail-subhead { margin-bottom: 18px; }
+/* Runs Running/Done switch: sized to match the New run button; active is the primary blue so the current tab is obvious. */
+.runs-dr .ov-scope-btn { padding: 6px 16px; font-weight: 600; color: var(--muted); }
+.runs-dr .ov-scope-btn:hover { color: var(--fg); }
+.runs-dr .ov-scope-btn.active { background: var(--btn-bg); color: var(--btn-fg); }
+.runs-table .run-empty-row td { text-align: center; color: var(--muted); padding: 22px; font-size: 12px; }
+
+/* ================= Runs — Docker-style table (inside the flow "Runs" panel) ================= */
+.runs-table-wrap { border: 1px solid var(--border); border-radius: 8px; background: var(--panel); overflow: hidden; }
+/* table-layout:fixed locks column widths so the wide expanded drawer (console, cost
+   table) can't re-flow and break the collapsed rows' columns. */
+.runs-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.runs-table thead th {
+  text-align: left; font-weight: 600; font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--muted); padding: 9px 14px; background: var(--panel-2); border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.runs-table td { padding: 11px 14px; vertical-align: middle; }
+.runs-table .run-row > td { overflow: hidden; }
+.rt-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.runs-table .run-row { cursor: pointer; border-bottom: 1px solid var(--border); transition: background .12s ease-out; }
+.runs-table tbody tr:last-child { border-bottom: 0; }
+.run-row:hover { background: var(--hover); }
+.run-row.open { background: var(--panel-2); }
+
+/* Balanced column widths (sum = 100%); table-layout:fixed scales them to the panel. */
+.rt-chev { width: 4%; padding-right: 0 !important; }
+.rt-run { width: 21%; }
+.rt-chevron { display: inline-flex; color: var(--muted); transition: transform .18s ease-out; }
+.run-row.open .rt-chevron { transform: rotate(90deg); color: var(--fg); }
+
+.rt-status { width: 12%; }
+.run-status { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.run-status.muted { color: var(--muted); }
+.run-status .ddot { flex: none; }
+.ddot.done { background: var(--muted); }
+
+.rt-name .run-name { font-weight: 600; }
+.rt-name .run-id { font-size: 11px; color: var(--muted); margin-left: 2px; }
+
+.rt-progress { width: 15%; }
+/* Numeric run metrics — right-aligned, tabular, muted */
+.rt-cost, .rt-tokens, .rt-task { text-align: right; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rt-cost { width: 9%; }
+.rt-tokens { width: 11%; }
+.rt-task { width: 9%; }
+.runs-table th.rt-cost, .runs-table th.rt-tokens, .runs-table th.rt-task { text-align: right; }
+.run-prog { display: flex; align-items: center; gap: 9px; }
+.run-prog-bar { flex: 1; min-width: 60px; height: 5px; border-radius: 999px; background: var(--badge-bg); overflow: hidden; }
+.run-prog-fill { display: block; height: 100%; border-radius: inherit; transition: width .2s ease-out; }
+.run-prog-fill.run { background: var(--running); }
+.run-prog-fill.ok { background: var(--success); }
+.run-prog-num { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.rt-started { width: 10%; color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+.rt-actions { width: 9%; text-align: right; overflow: visible !important; }
+/* Flat icon actions — no button box, matching the flow-row action icons. */
+.run-row-actions { display: inline-flex; align-items: center; gap: 2px; }
+.run-row-actions .icon-btn[aria-expanded="true"] { background: var(--hover); color: var(--fg); }
+
+/* Detail drawer that slides open under the selected run */
+.run-detail > td { padding: 0; background: var(--panel-2); }
+.run-drawer { border-top: 1px solid var(--border); animation: runsDrawer .2s ease-out; }
+.run-drawer .runner { border-top: 0; background: transparent; }
+
+@keyframes runsDrawer {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* runner header stats — replaces the run name/status that the row already shows */
+.runner-stats { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; color: var(--muted); font-size: 12px; }
+.runner-stats b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+.runner-stats .sep { opacity: .5; }
+
+/* selected-step card */
+.step-card { border: 1px solid var(--border); border-radius: 8px; background: var(--panel); overflow: hidden; }
+.step-card-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 11px 14px; }
+.step-card-title { font-size: 14px; font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; }
+.step-card-head .runner-detail-actions { margin-left: auto; padding-top: 0; }
+
+/* meta grid — two columns of bordered cells */
+.step-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.step-meta .mcell { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 14px; border-top: 1px solid var(--border); font-size: 12px; }
+.step-meta .mcell:nth-child(odd) { border-right: 1px solid var(--border); }
+.step-meta .mk { flex: none; width: 58px; color: var(--muted); }
+.step-meta .mcell .small { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+.step-meta .mcell .placeholder { color: var(--muted); }
+
+.run-empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 20px;
+  font-size: 12px;
+}
+
+/* ---- runner sub-tabs ---- */
+.runner-subtabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin: 4px 0 12px; }
+.runner-subtab { border: 0; background: none; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; padding: 7px 12px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; display: inline-flex; align-items: center; gap: 6px; }
+.runner-subtab:hover { color: var(--fg); }
+.runner-subtab.on { color: var(--fg); border-bottom-color: var(--focus); }

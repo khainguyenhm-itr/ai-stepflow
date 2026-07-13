@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Agent } from '@ai-stepflow/core/types';
 import { Icon } from '../components/primitives';
-import { ResourceCard, EmptyState } from '../components/ResourceCard';
+import { EmptyState } from '../components/ResourceCard';
 import { ScopeFilter, SaveScope, ViewFilter, SortOrder, UnifiedFilterPanel } from '../components/ScopeControls';
 import { sendToVSCode } from '../vscode';
 import { useScopeFilter } from '../hooks/useScopeFilter';
@@ -18,8 +18,6 @@ interface AgentsTabProps {
   onRun: (agent: Agent) => void;
   onDetail: (agent: Agent) => void;
   onNew: (scope: SaveScope) => void;
-  isBookmarked: (agent: Agent) => boolean;
-  onToggleBookmark: (agent: Agent) => void;
   initialFilter: ScopeFilter;
   onScopeFilterChange: (v: ScopeFilter) => void;
   initialViewFilter: ViewFilter;
@@ -37,8 +35,6 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
   onRun,
   onDetail,
   onNew,
-  isBookmarked,
-  onToggleBookmark,
   initialFilter,
   onScopeFilterChange,
   initialViewFilter,
@@ -66,7 +62,6 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
     .filter(agent => filter === 'all' || getItemScope(agent.sourcePath) === filter)
     .filter(agent =>
       viewFilter.length === 0 ||
-      (viewFilter.includes('bookmarked') && isBookmarked(agent)) ||
       (viewFilter.includes('built-in') && !!agent.builtIn)
     )
     .filter(agent =>
@@ -75,7 +70,7 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
       (agent.description ?? '').toLowerCase().includes(q)
     )
     .sort((a, b) => {
-      if (sortOrder === 'newest') return (b.modifiedAt ?? 0) - (a.modifiedAt ?? 0);
+      if (sortOrder === 'activity' || sortOrder === 'newest') return (b.modifiedAt ?? 0) - (a.modifiedAt ?? 0);
       if (sortOrder === 'oldest') return (a.modifiedAt ?? 0) - (b.modifiedAt ?? 0);
       return (Number(!!b.builtIn) - Number(!!a.builtIn)) ||
         (sortOrder === 'desc' ? b.name.localeCompare(a.name) : a.name.localeCompare(b.name));
@@ -86,25 +81,48 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
     return <span className="badge scope">{scope === 'global' ? 'global' : 'repo'}</span>;
   };
 
-  const renderCard = (agent: Agent) => (
-    <ResourceCard
-      key={agent.sourcePath || agent.name}
-      title={agent.sourcePath.split('/').pop()?.replace(/\.md$/i, '') ?? agent.name}
-      subtitle={agent.name}
-      description={agent.description}
-      scopeBadge={renderScopeBadge(agent.sourcePath)}
-      badge={agent.builtIn ? <span className="badge built-in">Build-in</span> : undefined}
-      meta={<span className="muted small mono">model: {agent.model}</span>}
-      onEdit={() => onOpenEditor(agent)}
-      bookmarked={isBookmarked(agent)}
-      onToggleBookmark={() => onToggleBookmark(agent)}
-      actions={
-        <button className="btn primary" onClick={() => onRun(agent)}>
-          <span className="btn-glyph"><Icon.Play size={14} /></span>Run
-        </button>
-      }
-      onDetail={() => onDetail(agent)}
-    />
+  const renderRow = (agent: Agent) => {
+    const fileTitle = agent.sourcePath.split('/').pop()?.replace(/\.md$/i, '') ?? agent.name;
+    return (
+      <tr className="drow" key={agent.sourcePath || agent.name}>
+        <td>
+          <div className="dname">
+            <span className="dn">
+              {fileTitle}
+              {agent.builtIn && <span className="badge built-in">Build-in</span>}
+            </span>
+            <span className="dsub">{agent.description || 'No description.'}</span>
+          </div>
+        </td>
+        <td className="dmodel">{agent.model}</td>
+        <td>
+          {agent.tools?.length ? (
+            <div className="dtools">
+              {agent.tools.slice(0, 3).map(t => <span className="dtool" key={t}>{t}</span>)}
+              {agent.tools.length > 3 && <span className="dtool" title={agent.tools.slice(3).join(', ')}>...</span>}
+            </div>
+          ) : <span className="muted">—</span>}
+        </td>
+        <td>{renderScopeBadge(agent.sourcePath)}</td>
+        <td className="drow-actions-cell">
+          <span className="drow-actions">
+
+            <button className="icon-btn" title="Run" onClick={() => onRun(agent)}><Icon.Play size={14} /></button>
+            <button className="icon-btn pencil" title="Edit" onClick={() => onOpenEditor(agent)}><Icon.Pencil size={14} /></button>
+            <button className="icon-btn" title="Details" onClick={() => onDetail(agent)}><Icon.Info size={14} /></button>
+          </span>
+        </td>
+      </tr>
+    );
+  };
+
+  const table = (rows: Agent[]) => (
+    <div className="dwrap scroll-x">
+      <table className="dtable">
+        <thead><tr><th style={{ width: '40%' }}>Name</th><th style={{ width: '12%' }}>Model</th><th style={{ width: '25%' }}>Tools</th><th style={{ width: '10%' }}>Scope</th><th style={{ width: '13%' }} /></tr></thead>
+        <tbody>{rows.map(renderRow)}</tbody>
+      </table>
+    </div>
   );
 
   return (
@@ -146,11 +164,11 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
         groupByTag(visibleAgents).map(group => (
           <section key={group.tag} className="tag-group">
             <h3 className="tag-group-title">{group.tag}<span className="sec-count">{group.items.length}</span></h3>
-            <div className="card-grid">{group.items.map(renderCard)}</div>
+            {table(group.items)}
           </section>
         ))
       ) : (
-        <div className="card-grid">{visibleAgents.map(renderCard)}</div>
+        table(visibleAgents)
       )}
     </div>
   );

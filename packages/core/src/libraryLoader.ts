@@ -11,6 +11,18 @@ export interface LibraryLoadOptions {
   globalPath?: string;
 }
 
+/**
+ * Coerce a frontmatter `tools` value into a string array. YAML flow lists
+ * (`[a, b]`) parse as arrays, but a bare comma-separated scalar (`a, b, c`)
+ * parses as a plain string — normalize both to `string[]` so the declared type
+ * holds and consumers can safely call array methods.
+ */
+export function normalizeTools(value: unknown): string[] | undefined {
+  if (Array.isArray(value)) return value.map(v => String(v).trim()).filter(Boolean);
+  if (typeof value === 'string') return value.split(',').map(t => t.trim()).filter(Boolean);
+  return undefined;
+}
+
 function scopedDirs(projectPath: string, globalPath: string, kind: 'agents' | 'skills' | 'flows'): string[] {
   return [path.join(globalPath, kind), path.join(projectPath, '.claude', kind)];
 }
@@ -43,7 +55,7 @@ async function parseAgentFile(filePath: string): Promise<Agent | undefined> {
       name: data.name || path.basename(filePath, '.md'),
       description: data.description || '',
       model: data.model || 'sonnet',
-      tools: data.tools,
+      tools: normalizeTools(data.tools),
       systemPrompt: body.trim(),
       runnerPath: data.runner || data.runnerPath || undefined,
       sourcePath: filePath,

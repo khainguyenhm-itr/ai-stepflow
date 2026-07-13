@@ -1,4 +1,4 @@
-import { Flow, FlowRunState, StepRunState, Agent, Skill } from '@ai-stepflow/core/types';
+import { Flow, FlowRunState, StepRunState, Agent, Skill, ReviewKit } from '@ai-stepflow/core/types';
 import { isVSCodeWebview, sendToVSCode } from '../vscode';
 import {
   getStepSkills,
@@ -96,6 +96,7 @@ export const useAppLogic = () => {
         libState.setFlows(message.flows);
         libState.setAgents(message.agents);
         libState.setSkills(message.skills);
+        libState.setReviewKits(message.reviewKits || []);
         libState.setAuditLogs(message.auditLogs || {});
         libState.setRunSummaries(message.runSummaries || []);
         libState.setGlobalPath(message.globalPath);
@@ -110,48 +111,46 @@ export const useAppLogic = () => {
             flows: parseFilter(message.uiPrefs['scopeFilter:flows']),
             agents: parseFilter(message.uiPrefs['scopeFilter:agents']),
             skills: parseFilter(message.uiPrefs['scopeFilter:skills']),
+            reviews: parseFilter(message.uiPrefs['scopeFilter:reviews']),
           });
           libState.setOverviewScope(parseFilter(message.uiPrefs['overviewScope']));
           const parseViewFilter = (v: unknown): ViewFilter => {
-            if (Array.isArray(v)) return (v as string[]).filter((x): x is ViewFilterItem => x === 'bookmarked' || x === 'built-in');
-            if (v === 'bookmarked' || v === 'built-in') return [v]; // migrate old persisted string
+            if (Array.isArray(v)) return (v as string[]).filter((x): x is ViewFilterItem => x === 'built-in');
+            if (v === 'built-in') return [v]; // migrate old persisted string
             return [];
           };
           const parseSortOrder = (v: string | undefined): SortOrder =>
-            v === 'desc' ? 'desc' : 'asc';
+            v === 'desc' || v === 'asc' || v === 'newest' || v === 'oldest' ? v : 'activity';
           libState.setViewFilters({
             flows: parseViewFilter(message.uiPrefs['viewFilter:flows']),
             agents: parseViewFilter(message.uiPrefs['viewFilter:agents']),
             skills: parseViewFilter(message.uiPrefs['viewFilter:skills']),
+            reviews: parseViewFilter(message.uiPrefs['viewFilter:reviews']),
           });
           libState.setSortOrders({
             flows: parseSortOrder(message.uiPrefs['sortOrder:flows']),
             agents: parseSortOrder(message.uiPrefs['sortOrder:agents']),
             skills: parseSortOrder(message.uiPrefs['sortOrder:skills']),
+            reviews: parseSortOrder(message.uiPrefs['sortOrder:reviews']),
           });
           const parseGroupBy = (v: string | undefined): 'list' | 'tag' => (v === 'tag' ? 'tag' : 'list');
           libState.setGroupBys({
             agents: parseGroupBy(message.uiPrefs['groupBy:agents']),
             skills: parseGroupBy(message.uiPrefs['groupBy:skills']),
+            reviews: parseGroupBy(message.uiPrefs['groupBy:reviews']),
           });
           const savedTab = message.uiPrefs['activeTab'];
-          if (savedTab === 'overview' || savedTab === 'flows' || savedTab === 'agents' || savedTab === 'skills') {
+          if (savedTab === 'overview' || savedTab === 'flows' || savedTab === 'agents' || savedTab === 'skills' || savedTab === 'reviews') {
             libState.setActiveTab(savedTab);
           }
-          try {
-            const rawBm = message.uiPrefs['bookmarks'];
-            if (rawBm) {
-              const bm = JSON.parse(rawBm);
-              if (bm && typeof bm === 'object' && !Array.isArray(bm)) libState.setBookmarks(bm);
-            }
-          } catch { /* corrupt prefs — keep empty */ }
+
         }
         break;
       case 'mcpServers':
         libState.setConnectedMcpServers(message.connectedMcpServers || []);
         break;
       case 'navigateToTab':
-        if (message.tab === 'overview' || message.tab === 'flows' || message.tab === 'agents' || message.tab === 'skills') {
+        if (message.tab === 'overview' || message.tab === 'flows' || message.tab === 'agents' || message.tab === 'skills' || message.tab === 'reviews') {
           libState.setActiveTab(message.tab);
         }
         break;
@@ -252,6 +251,12 @@ export const useAppLogic = () => {
           buildState.setEditingAgentSource(null);
           buildState.setAgentModalOpen(true);
           libState.setActiveTab('agents');
+        } else if (message.kind === 'review') {
+          buildState.setReviewForm(prev => ({ ...prev, ...message.item, scope: 'project' }));
+          buildState.setReviewFormError(null);
+          buildState.setEditingReviewSource(null);
+          buildState.setReviewModalOpen(true);
+          libState.setActiveTab('reviews');
         } else {
           buildState.setSkillForm(prev => ({ ...prev, ...message.item, scope: 'project' }));
           buildState.setSkillFormError(null);
@@ -432,6 +437,59 @@ export const useAppLogic = () => {
     buildState.setSkillModalOpen(true);
   };
 
+  const submitReviewModal = () => {
+    if (!buildState.reviewForm.name.trim()) {
+      buildState.setReviewFormError('Review name is required.');
+      return;
+    }
+    buildState.setReviewFormError(null);
+    if (!isVSCodeWebview()) {
+      const review: ReviewKit = {
+        name: buildState.reviewForm.name.trim(),
+        description: buildState.reviewForm.description || '',
+        content: buildState.reviewForm.content || '',
+        sourcePath: `/preview/.claude/reviews/${buildState.reviewForm.name.trim()}`
+      };
+      libState.setReviewKits(prev => [
+        ...prev.filter(item => item.name !== review.name && item.sourcePath !== buildState.editingReviewSource),
+        review
+      ]);
+      buildState.setReviewModalOpen(false);
+      buildState.setEditingReviewSource(null);
+      buildState.setReviewForm(buildState.emptyReviewForm);
+      return;
+    }
+    sendToVSCode(buildState.editingReviewSource ? 'updateReviewKit' : 'createReviewKit', {
+      review: {
+        name: buildState.reviewForm.name.trim(),
+        description: buildState.reviewForm.description || '',
+        content: buildState.reviewForm.content || ''
+      },
+      originalSourcePath: buildState.editingReviewSource,
+      isGlobal: buildState.reviewForm.scope === 'global'
+    });
+    buildState.setReviewModalOpen(false);
+    buildState.setEditingReviewSource(null);
+    buildState.setReviewForm(buildState.emptyReviewForm);
+  };
+
+  const openReviewEditor = (review?: ReviewKit, newScope: SaveScope = 'project') => {
+    if (review) {
+      buildState.setReviewForm({
+        name: review.name,
+        description: review.description,
+        content: review.content,
+        scope: libState.getItemScope(review.sourcePath)
+      });
+      buildState.setEditingReviewSource(review.sourcePath);
+    } else {
+      buildState.setReviewForm({ ...buildState.emptyReviewForm, scope: newScope });
+      buildState.setEditingReviewSource(null);
+    }
+    buildState.setReviewFormError(null);
+    buildState.setReviewModalOpen(true);
+  };
+
   const submitConnectMcp = (config: { name: string; scope: 'global' | 'local'; command: string; args: string[]; env?: Record<string, string> }) => {
     sendToVSCode('connectMcpServer', { config });
     buildState.setConnectMcpModalOpen(false);
@@ -567,6 +625,7 @@ export const useAppLogic = () => {
     startOrResumeRun,
     startFreshRun,
     submitAgentModal, openAgentEditor, submitSkillModal, openSkillEditor,
+    submitReviewModal, openReviewEditor,
     submitConnectMcp,
     submitRunInputs, runActiveStep, saveEditingFlow, saveStepEdit
   };

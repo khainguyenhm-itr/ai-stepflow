@@ -44,10 +44,22 @@ test('parseVerdict reads pass/reject and aliases, embedded in prose', () => {
   assert.deepEqual(parseVerdict('{"decision":"rejected","reason":"missing tests"}'), { decision: 'reject', reason: 'missing tests' });
 });
 
-test('parseVerdict returns undefined for unparseable or absent verdicts', () => {
+test('parseVerdict recovers a decision from malformed output', () => {
+  // A decision field survives even without valid JSON braces/quotes.
+  assert.deepEqual(parseVerdict("decision: reject — missing tests"), { decision: 'reject' });
+  assert.deepEqual(parseVerdict('The change should be rejected due to a regression.'), { decision: 'reject' });
+});
+
+test('parseVerdict leans pass when the reply carries no rejection signal', () => {
+  // Auto-review must not stall on formatting: a non-empty reply always resolves to pass|reject.
+  assert.deepEqual(parseVerdict('no json here'), { decision: 'pass' });
+  assert.deepEqual(parseVerdict('{"decision":"maybe"}'), { decision: 'pass' });
+  assert.deepEqual(parseVerdict('Looks good to me.'), { decision: 'pass' });
+});
+
+test('parseVerdict returns undefined only for an empty reply (routes to a human)', () => {
   assert.equal(parseVerdict(''), undefined);
-  assert.equal(parseVerdict('no json here'), undefined);
-  assert.equal(parseVerdict('{"decision":"maybe"}'), undefined);
+  assert.equal(parseVerdict('   \n  '), undefined);
 });
 
 test('summarizeUsage sums every token bucket and handles absence', () => {

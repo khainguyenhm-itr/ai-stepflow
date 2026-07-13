@@ -10,9 +10,11 @@ import { OverviewTab } from './tabs/OverviewTab';
 import { FlowsTab } from './tabs/FlowsTab';
 import { AgentsTab } from './tabs/AgentsTab';
 import { SkillsTab } from './tabs/SkillsTab';
+import { ReviewsTab } from './tabs/ReviewsTab';
 import { DetailModal } from './modals/DetailModal';
 import { AgentModal } from './modals/AgentModal';
 import { SkillModal } from './modals/SkillModal';
+import { ReviewModal } from './modals/ReviewModal';
 import { ConnectMcpModal } from './modals/ConnectMcpModal';
 import { RunInputsModal } from './modals/RunInputsModal';
 import { FlowBuilderModal } from './modals/FlowBuilderModal';
@@ -23,7 +25,7 @@ const App: React.FC = () => {
   const logic = useAppLogic();
   const {
     activeTab, setActiveTab,
-    flows, agents, skills, auditLogs, runSummaries,
+    flows, agents, skills, reviewKits, auditLogs, runSummaries,
     globalPath, projectPath, connectedMcpServers, defaultLibraryInstalled,
     recentWorkspaces, overviewScope, setOverviewScope, runTotalsAll, runTrendAll,
     activeFlow,
@@ -31,7 +33,6 @@ const App: React.FC = () => {
     activeStepId, setActiveStepId,
     runnerVisible,
     commandCopied, setCommandCopied,
-    isBookmarked, toggleBookmark,
     standaloneRun, setStandaloneRun,
     standaloneRunDescription, setStandaloneRunDescription,
     editingFlow, setEditingFlow,
@@ -52,17 +53,21 @@ const App: React.FC = () => {
     detailItem, setDetailItem,
     agentModalOpen, setAgentModalOpen,
     skillModalOpen, setSkillModalOpen,
+    reviewModalOpen, setReviewModalOpen,
     connectMcpModalOpen, setConnectMcpModalOpen,
     editingSkillSource, setEditingSkillSource,
     editingAgentSource, setEditingAgentSource,
+    editingReviewSource, setEditingReviewSource,
     agentForm, setAgentForm,
     skillForm, setSkillForm,
+    reviewForm, setReviewForm,
     scopeFilters,
     viewFilters,
     sortOrders,
     groupBys, setGroupBys,
     agentFormError, setAgentFormError,
     skillFormError, setSkillFormError,
+    reviewFormError,
     draftLoading, setDraftLoading,
     agentAiPrompt, setAgentAiPrompt,
     agentAiMessages, setAgentAiMessages,
@@ -74,6 +79,7 @@ const App: React.FC = () => {
     getItemScope, getFlowScope, getAgentByName, getSkillByName,
     startFreshRun,
     submitAgentModal, openAgentEditor, submitSkillModal, openSkillEditor,
+    submitReviewModal, openReviewEditor,
     submitConnectMcp,
     submitRunInputs, runActiveStep, saveEditingFlow, saveStepEdit
   } = logic;
@@ -95,7 +101,8 @@ const App: React.FC = () => {
     { key: 'overview', label: 'Overview' },
     { key: 'flows', label: 'Workflows', count: flows.length },
     { key: 'agents', label: 'Agents', count: agents.length },
-    { key: 'skills', label: 'Skills', count: skills.length }
+    { key: 'skills', label: 'Skills', count: skills.length },
+    { key: 'reviews', label: 'Reviews', count: reviewKits.length }
   ];
 
   return (
@@ -235,8 +242,6 @@ const App: React.FC = () => {
           onViewFilterChange={v => sendToVSCode('savePref', { key: 'viewFilter:flows', value: v })}
           initialSortOrder={sortOrders.flows}
           onSortOrderChange={v => sendToVSCode('savePref', { key: 'sortOrder:flows', value: v })}
-          isBookmarked={flow => isBookmarked('flow', flow.sourcePath)}
-          onToggleBookmark={flow => toggleBookmark('flow', flow.sourcePath)}
         />
       )}
 
@@ -266,8 +271,6 @@ const App: React.FC = () => {
             meta: { Scope: getScope(agent.sourcePath), Model: agent.model },
             onDelete: () => sendToVSCode('deleteAgent', { agent })
           })}
-          isBookmarked={agent => isBookmarked('agent', agent.sourcePath)}
-          onToggleBookmark={agent => toggleBookmark('agent', agent.sourcePath)}
           onNew={scope => openAgentEditor({ name: '', description: '', model: 'sonnet', tools: [], systemPrompt: '', sourcePath: scope === 'global' ? globalPath : projectPath })}
         />
       )}
@@ -298,9 +301,31 @@ const App: React.FC = () => {
             meta: { Scope: getScope(skill.sourcePath) },
             onDelete: () => sendToVSCode('deleteSkill', { skill })
           })}
-          isBookmarked={skill => isBookmarked('skill', skill.sourcePath)}
-          onToggleBookmark={skill => toggleBookmark('skill', skill.sourcePath)}
           onNew={scope => openSkillEditor(undefined, scope)}
+        />
+      )}
+
+      {activeTab === 'reviews' && (
+        <ReviewsTab
+          reviewKits={reviewKits}
+          globalPath={globalPath}
+          initialFilter={scopeFilters.reviews}
+          onScopeFilterChange={v => sendToVSCode('savePref', { key: 'scopeFilter:reviews', value: v })}
+          initialViewFilter={viewFilters.reviews}
+          onViewFilterChange={v => sendToVSCode('savePref', { key: 'viewFilter:reviews', value: v })}
+          initialSortOrder={sortOrders.reviews}
+          onSortOrderChange={v => sendToVSCode('savePref', { key: 'sortOrder:reviews', value: v })}
+          onOpenEditor={openReviewEditor}
+          onDetail={kit => setDetailItem({
+            type: 'Review',
+            title: kit.name,
+            description: kit.description,
+            sourcePath: kit.sourcePath,
+            meta: { Scope: getScope(kit.sourcePath) },
+            onDelete: () => sendToVSCode('deleteReviewKit', { review: kit })
+          })}
+          onNew={scope => openReviewEditor(undefined, scope)}
+          onInstallDefault={() => sendToVSCode('installReviewDefault', { isGlobal: scopeFilters.reviews === 'global' })}
         />
       )}
 
@@ -370,6 +395,16 @@ const App: React.FC = () => {
           }
           sendToVSCode('generateDraft', { kind: 'skill', prompt, history: prevMessages });
         }}
+      />
+
+      <ReviewModal
+        open={reviewModalOpen}
+        editingSource={editingReviewSource}
+        form={reviewForm}
+        error={reviewFormError}
+        onClose={() => { setReviewModalOpen(false); setEditingReviewSource(null); }}
+        onChange={patch => setReviewForm(prev => ({ ...prev, ...patch }))}
+        onSubmit={submitReviewModal}
       />
 
       <ConnectMcpModal
@@ -518,6 +553,7 @@ const App: React.FC = () => {
         error={stepError}
         agents={agents}
         skills={skills}
+        reviewKits={reviewKits}
         flowSteps={editingFlow?.steps || []}
         onClose={() => { setEditingStep(null); if (stepEditFromBoard) setEditingFlow(null); }}
         onSave={saveStepEdit}

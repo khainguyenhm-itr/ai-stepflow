@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Flow, FlowRunState, StepRunState } from '@ai-stepflow/core/types';
 import { Icon, metaValue } from '../components/primitives';
 import { formatRunTime, getStepSkills } from '../flowUtils';
@@ -160,30 +160,12 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
     events.push(event);
   }
 
-  const completionStatuses = Object.values(runState.steps).map(s => s.completionStatus);
-
-  // Overall run status (summarized from steps).
-  const getRunStatus = () => {
-    const statuses = Object.values(runState.steps).map(s => s.executionStatus);
-    if (completionStatuses.every(s => s === 'done')) return { label: 'Done', className: 'success', Icon: Icon.Check };
-    if (statuses.includes('failed')) return { label: 'Failed', className: 'error', Icon: Icon.X };
-    if (statuses.includes('running')) return { label: 'Running', className: 'progress', Icon: Icon.Play };
-    if (statuses.includes('cancelled')) return { label: 'Cancelled', className: '', Icon: Icon.Info };
-    return { label: 'Ready', className: '', Icon: Icon.Info };
-  };
-
-  const runStatus = getRunStatus();
-  const isFlowDone = completionStatuses.every(s => s === 'done');
   const isFinalized = !!runState.isClosed;
-  
-  // Reset is available once any step has moved past its initial ready/locked state.
-  const canResetRun = !isFinalized && Object.values(runState.steps).some(
-    s => s.executionStatus !== 'ready' && s.executionStatus !== 'locked'
-  );
 
   // A single step can be reset once it has left its pristine initial state (ready/locked with no
   // history) — the escape hatch for a step wedged in a state with no valid action (e.g. no Finish).
-  const canResetStep = !isFinalized && !!activeStepState && !(
+  // Cannot reset if currently running.
+  const canResetStep = !isFinalized && !!activeStepState && activeStepState.executionStatus !== 'running' && !(
     (activeStepState.executionStatus === 'ready' || activeStepState.executionStatus === 'locked')
     && (activeStepState.history?.length ?? 0) === 0
   );
@@ -195,18 +177,6 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
     s => (s.history?.length ?? 0) > 0 || (s.executionStatus !== 'ready' && s.executionStatus !== 'locked')
   );
 
-  // Secondary run actions (Reset / Verify / Report / Delete) collapse into a single "more" menu
-  // to keep the header uncluttered.
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDocClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
-    };
-    document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
-  }, [menuOpen]);
 
   // Approve/Reject/Finish can wait on a real Claude call (semantic produces check, AI review)
   // before the extension replies, so spin the clicked button until that step's state actually
@@ -216,145 +186,128 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
     setPendingAction(null);
   }, [activeStepId, activeStepState]);
 
+  // Runner content is split into sub-tabs to cut vertical scrolling: the step detail head
+  // (status + actions) stays pinned; Console / Cost / History switch below it.
+  const [rtab, setRtab] = useState<'console' | 'cost' | 'history'>('console');
+
+  // Cost + History render as aligned monospace reports (same look as the console block).
+  const costReport = (() => {
+    const rows = stepCosts.map(({ step, state, costUsd, tokensUsed }, i) => {
+      const running = state?.executionStatus === 'running';
+      const hasRun = !!state && state.executionStatus !== 'ready' && state.executionStatus !== 'locked';
+      return {
+        label: `${i + 1} ${step.title || step.id}`,
+        model: state?.modelUsed || (running ? '…' : hasRun ? 'interactive' : '—'),
+        tokens: tokensUsed > 0 ? tokensUsed.toLocaleString() : running ? '…' : '—',
+        cost: costUsd > 0 ? `$${costUsd.toFixed(4)}` : running ? '…' : '—',
+        active: activeStepId === step.id,
+      };
+    });
+    const totalTokStr = totalTokens > 0 ? totalTokens.toLocaleString() : '—';
+    const totalCostStr = totalCostUsd > 0 ? `$${totalCostUsd.toFixed(4)}` : '—';
+    const labelW = Math.max(4, ...rows.map(r => r.label.length), 5) + 6;
+    const modelW = Math.max(5, ...rows.map(r => r.model.length)) + 6;
+    const tokW = Math.max(6, ...rows.map(r => r.tokens.length), totalTokStr.length) + 4;
+    const costW = Math.max(4, ...rows.map(r => r.cost.length), totalCostStr.length);
+    const line = (l: string, m: string, t: string, c: string, tail = '') =>
+      l.padEnd(labelW) + m.padEnd(modelW) + t.padStart(tokW) + '    ' + c.padStart(costW) + tail;
+    const out = [line('Step', 'Model', 'Tokens', 'Cost'), ''];
+    rows.forEach(r => out.push(line(r.label, r.model, r.tokens, r.cost, r.active ? '   ◀ active' : '')));
+    out.push(' '.repeat(labelW + modelW) + '─'.repeat(tokW + 4 + costW));
+    out.push(line('Total', '', totalTokStr, totalCostStr));
+    return out.join('\n');
+  })();
+
+  // History renders as a color-coded console (like the mockup): muted timestamps,
+  // status token tinted by outcome, then the message.
+  const statusClass = (status: string) => {
+    const s = status.toLowerCase();
+    if (/(complete|approv|done|success|finish|ok)/.test(s)) return 'ev-ok';
+    if (/(run|start|progress|working)/.test(s)) return 'ev-run';
+    if (/(reject|fail|error|stop|abort)/.test(s)) return 'ev-err';
+    return 'ev-muted';
+  };
+  const historyNodes = (() => {
+    const nodes: React.ReactNode[] = [];
+    historyGroups.forEach((group, gi) => {
+      const statusW = Math.max(6, ...group.events.map(e => String(e.status).length));
+      nodes.push(
+        <span key={`grp-${gi}`} className="ev-muted">
+          {(gi > 0 ? '\n' : '') + `── ${group.runId === 'unknown' ? 'unknown run' : formatRunTime(group.runId)} ──\n`}
+        </span>
+      );
+      group.events.forEach((e, ei) => {
+        const time = new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const status = String(e.status);
+        nodes.push(
+          <React.Fragment key={`ev-${gi}-${ei}`}>
+            <span className="ev-time">{time}</span>{'  '}
+            <span className={statusClass(status)}>{status.padEnd(statusW)}</span>
+            {e.message ? `  ${e.message}` : ''}{'\n'}
+          </React.Fragment>
+        );
+      });
+    });
+    return nodes;
+  })();
+
   return (
     <div className="runner">
-      <div className="runner-head">
-        <div className="runner-head-info">
-          <div className="flex-row items-center gap-8 mb-4">
-            <span className="runner-flow-name">
-              {runState.runName || runState.runId.split('T')[0]}
-            </span>
-            {isFinalized ? (
-              <span className="badge success">
-                <Icon.Check size={10} style={{ marginRight: 4 }} />
-                Finalized
-              </span>
-            ) : (
-              <span className={`badge ${runStatus.className}`}>
-                <runStatus.Icon size={10} style={{ marginRight: 4 }} />
-                {runStatus.label}
-              </span>
-            )}
-          </div>
-          <span className="small muted">
-            {completedSteps}/{flow.steps.length} steps done · {formatRunTime(runState.runId)}
-          </span>
+      <div className="runner-striprow">
+        <div className="runner-strip">
+          {flow.steps.map((step, index) => {
+            const stepState = runState.steps[step.id];
+            const isActive = activeStepId === step.id;
+            const isDone = stepState?.completionStatus === 'done';
+            const isStepLocked = stepState?.executionStatus === 'locked';
+            return (
+              <React.Fragment key={step.id}>
+                {index > 0 && <span className="strip-connector" />}
+                <button
+                  type="button"
+                  className={`strip-step ${isActive ? 'active' : ''} ${isDone ? 'done' : ''} ${isStepLocked ? 'locked' : ''}`}
+                  title={step.title || step.id}
+                  onClick={() => onSetActiveStep(step.id)}
+                >
+                  {isDone ? <Icon.Check size={14} /> : index + 1}
+                </button>
+              </React.Fragment>
+            );
+          })}
         </div>
-        <div className="runner-head-actions">
-          {!isFinalized && (
-            <>
-              <label
-                className={`auto-review-toggle small${autoReviewLocked ? ' is-disabled' : ''}`}
-                title={autoReviewLocked
-                  ? 'Auto review is locked once a step has run. Reset the run to change it.'
-                  : 'On: AI reviews each auto step\'s artifact — pass advances automatically, a rejection stops the run and writes a review report. Off: no AI review runs; each auto step waits for you to click "Finish Step". Human-review steps always wait for your approval either way.'}
-              >
-                <input
-                  type="checkbox"
-                  role="switch"
-                  checked={!!runState.autoReview}
-                  disabled={autoReviewLocked}
-                  onChange={e => sendToVSCode('setAutoReview', { enabled: e.target.checked })}
-                />
-                <span className="switch-track" aria-hidden="true" />
-                <span>Auto review</span>
-              </label>
-              <span className="runner-head-divider" aria-hidden="true" />
-            </>
-          )}
-          {!isFinalized && isFlowDone && (
-            <button
-              className="btn success"
-              title="Finalize flow and clear active status"
-              onClick={() => sendToVSCode('closeRun', { finalize: true })}
-            >
-              <Icon.Check size={14} style={{ marginRight: 4 }} />
-              Done Run
-            </button>
-          )}
-          {!isFinalized && (
-            <div className="more-menu" ref={menuRef}>
-              <button
-                className="icon-btn"
-                title="More actions"
-                aria-haspopup="menu"
-                aria-expanded={menuOpen}
-                onClick={() => setMenuOpen(open => !open)}
-              >
-                <Icon.More size={16} />
-              </button>
-              {menuOpen && (
-                <div className="more-menu-list" role="menu">
-                  {!isFlowDone && canResetRun && (
-                    <button className="more-menu-item" role="menuitem" onClick={() => { setMenuOpen(false); sendToVSCode('resetRun', {}); }}>
-                      <Icon.RotateCw size={14} />Reset all steps
-                    </button>
-                  )}
-                  <button className="more-menu-item" role="menuitem" onClick={() => { setMenuOpen(false); sendToVSCode('verifyRun', {}); }}>
-                    <Icon.Check size={14} />Verify
-                  </button>
-                  <button className="more-menu-item" role="menuitem" onClick={() => { setMenuOpen(false); sendToVSCode('exportRunReport', {}); }}>
-                    <Icon.Copy size={14} />Report
-                  </button>
-                  <div className="more-menu-sep" />
-                  <button className="more-menu-item danger" role="menuitem" onClick={() => { setMenuOpen(false); sendToVSCode('deleteRun', {}); }}>
-                    <Icon.Trash2 size={14} />Delete run
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-          <button
-            className="icon-btn"
-            title="Close runner view (keep run data)"
-            onClick={() => sendToVSCode('closeRun', { finalize: false })}
+        {!isFinalized && (
+          <label
+            className={`auto-review-toggle small${autoReviewLocked ? ' is-disabled' : ''}`}
+            title={autoReviewLocked
+              ? 'Auto review is locked once a step has run. Reset the run to change it.'
+              : 'On: AI reviews each auto step\'s artifact — pass advances automatically, a rejection stops the run and writes a review report. Off: no AI review runs; each auto step waits for you to click "Finish Step". Human-review steps always wait for your approval either way.'}
           >
-            <Icon.X size={14} />
-          </button>
-        </div>
-      </div>
-      <div className="runner-strip">
-        {flow.steps.map((step, index) => {
-          const stepState = runState.steps[step.id];
-          const isActive = activeStepId === step.id;
-          const isDone = stepState?.completionStatus === 'done';
-          const isStepLocked = stepState?.executionStatus === 'locked';
-          return (
-            <React.Fragment key={step.id}>
-              {index > 0 && <span className="strip-connector" />}
-              <button
-                type="button"
-                className={`strip-step ${isActive ? 'active' : ''} ${isDone ? 'done' : ''} ${isStepLocked ? 'locked' : ''}`}
-                title={step.title || step.id}
-                onClick={() => onSetActiveStep(step.id)}
-              >
-                {isDone ? <Icon.Check size={14} /> : index + 1}
-              </button>
-            </React.Fragment>
-          );
-        })}
+            <input
+              type="checkbox"
+              role="switch"
+              checked={!!runState.autoReview}
+              disabled={autoReviewLocked}
+              onChange={e => sendToVSCode('setAutoReview', { enabled: e.target.checked })}
+            />
+            <span className="switch-track" aria-hidden="true" />
+            <span>Auto review</span>
+          </label>
+        )}
       </div>
       <div className="runner-detail">
-        <div className="runner-detail-head">
-          <div className="runner-detail-title">
-            <span className="runner-detail-step-label">
-              Step {activeStep ? flow.steps.findIndex(step => step.id === activeStep.id) + 1 : '–'} / {flow.steps.length}
+        <div className="step-card">
+          <div className="step-card-head">
+            <span className="step-card-title">
+              {activeStep ? activeStep.title || activeStep.id : 'No step selected'}
             </span>
-            <div className="runner-detail-title-row">
-              <span className="runner-detail-step-title">
-                {activeStep ? activeStep.title || activeStep.id : 'No step selected'}
-              </span>
-              {stepStatusBadge(activeStepState)}
-            </div>
-          </div>
-          <div className="runner-detail-actions">
+            {stepStatusBadge(activeStepState)}
+            <div className="runner-detail-actions">
             {!isFinalized && (
               <>
                 {stepActions.showWorking && (
-                  <span className="badge progress">
-                    <Icon.RotateCw size={10} style={{ marginRight: 4 }} className="spin" />
-                    AI working…
-                  </span>
+                  <button className="btn progress" disabled title="AI is processing...">
+                    <span className="btn-glyph"><Icon.RotateCw size={14} className="spin" /></span>AI working
+                  </button>
                 )}
                 {aiReviewing && (
                   <span className="badge progress">
@@ -414,41 +367,25 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
               </>
             )}
           </div>
+          </div>
+          <div className="step-meta">
+            <div className="mcell"><span className="mk">agent</span>{metaValue(activeStep?.agent, 'no agent assigned', true)}</div>
+            <div className="mcell"><span className="mk">model</span>{metaValue(activeStepState?.modelUsed, 'not reported yet', true)}</div>
+            <div className="mcell"><span className="mk">skill</span>{metaValue(activeStep ? getStepSkills(activeStep).join(', ') : '', 'no skill assigned', true)}</div>
+            <div className="mcell"><span className="mk">tokens</span>{metaValue(activeStepState?.tokensUsed != null ? activeStepState.tokensUsed.toLocaleString() : '', 'not reported yet', true)}</div>
+            <div className="mcell"><span className="mk">input</span>{metaValue(Object.entries(runState.inputs || {}).map(([key, value]) => `${key}=${value}`).join(' · '), 'no run inputs')}</div>
+            <div className="mcell"><span className="mk">cost</span>{metaValue(activeStepState?.costUsd != null ? `$${activeStepState.costUsd.toFixed(4)}` : '', 'not reported yet', true)}</div>
+          </div>
         </div>
 
-        <div className="runner-meta">
-          <div className="meta-group">
-            <span className="muted small">agent</span>
-            {metaValue(activeStep?.agent, 'no agent assigned', true)}
-            <span className="muted small">skill</span>
-            {metaValue(activeStep ? getStepSkills(activeStep).join(', ') : '', 'no skill assigned', true)}
-            <span className="muted small">command</span>
-            <span className="mono small command-cell">
-              {activeStep && getStepSkills(activeStep).length ? getStepSkills(activeStep).map(name => `/${name}`).join(' · ') : '/skill'}
-              <button
-                className="icon-btn sm"
-                title={commandCopied ? 'Copied!' : 'Copy command'}
-                onClick={onCopyCommand}
-              >
-                {commandCopied ? <Icon.Check size={14} /> : <Icon.Copy size={14} />}
-              </button>
-            </span>
-          </div>
-          <div className="meta-group">
-            <span className="muted small">input</span>
-            {metaValue(Object.entries(runState.inputs || {}).map(([key, value]) => `${key}=${value}`).join(' · '), 'no run inputs')}
-            <span className="muted small">model</span>
-            {metaValue(activeStepState?.modelUsed, 'not reported yet', true)}
-            <span className="muted small">tokens</span>
-            {metaValue(activeStepState?.tokensUsed != null ? activeStepState.tokensUsed.toLocaleString() : '', 'not reported yet', true)}
-            <span className="muted small">cost</span>
-            {metaValue(activeStepState?.costUsd != null ? `$${activeStepState.costUsd.toFixed(4)}` : '', 'not reported yet', true)}
-            <span className="muted small">task time</span>
-            {metaValue(spanMs(activeStepState?.startedAt, activeStepState?.completedAt) > 0 ? formatDuration(spanMs(activeStepState?.startedAt, activeStepState?.completedAt)) : '', 'not reported yet', true)}
-          </div>
+        <div className="runner-subtabs">
+          <button className={`runner-subtab ${rtab === 'console' ? 'on' : ''}`} onClick={() => setRtab('console')}><Icon.Terminal size={13} /> Console</button>
+          <button className={`runner-subtab ${rtab === 'cost' ? 'on' : ''}`} onClick={() => setRtab('cost')}><Icon.Zap size={13} /> Cost analysis</button>
+          <button className={`runner-subtab ${rtab === 'history' ? 'on' : ''}`} onClick={() => setRtab('history')}><Icon.Info size={13} /> History</button>
         </div>
+
+        {rtab === 'console' && (<>
         <div className="console-wrap">
-          <div className="divider-label">Output</div>
           <pre className="console">
             {activeStepState?.output || (activeStep ? 'Waiting for run command...' : 'No active step selected.')}
             <div ref={outputEndRef} />
@@ -482,106 +419,16 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
           </div>
         )}
 
-        {/* Step-scoped Execution History, grouped per run — lives inside the step detail. */}
-        {historyGroups.length > 0 && (
-          <div className="step-history">
-            <div className="divider-label mb-4">Execution History</div>
-            {historyGroups.map(group => (
-              <div key={group.runId} className="history-run-group">
-                <div className="history-run-head small">
-                  <span className="muted mono">{group.runId === 'unknown' ? 'unknown run' : formatRunTime(group.runId)}</span>
-                </div>
-                <div className="timeline">
-                  {group.events.map((event, i) => {
-                    const isSuccess = event.status === 'completed' || event.status === 'approved' || event.status.includes('approved');
-                    const isError = event.status === 'failed' || event.status === 'rejected' || event.status.includes('rejected');
-                    const isRunning = event.status === 'running' || event.status.includes('running');
+        </>)}
 
-                    let StatusIcon = Icon.Info;
-                    if (isSuccess) StatusIcon = Icon.Check;
-                    if (isError) StatusIcon = Icon.X;
-                    if (isRunning) StatusIcon = Icon.Play;
+        {/* Step-scoped Execution History, grouped per run — aligned monospace log. */}
+        {rtab === 'history' && (historyGroups.length > 0
+          ? <pre className="console report">{historyNodes}</pre>
+          : <div className="run-empty">No execution history yet.</div>)}
 
-                    return (
-                      <div key={i} className={`timeline-item ${isSuccess ? 'success' : isError ? 'error' : isRunning ? 'running' : ''}`}>
-                        <div className="timeline-dot" />
-                        <div className="timeline-content">
-                          <div className="timeline-time">{new Date(event.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
-                          <div className="timeline-body">
-                            <div className={`timeline-status ${isSuccess ? 'success' : isError ? 'error' : isRunning ? 'running' : ''}`}>
-                              <StatusIcon size={12} />
-                              {event.status}
-                            </div>
-                            {event.message && <div className="timeline-message">{event.message}</div>}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
+        {rtab === 'cost' && (
+          <pre className="console report">{costReport}</pre>
         )}
-
-        <div className="runner-costs">
-          <div className="divider-label">Cost Analysis</div>
-          <div className="runner-costs-head">
-            <div className="small muted">
-              {totalCostUsd > 0
-                ? `Total $${totalCostUsd.toFixed(4)} · ${totalTokens.toLocaleString()} tokens`
-                : totalTokens > 0
-                  ? `Total — · ${totalTokens.toLocaleString()} tokens`
-                  : hasAnyHeadlessStep
-                    ? 'Cost data available after AI-executed steps complete'
-                    : 'Interactive steps — no token tracking'}
-              {totalTaskMs > 0 && ` · task ${formatDuration(totalTaskMs)}`}
-              {totalReviewMs > 0 && ` · review ${formatDuration(totalReviewMs)}`}
-            </div>
-          </div>
-          <table className="runner-cost-table">
-            <thead>
-              <tr>
-                <th>Step</th>
-                <th>Status</th>
-                <th>Model</th>
-                <th>Tokens</th>
-                <th>Cost</th>
-                <th>Task Time</th>
-                <th>Share</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stepCosts.map(({ step, state, costUsd, tokensUsed, taskMs, isHeadless }) => {
-                const share = totalCostUsd > 0 ? (costUsd / totalCostUsd) * 100 : 0;
-                const hasRun = state?.executionStatus !== 'ready' && state?.executionStatus !== 'locked' && state?.executionStatus != null;
-                const isRunning = state?.executionStatus === 'running';
-                const modelLabel = state?.modelUsed
-                  || (isRunning ? '…' : hasRun && !isHeadless ? 'interactive' : '—');
-                return (
-                  <tr key={step.id} className={activeStepId === step.id ? 'active' : ''}>
-                    <td>{step.title || step.id}</td>
-                    <td>{state?.executionStatus || 'ready'}</td>
-                    <td className={!state?.modelUsed && hasRun && !isHeadless ? 'muted' : ''}>{modelLabel}</td>
-                    <td>{tokensUsed > 0 ? tokensUsed.toLocaleString() : isRunning ? '…' : '—'}</td>
-                    <td>{costUsd > 0 ? `$${costUsd.toFixed(4)}` : isRunning ? '…' : '—'}</td>
-                    <td>{taskMs > 0 ? formatDuration(taskMs) : isRunning ? '…' : '—'}</td>
-                    <td style={{ minWidth: '100px' }}>
-                      {costUsd > 0 ? (
-                        <div className="cost-bar-wrapper" title={`${share.toFixed(1)}%`}>
-                          <div className="cost-bar-track">
-                            <div className="cost-bar-fill" style={{ width: `${share}%` }} />
-                          </div>
-                          <span className="cost-bar-label">{share.toFixed(1)}%</span>
-                        </div>
-                      ) : '—'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
 
       </div>
     </div>
