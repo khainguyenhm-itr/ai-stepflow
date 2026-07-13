@@ -154,6 +154,35 @@ export function findStaleProducedFile(
 }
 
 /**
+ * A change-signature over a step's declared artifacts (review.filePath + produces): the newest
+ * mtime and total size across the files, or `null` if ANY declared file is missing. Two calls that
+ * return the same non-null string mean nothing was written in between — the caller can treat the
+ * artifact as quiescent (the agent stopped writing), which mtime-freshness alone can't tell: a file
+ * created early and appended to for minutes stays "fresh" the whole time. Used to avoid reviewing a
+ * half-written artifact when the real process-exit signal is unavailable.
+ */
+export function producedArtifactsSignature(
+  step: FlowStep,
+  workspaceRoot: string,
+  inputs: Record<string, string>,
+  flowName = '',
+  runSlug = ''
+): string | null {
+  const declared = [...(step.review.filePath ? [step.review.filePath] : []), ...(step.produces ?? [])];
+  if (declared.length === 0) return null;
+  const paths = resolveTemplates(declared, inputs).map(p => locateProducedFile(p, flowName, workspaceRoot, runSlug));
+  let newestMtime = 0;
+  let totalSize = 0;
+  for (const filePath of paths) {
+    let st;
+    try { st = statSync(filePath); } catch { return null; } // any missing → not ready
+    newestMtime = Math.max(newestMtime, st.mtimeMs);
+    totalSize += st.size;
+  }
+  return `${newestMtime}:${totalSize}`;
+}
+
+/**
  * Run the two-layer review and return a verdict. Layer 1 (validator) can short-circuit to
  * `rejected`; a missing *default* validator is treated as "skip layer 1" only when a deep
  * LLM review can still inspect the artifacts. Missing validator-only infrastructure or a

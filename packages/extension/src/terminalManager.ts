@@ -1,4 +1,7 @@
 import * as vscode from 'vscode';
+import * as os from 'os';
+import * as path from 'path';
+import { existsSync, rmSync } from 'fs';
 import { Agent } from '@ai-stepflow/core';
 import { ConfigManager } from './configManager.js';
 
@@ -23,8 +26,22 @@ export class TerminalManager {
   private _onDidCloseRunningStep: ((stepId: string) => void) | undefined;
   /** Callback to notify when the shell execution (claude session) ends while a step is running. */
   private _onDidEndRunningStep: ((stepId: string) => void) | undefined;
+  /**
+   * Readiness probe used only by the shell-integration fallback: returns whether the step's
+   * declared artifacts already exist and are fresh (`true`/`false`), or `undefined` when the step
+   * has nothing to gate on. Lets the fallback wait for the real artifact instead of guessing a
+   * fixed duration.
+   */
+  private _isStepReady: ((stepId: string) => boolean | undefined) | undefined;
   /** Fallback timeout timer when shell integration is unavailable. */
   private _fallbackCompletionTimer: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * Path to the completion-sentinel file written by the shell after `claude` exits, when we launch
+   * via `sendText` (no shell integration) on POSIX. Its appearance is a real process-exit signal —
+   * the fallback polls for it instead of guessing from artifact activity. `undefined` on win32 or
+   * for launches with no step, where the fallback falls back to the artifact readiness probe.
+   */
+  private _fallbackSentinelPath: string | undefined;
 
   constructor(private readonly configManager: ConfigManager) {
     this._disposables.push(
@@ -60,6 +77,11 @@ export class TerminalManager {
     this._onDidEndRunningStep = cb;
   }
 
+  /** Register the fallback readiness probe (see {@link _isStepReady}). */
+  public onCheckStepReady(cb: (stepId: string) => boolean | undefined): void {
+    this._isStepReady = cb;
+  }
+
   private _reset(): void {
     this._running = false;
     this._execution = undefined;
@@ -68,6 +90,10 @@ export class TerminalManager {
     if (this._fallbackCompletionTimer) {
       clearTimeout(this._fallbackCompletionTimer);
       this._fallbackCompletionTimer = undefined;
+    }
+    if (this._fallbackSentinelPath) {
+      try { rmSync(this._fallbackSentinelPath, { force: true }); } catch { /* best-effort cleanup */ }
+      this._fallbackSentinelPath = undefined;
     }
   }
 
@@ -119,9 +145,13 @@ export class TerminalManager {
     if (shellIntegration) {
       this._execution = shellIntegration.executeCommand(this._shellQuoteArgs(launchArgs));
     } else {
-      // Fallback: shell integration unavailable. Schedule a timeout to detect command completion.
-      // This prevents steps from hanging indefinitely when shell integration is not ready.
-      terminal.sendText(this._shellQuoteArgs(launchArgs), true);
+      // Fallback: shell integration unavailable, so we never get the real command-end event. On
+      // POSIX we append a sentinel-writing command that runs only after `claude` exits, turning the
+      // fallback into a real process-exit poll rather than a guessed timeout. On win32 (no reliable
+      // one-liner) we launch bare and let the fallback lean on the artifact readiness probe.
+      const cmd = this._shellQuoteArgs(launchArgs);
+      const sentinel = stepId ? this._prepareSentinel(stepId) : undefined;
+      terminal.sendText(sentinel ? `${cmd}; printf '%s' "$?" > ${this._shellQuote(sentinel)}` : cmd, true);
       if (stepId) this._scheduleFallbackCompletion(stepId);
     }
 
@@ -151,6 +181,24 @@ export class TerminalManager {
     }).join(' ');
   }
 
+  private _shellQuote(arg: string): string {
+    return this._shellQuoteArgs([arg]);
+  }
+
+  /**
+   * Pick a fresh completion-sentinel path for `stepId`, deleting any leftover from a prior run so
+   * its later appearance unambiguously means THIS run's `claude` exited. Returns undefined on win32
+   * (no reliable inline exit-code write for the fallback), leaving the artifact probe as the guard.
+   */
+  private _prepareSentinel(stepId: string): string | undefined {
+    if (process.platform === 'win32') return undefined;
+    const file = `aisf-done-${stepId.replace(/[^A-Za-z0-9._-]/g, '_')}`;
+    const sentinelPath = path.join(os.tmpdir(), file);
+    try { rmSync(sentinelPath, { force: true }); } catch { /* nothing to clear */ }
+    this._fallbackSentinelPath = sentinelPath;
+    return sentinelPath;
+  }
+
   private async _waitForShellIntegration(terminal: vscode.Terminal, timeoutMs = 3000): Promise<vscode.TerminalShellIntegration | undefined> {
     if (terminal.shellIntegration) return terminal.shellIntegration;
     return new Promise(resolve => {
@@ -162,29 +210,56 @@ export class TerminalManager {
   }
 
   /**
-   * Schedule a fallback completion callback when shell integration is unavailable.
-   * This ensures steps don't hang indefinitely if shell integration times out.
-   * The timeout is conservatively set to allow claude commands to complete.
-   * If shell execution actually ends via onDidEndTerminalShellExecution, the timer is cleared.
+   * Fallback completion detection when shell integration is unavailable and the real
+   * `onDidEndTerminalShellExecution` signal never arrives.
+   *
+   * A fixed timeout is wrong: a step may finish in 2 minutes or 5. Two signals, in order of trust:
+   *   1) the completion sentinel (POSIX) — a file the shell writes only after `claude` exits, so its
+   *      appearance is a genuine process-exit signal, not a guess;
+   *   2) otherwise (win32 / no sentinel) the artifact readiness probe ({@link _isStepReady}) —
+   *      complete once the declared artifacts exist and are fresh; a step with nothing to gate on
+   *      (probe returns `undefined`) keeps the old fixed-delay behavior.
+   * The configured run timeout is a hard cap so a stuck step can't hang forever. If shell execution
+   * truly ends first, {@link _reset} clears the poll.
    */
   private _scheduleFallbackCompletion(stepId: string): void {
-    // Clear any existing fallback timer
     if (this._fallbackCompletionTimer) {
       clearTimeout(this._fallbackCompletionTimer);
     }
 
-    // Schedule completion callback after a conservative timeout
-    // Uses the configured run timeout (default 600s = 10 minutes) as the upper bound
-    const maxTimeoutMs = (vscode.workspace.getConfiguration('ai-stepflow').get<number>('run.timeoutSeconds', 600)) * 1000;
-    // But cap it at 30 seconds for interactive steps (they should finish quickly)
-    const timeoutMs = Math.min(maxTimeoutMs, 30_000);
+    const hardCapMs = (vscode.workspace.getConfiguration('ai-stepflow').get<number>('run.timeoutSeconds', 600)) * 1000;
+    const deadline = Date.now() + hardCapMs;
+    const POLL_MS = 2_000;
+    // Fallback delay for steps with no artifact to wait on (probe returns undefined).
+    const NO_ARTIFACT_DELAY_MS = Math.min(hardCapMs, 30_000);
+    const sentinelPath = this._fallbackSentinelPath;
 
-    this._fallbackCompletionTimer = setTimeout(() => {
+    const fire = () => {
       if (this._running && this._currentStepId === stepId && this._onDidEndRunningStep) {
         this._onDidEndRunningStep(stepId);
       }
       this._reset();
-    }, timeoutMs);
+    };
+
+    const poll = () => {
+      if (!this._running || this._currentStepId !== stepId) { this._fallbackCompletionTimer = undefined; return; }
+      if (sentinelPath) {
+        // Trusted signal: the sentinel exists only once `claude` has actually exited.
+        if (existsSync(sentinelPath) || Date.now() >= deadline) { fire(); return; }
+        this._fallbackCompletionTimer = setTimeout(poll, POLL_MS);
+        return;
+      }
+      const ready = this._isStepReady ? this._isStepReady(stepId) : undefined;
+      if (ready === undefined) {
+        // Nothing to gate on — behave like the old fixed-delay fallback.
+        this._fallbackCompletionTimer = setTimeout(fire, NO_ARTIFACT_DELAY_MS);
+        return;
+      }
+      if (ready || Date.now() >= deadline) { fire(); return; }
+      this._fallbackCompletionTimer = setTimeout(poll, POLL_MS);
+    };
+
+    this._fallbackCompletionTimer = setTimeout(poll, POLL_MS);
   }
 
   private _getTerminal(projectPath: string): vscode.Terminal {

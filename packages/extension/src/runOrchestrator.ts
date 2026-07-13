@@ -27,6 +27,13 @@ import {
 } from './stepRunner.js';
 
 /**
+ * How long a step's declared artifacts must stop changing before the shell-integration fallback
+ * treats the step as finished. Long enough to outlast a pause between the agent's writes, short
+ * enough not to add noticeable latency once it has genuinely stopped.
+ */
+const ARTIFACT_QUIET_MS = 6_000;
+
+/**
  * Owns the run state machine and every transition that drives it: launching a step (headless or
  * interactive), the two-layer review, cancel, mark-done, human review, the DAG auto-advance, plus
  * verify/report. Extracted from {@link CockpitPanel} so the panel is just message routing + view,
@@ -51,6 +58,8 @@ export class RunOrchestrator {
   private _autoRetryStepIds = new Set<string>();
   /** Timestamp when each interactive step started, used to locate its Claude session file. */
   private _stepStartTimes = new Map<string, Date>();
+  /** Fallback-probe quiescence snapshots: last artifact change-signature per step and when it was first seen. */
+  private _readinessSnapshots = new Map<string, { sig: string; since: number }>();
   private _bookkeepingRunId: string | undefined;
   private _stateUpdateQueue = Promise.resolve();
 
@@ -81,6 +90,29 @@ export class RunOrchestrator {
         await this._setRunState(machine.markCancelled(this._runState, this._currentFlow, stepId), { stepId, status: 'cancelled', message: 'Terminal closed by user' });
         this.post({ type: 'stepUpdate', stepId, append: true, output: '\n[terminal closed — run cancelled]\n' });
       }
+    });
+    // Fallback readiness probe (shell integration unavailable): report whether the step's declared
+    // artifacts are done being written, so the fallback reviews the real output instead of firing
+    // on a guessed timeout. `undefined` means the step declares no artifact to wait on. Existence +
+    // freshness is not enough — a file created early and appended to for minutes stays "fresh" the
+    // whole time — so we require the change-signature (newest mtime + total size) to hold steady for
+    // ARTIFACT_QUIET_MS, i.e. the agent has stopped writing.
+    this.terminals.onCheckStepReady(stepId => {
+      const flow = this._currentFlow, runState = this._runState;
+      if (!flow || !runState) return undefined;
+      const step = flow.steps.find(s => s.id === stepId);
+      if (!step) return undefined;
+      const hasArtifactSpec = (step.produces?.length ?? 0) > 0 || !!step.review.filePath;
+      if (!hasArtifactSpec) return undefined;
+      const projectPath = this.configManager.getProjectPath() || '';
+      const inputs = runState.inputs || {};
+      const stale = machine.findStaleProducedFile(step, projectPath, inputs, runState.steps[stepId]?.startedAt, flow.name, this._runSlug());
+      const sig = stale ? null : machine.producedArtifactsSignature(step, projectPath, inputs, flow.name, this._runSlug());
+      if (!sig) { this._readinessSnapshots.delete(stepId); return false; } // missing or stale → keep waiting
+      const prev = this._readinessSnapshots.get(stepId);
+      const now = Date.now();
+      if (!prev || prev.sig !== sig) { this._readinessSnapshots.set(stepId, { sig, since: now }); return false; }
+      return now - prev.since >= ARTIFACT_QUIET_MS;
     });
     this.terminals.onDidEndRunningStep(async stepId => {
       if (!this._currentFlow || !this._runState) return;
