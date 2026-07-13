@@ -146,12 +146,13 @@ export class TerminalManager {
       this._execution = shellIntegration.executeCommand(this._shellQuoteArgs(launchArgs));
     } else {
       // Fallback: shell integration unavailable, so we never get the real command-end event. On
-      // POSIX we append a sentinel-writing command that runs only after `claude` exits, turning the
-      // fallback into a real process-exit poll rather than a guessed timeout. On win32 (no reliable
-      // one-liner) we launch bare and let the fallback lean on the artifact readiness probe.
+      // POSIX we append `; touch <sentinel>` — the shell creates the file only after `claude` exits,
+      // turning the fallback into a real process-exit poll rather than a guessed timeout. We only
+      // check for the file's existence (not its content), and `touch` works from any mac/linux shell
+      // (zsh/bash/fish). On win32 (no equivalent) we launch bare and lean on the readiness probe.
       const cmd = this._shellQuoteArgs(launchArgs);
       const sentinel = stepId ? this._prepareSentinel(stepId) : undefined;
-      terminal.sendText(sentinel ? `${cmd}; printf '%s' "$?" > ${this._shellQuote(sentinel)}` : cmd, true);
+      terminal.sendText(sentinel ? `${cmd}; touch ${this._shellQuote(sentinel)}` : cmd, true);
       if (stepId) this._scheduleFallbackCompletion(stepId);
     }
 
