@@ -155,6 +155,17 @@ export const useAppLogic = () => {
         }
         break;
       case 'restoreRun':
+        // A reset mints a new runId; remap the old summary row to it (progress cleared) so the row
+        // matches the restored run and its detail drawer stays openable.
+        if (message.previousRunId) {
+          const prevRunId = message.previousRunId;
+          const next = message.runState;
+          libState.setRunSummaries(prev => prev.map(s =>
+            s.flowId === next.flowId && s.runId === prevRunId
+              ? { flowId: s.flowId, runId: next.runId, runName: next.runName, completedSteps: 0, totalSteps: s.totalSteps, mtimeMs: Date.now(), isClosed: false }
+              : s
+          ));
+        }
         runState.setActiveFlow(message.flow);
         runState.setRunState(message.runState);
         runState.setRunnerVisible(true);

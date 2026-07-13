@@ -42,6 +42,12 @@ export class TerminalManager {
    * for launches with no step, where the fallback falls back to the artifact readiness probe.
    */
   private _fallbackSentinelPath: string | undefined;
+  /**
+   * Set by {@link cancelStep} when a Stop arrives during the shell-integration wait, before the
+   * terminal is live. {@link runInTerminal} checks it after the await and aborts the launch instead
+   * of spawning a `claude` process that nothing could later close.
+   */
+  private _launchAbortStepId: string | undefined;
 
   constructor(private readonly configManager: ConfigManager) {
     this._disposables.push(
@@ -131,7 +137,22 @@ export class TerminalManager {
       return;
     }
 
+    // Claim the step BEFORE awaiting shell integration so a Stop pressed during that window is
+    // recognized by cancelStep and aborts this launch — otherwise the claude terminal would come up
+    // after the cancel with nothing able to close it.
+    this._currentStepId = stepId;
+    this._launchAbortStepId = undefined;
+
     const shellIntegration = await this._waitForShellIntegration(terminal);
+    if (stepId && this._launchAbortStepId === stepId) {
+      // Cancelled during the shell-integration wait: dispose the terminal we were about to use and
+      // do not launch claude. The orchestrator has already recorded the step as cancelled.
+      this._launchAbortStepId = undefined;
+      this._currentStepId = undefined;
+      this._terminal?.dispose();
+      this._terminal = undefined;
+      return;
+    }
     this._running = true;
     this._currentAgentName = agentName;
     this._currentStepId = stepId;
@@ -144,6 +165,10 @@ export class TerminalManager {
 
     if (shellIntegration) {
       this._execution = shellIntegration.executeCommand(this._shellQuoteArgs(launchArgs));
+      // `onDidEndTerminalShellExecution` only fires when `claude` exits, but a step runs an
+      // interactive REPL that stays alive after finishing — so also poll the artifact readiness
+      // probe. Whichever completion signal fires first wins (_reset clears the other).
+      if (stepId) this._scheduleFallbackCompletion(stepId);
     } else {
       // Fallback: shell integration unavailable, so we never get the real command-end event. On
       // POSIX we append `; touch <sentinel>` — the shell creates the file only after `claude` exits,
@@ -244,20 +269,24 @@ export class TerminalManager {
 
     const poll = () => {
       if (!this._running || this._currentStepId !== stepId) { this._fallbackCompletionTimer = undefined; return; }
+      const ready = this._isStepReady ? this._isStepReady(stepId) : undefined;
+      if (ready !== undefined) {
+        // Step declares artifacts: complete once they exist and go quiescent, WITHOUT waiting for
+        // `claude` to exit. The run is an interactive REPL that stays alive after finishing its
+        // prompt, so the process-exit signals (sentinel / shell-exec-end) never arrive — gating on
+        // them would hang the step at "running" forever. The hard cap still bounds a stuck step.
+        if (ready || Date.now() >= deadline) { fire(); return; }
+        this._fallbackCompletionTimer = setTimeout(poll, POLL_MS);
+        return;
+      }
+      // Nothing to gate on. Trust the process-exit sentinel if we have one (POSIX); otherwise fall
+      // back to the old fixed delay (win32 / no sentinel).
       if (sentinelPath) {
-        // Trusted signal: the sentinel exists only once `claude` has actually exited.
         if (existsSync(sentinelPath) || Date.now() >= deadline) { fire(); return; }
         this._fallbackCompletionTimer = setTimeout(poll, POLL_MS);
         return;
       }
-      const ready = this._isStepReady ? this._isStepReady(stepId) : undefined;
-      if (ready === undefined) {
-        // Nothing to gate on — behave like the old fixed-delay fallback.
-        this._fallbackCompletionTimer = setTimeout(fire, NO_ARTIFACT_DELAY_MS);
-        return;
-      }
-      if (ready || Date.now() >= deadline) { fire(); return; }
-      this._fallbackCompletionTimer = setTimeout(poll, POLL_MS);
+      this._fallbackCompletionTimer = setTimeout(fire, NO_ARTIFACT_DELAY_MS);
     };
 
     this._fallbackCompletionTimer = setTimeout(poll, POLL_MS);
@@ -273,7 +302,14 @@ export class TerminalManager {
 
   /** Kill the interactive terminal for a step. Returns true if the terminal was closed. */
   public cancelStep(stepId: string): boolean {
-    if (this._currentStepId !== stepId || !this._running) return false;
+    if (this._currentStepId !== stepId) return false;
+    if (!this._running) {
+      // Launch is mid-flight (awaiting shell integration): flag it so runInTerminal aborts before
+      // spawning claude. There is no live terminal to dispose yet, so report "not closed" and let
+      // the orchestrator record the cancellation.
+      this._launchAbortStepId = stepId;
+      return false;
+    }
     this._terminal?.dispose();
     this._terminal = undefined;
     return true;

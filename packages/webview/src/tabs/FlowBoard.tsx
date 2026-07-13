@@ -261,6 +261,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
         <td className="mono muted">{runSummaries.length} {runSummaries.length === 1 ? 'run' : 'runs'}</td>
         <td>{scopeBadge}</td>
         <td className="mono muted">{total} {total === 1 ? 'step' : 'steps'}</td>
+        <td className="mono muted">{fmtAgo(runSummaries.reduce((m, s) => Math.max(m, s.mtimeMs), 0))}</td>
         <td className="drow-actions-cell">
           <span className="drow-actions">
             <button className={`icon-btn ${graphOpen ? 'active' : ''}`} title="Flow graph" onClick={() => setGraphOpen(o => !o)}><Icon.GitBranch size={14} /></button>
@@ -278,7 +279,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
       {/* graph expand */}
       {graphOpen && (
         <tr className="detail-row graph-dr">
-          <td colSpan={6}>
+          <td colSpan={7}>
             <div className="detail">
               <div className="detail-subhead">
                 <h4>Flow graph</h4>
@@ -324,7 +325,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
       {/* runs expand */}
       {runsOpen && (
         <tr className="detail-row runs-dr">
-          <td colSpan={6}>
+          <td colSpan={7}>
             <div className="detail">
               <div className="detail-subhead">
                 <div className="ov-scope-switch" role="tablist" aria-label="Runs filter">

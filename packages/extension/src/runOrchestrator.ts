@@ -31,7 +31,7 @@ import {
  * treats the step as finished. Long enough to outlast a pause between the agent's writes, short
  * enough not to add noticeable latency once it has genuinely stopped.
  */
-const ARTIFACT_QUIET_MS = 6_000;
+const ARTIFACT_QUIET_MS = 12_000;
 
 /**
  * Owns the run state machine and every transition that drives it: launching a step (headless or
@@ -360,7 +360,10 @@ export class RunOrchestrator {
     ]);
     this.post({ type: 'resetAuditLog', flowId: flow.id });
     await this._setRunState(freshState);
-    this.post({ type: 'restoreRun', flow, runState: freshState });
+    // Carry the old runId so the webview can remap this run's summary row to the new runId — reset
+    // mints a fresh runId, and without the remap the row keeps pointing at the deleted run file and
+    // its detail drawer can't reopen.
+    this.post({ type: 'restoreRun', flow, runState: freshState, previousRunId: oldRunId });
     this._resetBookkeepingIfNewRun();
     // Clear stale cancelled IDs so re-runs are not silently skipped.
     this._cancelledStepIds.clear();
@@ -463,6 +466,13 @@ export class RunOrchestrator {
     this._cancelledStepIds.add(stepId);
     const closed = this.terminals.cancelStep(stepId);
     if (closed) {
+      this.post({ type: 'stepUpdate', stepId, append: true, output: '\n[run cancelled by user]\n' });
+    } else if (this._currentFlow && this._runState && this._runState.steps[stepId]?.executionStatus === 'running') {
+      // No live terminal to close for this step (it was already gone, or the shell-integration
+      // wait hasn't registered it yet), so onDidCloseRunningStep will never fire. The step is still
+      // wedged at "running" — transition it directly so the UI unwedges instead of the Stop button
+      // appearing to do nothing.
+      await this._setRunState(machine.markCancelled(this._runState, this._currentFlow, stepId), { stepId, status: 'cancelled', message: 'Cancelled by user' });
       this.post({ type: 'stepUpdate', stepId, append: true, output: '\n[run cancelled by user]\n' });
     }
   }

@@ -47,7 +47,7 @@ export type HostMessage =
       runTrendAll: { date: string; runs: number; completed: number; inProgress: number; costUsd: number; tokensUsed: number; taskTimeMs: number }[];
     }
   | { type: 'mcpServers'; connectedMcpServers: string[] }
-  | { type: 'restoreRun'; flow: Flow; runState: FlowRunState }
+  | { type: 'restoreRun'; flow: Flow; runState: FlowRunState; previousRunId?: string }
   | { type: 'stepUpdate'; stepId: string; output: string; append?: boolean }
   | { type: 'aiReviewUpdate'; stepId: string; output: string; append?: boolean }
   | { type: 'runStateChanged'; runState: FlowRunState; historyEvent?: HistoryEvent }
