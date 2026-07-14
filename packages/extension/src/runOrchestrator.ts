@@ -785,7 +785,10 @@ export class RunOrchestrator {
       const filePath = await this.stateManager.saveReviewReport(this._runState, stepId, markdown);
       if (filePath) {
         const base = filePath.split(/[\\/]/).pop();
-        this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[AI review report written → .ai-stepflow/reports/reviews/${base}]\n` });
+        const rel = `.ai-stepflow/reports/reviews/${base}`;
+        this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[AI review report written → ${rel}]\n` });
+        // Expose the report path to the webview so the step's Files tab can offer to open it.
+        await this._setRunState(s => ({ ...s, steps: { ...s.steps, [stepId]: { ...s.steps[stepId], reviewReportPath: rel } } }));
       }
     } catch (err) {
       // A report-write failure must not break the review flow (the rejection is already recorded).

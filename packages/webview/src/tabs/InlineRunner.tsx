@@ -193,8 +193,15 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   }, [activeStepId, activeStepState]);
 
   // Runner content is split into sub-tabs to cut vertical scrolling: the step detail head
-  // (status + actions) stays pinned; Console / Cost / History switch below it.
-  const [rtab, setRtab] = useState<'console' | 'cost' | 'history'>('console');
+  // (status + actions) stays pinned; Console / Files / Cost / History switch below it.
+  const [rtab, setRtab] = useState<'console' | 'files' | 'cost' | 'history'>('console');
+
+  // Files this step reads (requires) and writes (produces) — the artifact md files the run
+  // creates. Listed in the Files tab so the user can open/inspect each one.
+  const inputFiles = activeStep?.requires ?? [];
+  const outputFiles = activeStep?.produces ?? [];
+  // Report file written by AI review when the step was rejected; absent if review never wrote one.
+  const reviewFile = activeStepState?.reviewReportPath;
 
   // Cost + History render as aligned monospace reports (same look as the console block).
   const costReport = (() => {
@@ -400,6 +407,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
 
         <div className="runner-subtabs">
           <button className={`runner-subtab ${rtab === 'console' ? 'on' : ''}`} onClick={() => setRtab('console')}><Icon.Terminal size={13} /> Console</button>
+          <button className={`runner-subtab ${rtab === 'files' ? 'on' : ''}`} onClick={() => setRtab('files')}><Icon.FolderOpen size={13} /> Files</button>
           <button className={`runner-subtab ${rtab === 'cost' ? 'on' : ''}`} onClick={() => setRtab('cost')}><Icon.Zap size={13} /> Cost analysis</button>
           <button className={`runner-subtab ${rtab === 'history' ? 'on' : ''}`} onClick={() => setRtab('history')}><Icon.Info size={13} /> History</button>
         </div>
@@ -440,6 +448,40 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
         )}
 
         </>)}
+
+        {/* Input (requires) / output (produces) artifact files for this step; click to open. */}
+        {rtab === 'files' && (
+          <div className="files-panel">
+            <div className="files-group">
+              <div className="divider-label">Inputs</div>
+              {inputFiles.length > 0
+                ? inputFiles.map(f => (
+                    <button key={`in-${f}`} type="button" className="file-row" title={`Open ${f}`} onClick={() => onOpenFile(f)}>
+                      <Icon.FolderOpen size={13} /><span className="file-path">{f}</span>
+                    </button>
+                  ))
+                : <div className="run-empty">No input files declared.</div>}
+            </div>
+            <div className="files-group">
+              <div className="divider-label">Outputs</div>
+              {outputFiles.length > 0
+                ? outputFiles.map(f => (
+                    <button key={`out-${f}`} type="button" className="file-row" title={`Open ${f}`} onClick={() => onOpenFile(f)}>
+                      <Icon.FolderOpen size={13} /><span className="file-path">{f}</span>
+                    </button>
+                  ))
+                : <div className="run-empty">No output files declared.</div>}
+            </div>
+            {reviewFile && (
+              <div className="files-group">
+                <div className="divider-label">Review</div>
+                <button type="button" className="file-row" title={`Open ${reviewFile}`} onClick={() => onOpenFile(reviewFile)}>
+                  <Icon.FolderOpen size={13} /><span className="file-path">{reviewFile}</span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Step-scoped Execution History, grouped per run — aligned monospace log. */}
         {rtab === 'history' && (historyGroups.length > 0

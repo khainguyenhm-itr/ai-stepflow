@@ -702,7 +702,10 @@ export class CockpitPanel {
   private async _handleOpenFile(filePath: string | undefined) {
     if (!filePath) return;
     const absPath = path.isAbsolute(filePath) ? filePath : path.join(this.configManager.getProjectPath() || '', filePath);
-    if (!fs.existsSync(absPath)) return;
+    if (!fs.existsSync(absPath)) {
+      vscode.window.showInformationMessage(`AI StepFlow: file not found yet — ${filePath}`);
+      return;
+    }
     const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(absPath));
     await vscode.window.showTextDocument(doc, { preview: false });
   }

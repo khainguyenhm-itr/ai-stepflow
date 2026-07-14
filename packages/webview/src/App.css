@@ -2219,3 +2219,12 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 .runner-subtab { border: 0; background: none; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; padding: 7px 12px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; display: inline-flex; align-items: center; gap: 6px; }
 .runner-subtab:hover { color: var(--fg); }
 .runner-subtab.on { color: var(--fg); border-bottom-color: var(--focus); }
+
+/* ---- runner Files tab ---- */
+.files-panel { display: flex; flex-direction: column; gap: 14px; }
+.files-group { display: flex; flex-direction: column; gap: 4px; }
+.file-row { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: 1px solid var(--border); border-radius: var(--r, 6px); background: var(--panel-2, var(--panel)); color: var(--fg); font: inherit; font-size: 12px; padding: 7px 10px; cursor: pointer; }
+.file-row:hover { border-color: var(--focus); color: var(--fg); }
+.file-row svg { flex: none; color: var(--muted); }
+.file-row:hover svg { color: var(--focus); }
+.file-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono, monospace); }

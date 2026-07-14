@@ -166,6 +166,8 @@ export interface StepRunState {
   /** Error message if the step failed or was blocked by a gate. */
   error?: string;
   aiReviewOutput?: string;
+  /** Project-relative path of the AI review report file written when this step was rejected. Unset if none. */
+  reviewReportPath?: string;
   humanReview?: {
     decision: "approved" | "rejected";
     comment?: string;
