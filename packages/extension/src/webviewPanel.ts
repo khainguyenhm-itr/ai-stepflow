@@ -7,7 +7,7 @@ import { StateManager, DayPoint } from './stateManager.js';
 import { TerminalManager } from './terminalManager.js';
 import { RunOrchestrator } from './runOrchestrator.js';
 import { validateMessage, WebviewMessage, HostMessage } from './messages.js';
-import { listConnectedMcpServers, addMcpServer } from './mcp.js';
+import { listConnectedMcpServers, addMcpServer, connectGitnexusMcp } from './mcp.js';
 import { Agent, ClaudeStreamingRunResult, Flow, FlowStep, Skill, extractJsonObject } from '@ai-stepflow/core';
 
 export class CockpitPanel {
@@ -373,12 +373,23 @@ export class CockpitPanel {
           vscode.window.showErrorMessage(`AI StepFlow: failed to open '${message.path}'. ${e instanceof Error ? e.message : String(e)}`);
         }
         return;
-      case 'installGitnexus': {
-        const terminal = vscode.window.createTerminal({ name: 'Install GitNexus' });
-        terminal.show();
-        terminal.sendText('npm install -g gitnexus', true);
+      case 'connectGitnexus':
+        await vscode.window.withProgress(
+          { location: vscode.ProgressLocation.Notification, title: 'Connecting GitNexus to Claude Code…' },
+          async () => {
+            const res = await connectGitnexusMcp();
+            if (res.ok) {
+              vscode.window.showInformationMessage('AI StepFlow: GitNexus connected to Claude Code.');
+              const connectedMcpServers = await listConnectedMcpServers(this.configManager.getProjectPath());
+              this.postMessage({ type: 'mcpServers', connectedMcpServers });
+              // Re-probe the sidebar so its GitNexus row (gated on the connection) appears.
+              await vscode.commands.executeCommand('ai-stepflow.refreshSidebarMcp');
+            } else {
+              vscode.window.showErrorMessage(`AI StepFlow: failed to connect GitNexus. ${res.error}`);
+            }
+          }
+        );
         return;
-      }
       case 'alert':
         vscode.window.showErrorMessage(message.text);
         return;

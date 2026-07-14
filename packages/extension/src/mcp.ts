@@ -188,3 +188,27 @@ export function addMcpServer(opts: {
     );
   });
 }
+
+/**
+ * Registers the GitNexus MCP server with Claude Code at user scope via `npx gitnexus mcp` (no
+ * global install needed — the server serves every indexed repo, so one user-scoped registration
+ * covers all projects). If a stale `gitnexus` registration already exists it is removed and
+ * re-added. Resolves `{ ok, error }`; never rejects.
+ */
+export function connectGitnexusMcp(): Promise<{ ok: boolean; error?: string }> {
+  const ADD = ['mcp', 'add', 'gitnexus', '--scope', 'user', '--', 'npx', '-y', 'gitnexus', 'mcp'];
+  const run = (args: string[]) => new Promise<{ error: Error | null; stderr: string }>(res =>
+    execFile('claude', args, { timeout: 30000 }, (error, _stdout, stderr) => res({ error, stderr: stderr || '' })));
+  return (async () => {
+    let r = await run(ADD);
+    if (r.error && /already exists/i.test(r.stderr || r.error.message)) {
+      await run(['mcp', 'remove', 'gitnexus', '--scope', 'user']); // best-effort clear, then re-add
+      r = await run(ADD);
+    }
+    if (r.error) {
+      console.error('AI StepFlow: failed to connect GitNexus MCP', r.error, r.stderr);
+      return { ok: false, error: r.stderr || r.error.message };
+    }
+    return { ok: true };
+  })();
+}

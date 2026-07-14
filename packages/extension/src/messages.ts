@@ -103,7 +103,7 @@ export type WebviewMessage =
   | { type: 'runCommand'; command: RunnableCommand }
   | { type: 'openWorkspace'; path: string }
   | { type: 'revealPath'; path: string }
-  | { type: 'installGitnexus' }
+  | { type: 'connectGitnexus' }
   | { type: 'alert'; text: string };
 
 /** VS Code command ids the Overview quick-settings panel is allowed to trigger. Whitelisted to keep the webview from invoking arbitrary commands. */
@@ -176,7 +176,7 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   runCommand: m => isString(m.command) && (RUNNABLE_COMMANDS as readonly string[]).includes(m.command),
   openWorkspace: m => isString(m.path),
   revealPath: m => isString(m.path),
-  installGitnexus: () => true,
+  connectGitnexus: () => true,
   savePref: m => isString(m.key) && isString(m.value),
   alert: m => isString(m.text)
 };

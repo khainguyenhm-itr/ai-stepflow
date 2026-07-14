@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, basename } from 'node:path';
 import { execFile } from 'node:child_process';
@@ -140,28 +140,35 @@ export class SidebarActions {
     const { groups, currentGroup, currentAlias } = this.readGitnexusGroups(registryName);
     if (!entry) return { ...none, groups, currentGroup, currentAlias };
 
-    // Stale if commits since indexing touched code files, or code files have uncommitted changes.
-    // Non-code files (docs, configs, etc.) are excluded to avoid constant false-positive stale signals.
+    // Stale if the repo has changed since it was indexed, in either of two ways. Non-code files
+    // (docs, configs, etc.) are excluded so a docs-only change doesn't demand a re-index.
+    //   (a) HEAD moved — new commits or a branch switch — and the diff touches code.
+    //   (b) A code file was edited AFTER indexing (mtime > indexedAt). Keyed on the analyze
+    //       timestamp, not merely "the tree is dirty", so a freshly-analyzed dirty tree is NOT
+    //       wrongly flagged — only edits made after the last analyze count.
     const CODE_EXTS = /\.(ts|tsx|js|jsx|mjs|cjs|py|rb|go|rs|java|c|cpp|cc|h|hpp|cs|swift|kt|php|vue|svelte)$/i;
     let stale = false;
     try {
       const run = promisify(execFile);
-      const [head, dirty] = await Promise.all([
-        run('git', ['rev-parse', 'HEAD'], { cwd: projectPath }).then(r => r.stdout.trim()).catch(() => ''),
-        run('git', ['status', '--porcelain'], { cwd: projectPath }).then(r => r.stdout.trim()).catch(() => '')
-      ]);
-      const hasCodeChanges = dirty.split('\n').some(line => CODE_EXTS.test(line));
-      // A moved HEAD only marks the index stale if the commits since indexing touched code
-      // files — a docs/config-only commit shouldn't trigger a re-analyze prompt. If the diff
-      // can't be computed (rebased/unreachable commit), fall back to treating it as stale.
-      let hasCommittedCode = false;
+      const head = await run('git', ['rev-parse', 'HEAD'], { cwd: projectPath }).then(r => r.stdout.trim()).catch(() => '');
+      // (a) branch/commit drift. If the diff can't be computed (rebased/unreachable), treat as stale.
       if (entry.lastCommit && head && entry.lastCommit !== head) {
         const diff = await run('git', ['diff', '--name-only', entry.lastCommit, head], { cwd: projectPath })
           .then(r => ({ ok: true, out: r.stdout.trim() }))
           .catch(() => ({ ok: false, out: '' }));
-        hasCommittedCode = diff.ok ? diff.out.split('\n').some(line => CODE_EXTS.test(line)) : true;
+        stale = diff.ok ? diff.out.split('\n').some(line => CODE_EXTS.test(line)) : true;
       }
-      stale = hasCommittedCode || hasCodeChanges;
+      // (b) uncommitted code edited after the last analyze.
+      const indexedMs = entry.indexedAt ? Date.parse(entry.indexedAt) : NaN;
+      if (!stale && !Number.isNaN(indexedMs)) {
+        const dirty = await run('git', ['status', '--porcelain'], { cwd: projectPath }).then(r => r.stdout.trim()).catch(() => '');
+        const files = dirty.split('\n')
+          .map(line => { const p = line.slice(3).trim(); const arrow = p.indexOf(' -> '); return arrow >= 0 ? p.slice(arrow + 4) : p; })
+          .filter(f => f && CODE_EXTS.test(f));
+        stale = files.some(f => {
+          try { return statSync(join(projectPath, f)).mtimeMs > indexedMs; } catch { return false; }
+        });
+      }
     } catch { /* not a git repo / git missing → leave stale=false */ }
 
     return { indexed: true, stale, files: entry.stats?.files ?? 0, indexedAt: entry.indexedAt ?? null, registryName, groups, currentGroup, currentAlias };
@@ -219,34 +226,53 @@ export class SidebarActions {
   }
 
   /**
-   * (Re)builds the GitNexus knowledge graph in a terminal. When `group` names a real group and
-   * the repo isn't indexed yet, runs the combined analyze+join flow so the user's up-front group
-   * choice is applied in one pass (no separate re-analyze). Otherwise a plain analyze.
-   * Refreshes the sidebar automatically when the terminal closes.
+   * (Re)builds the GitNexus knowledge graph in the background with a progress notification — no
+   * terminal to babysit or close. When `group` names a real group and the repo isn't indexed yet,
+   * runs the combined analyze+join flow so the up-front group choice is applied in one pass.
+   * The sidebar refreshes automatically the moment the run finishes, so the status is always real.
    */
   async runGitnexusAnalyze(group?: string): Promise<void> {
+    this.getView()?.webview.postMessage({ type: 'gitnexusAnalyzeStarted' });
+    let cmds: string[][] = [['analyze']];
     if (group && group !== 'default' && group !== '__create__') {
       const status = await this.readGitnexusStatus();
-      if (!status.indexed) {
-        this.runGroupTerminal(this.joinGroupCmds(group, status));
-        this.getView()?.webview.postMessage({ type: 'gitnexusAnalyzeStarted' });
-        return;
-      }
+      if (!status.indexed) cmds = this.joinGroupCmds(group, status);
     }
-    const cwd = this.configManager.getProjectPath();
-    const terminal = vscode.window.createTerminal({ name: 'GitNexus Analyze', cwd: cwd || undefined });
-    terminal.show();
-    terminal.sendText('gitnexus analyze', true);
-    this.getView()?.webview.postMessage({ type: 'gitnexusAnalyzeStarted' });
-    // Refresh sidebar status when the terminal exits (analyze complete or aborted).
-    const d = vscode.window.onDidCloseTerminal(async t => {
-      if (t === terminal) { d.dispose(); await this.refresh(false); }
-    });
+    await this.runGitnexusCommandsBg(cmds, 'Analyzing repository with GitNexus…');
+  }
+
+  /**
+   * Runs a sequence of `gitnexus` subcommands (each an arg array, e.g. `['analyze']`) via
+   * `npx gitnexus …` in the project dir, under a single cancellable progress notification. No
+   * terminal — the sidebar refreshes on completion/cancel/failure so status reflects reality
+   * without the user having to close anything.
+   */
+  private async runGitnexusCommandsBg(argLists: string[][], title: string): Promise<void> {
+    const cwd = this.configManager.getProjectPath() || undefined;
+    try {
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title, cancellable: true },
+        async (_progress, token) => {
+          for (const args of argLists) {
+            if (token.isCancellationRequested) break;
+            await new Promise<void>((resolve, reject) => {
+              const child = execFile('npx', ['-y', 'gitnexus', ...args], { cwd, maxBuffer: 64 * 1024 * 1024 }, err => {
+                if (err && !token.isCancellationRequested) reject(err); else resolve();
+              });
+              token.onCancellationRequested(() => child.kill());
+            });
+          }
+        }
+      );
+    } catch (e) {
+      vscode.window.showErrorMessage(`AI StepFlow: GitNexus command failed. ${e instanceof Error ? e.message : String(e)}`);
+    }
+    await this.refresh(false);
   }
 
   /**
    * Deletes the GitNexus index for the current repo (`gitnexus clean --force`) after a confirm
-   * prompt. Refreshes the sidebar when the terminal closes so the row flips back to "Analyze".
+   * prompt, in the background. The sidebar refreshes on completion so the row flips back to "Analyze".
    */
   async runGitnexusClean(): Promise<void> {
     const ok = await vscode.window.showWarningMessage(
@@ -254,13 +280,7 @@ export class SidebarActions {
       { modal: true }, 'Remove'
     );
     if (ok !== 'Remove') return;
-    const cwd = this.configManager.getProjectPath();
-    const terminal = vscode.window.createTerminal({ name: 'GitNexus Clean', cwd: cwd || undefined });
-    terminal.show();
-    terminal.sendText('gitnexus clean --force', true);
-    const d = vscode.window.onDidCloseTerminal(async t => {
-      if (t === terminal) { d.dispose(); await this.refresh(false); }
-    });
+    await this.runGitnexusCommandsBg([['clean', '--force']], 'Removing GitNexus index…');
   }
 
   /** The registry name `gitnexus analyze` assigns to this repo — always `basename(projectPath)`. */
@@ -272,28 +292,21 @@ export class SidebarActions {
   /**
    * Commands to put this repo into `group`: leave the old group if any, (re-)index, add here,
    * then sync so cross-repo contracts use a fresh index. `analyze` runs FIRST so the registry
-   * entry exists before `group add` — this lets the user pick a group before the first analyze.
+   * entry exists before `group add` — `group add` takes a *registry name*, which only exists once
+   * the repo has been analyzed at least once. Group membership does NOT change a repo's own index
+   * (it's a mapping in group.yaml), so when the index is already fresh, pass `skipAnalyze` to skip
+   * the redundant re-index — only `group add` + `group sync` (cross-repo contracts) need to run.
    */
-  joinGroupCmds(group: string, status: GitnexusStatus): string[] {
+  joinGroupCmds(group: string, status: GitnexusStatus, skipAnalyze = false): string[][] {
     const name = status.registryName ?? this.deriveRegistryName()!; // registry name == alias (flat)
-    const cmds: string[] = [];
+    const cmds: string[][] = [];
     if (status.currentGroup && status.currentGroup !== group && status.currentAlias) {
-      cmds.push(`gitnexus group remove ${status.currentGroup} ${status.currentAlias}`);
+      cmds.push(['group', 'remove', status.currentGroup, status.currentAlias]);
     }
-    cmds.push('gitnexus analyze');             // (re-)index this repo; creates registry entry if new
-    cmds.push(`gitnexus group add ${group} ${name} ${name}`);
-    cmds.push(`gitnexus group sync ${group}`); // rebuild cross-repo contracts
+    if (!skipAnalyze) cmds.push(['analyze']);     // (re-)index this repo; creates registry entry if new
+    cmds.push(['group', 'add', group, name, name]);
+    cmds.push(['group', 'sync', group]);          // rebuild cross-repo contracts
     return cmds;
-  }
-
-  runGroupTerminal(cmds: string[]): void {
-    const cwd = this.configManager.getProjectPath();
-    const terminal = vscode.window.createTerminal({ name: 'GitNexus Group', cwd: cwd || undefined });
-    terminal.show();
-    terminal.sendText(cmds.join(' && '), true);
-    const d = vscode.window.onDidCloseTerminal(async t => {
-      if (t === terminal) { d.dispose(); await this.refresh(false); }
-    });
   }
 
   /**
@@ -315,14 +328,18 @@ export class SidebarActions {
       }
     });
     if (!name) return;
-    this.runGroupTerminal([`gitnexus group create ${name.trim()}`, ...this.joinGroupCmds(name.trim(), status)]);
+    // A fresh existing index needs no re-analyze — just create the group and wire this repo in.
+    const fresh = status.indexed && !status.stale;
+    if (!fresh) this.getView()?.webview.postMessage({ type: 'gitnexusAnalyzeStarted' });
+    await this.runGitnexusCommandsBg([['group', 'create', name.trim()], ...this.joinGroupCmds(name.trim(), status, fresh)], `Creating group "${name.trim()}"…`);
   }
 
   /**
-   * Joins/leaves a GitNexus group from the select (indexed repos only — before the first analyze
-   * the select is a pending choice applied by the Analyze button, not run here).
-   * Default → leave the current group. A group → switch group, then re-index + sync.
-   * Posts `gitnexusStatus` back to reset the select when the user cancels.
+   * Joins/leaves a GitNexus group (chosen from the ··· menu; indexed repos only). Default → leave
+   * the current group. A group → switch group, then sync. Joining/switching does NOT re-index a
+   * repo whose index is already fresh (group membership is independent of the per-repo graph) —
+   * a re-analyze runs only when the index is missing or stale. Posts `gitnexusStatus` back to
+   * clear the transient state when the user cancels.
    */
   async selectGitnexusGroup(group: string): Promise<void> {
     const status = await this.readGitnexusStatus();
@@ -338,12 +355,15 @@ export class SidebarActions {
         this.getView()?.webview.postMessage({ type: 'gitnexusStatus', status });
         return;
       }
-      this.runGroupTerminal([`gitnexus group remove ${status.currentGroup} ${status.currentAlias}`]);
+      await this.runGitnexusCommandsBg([['group', 'remove', status.currentGroup, status.currentAlias]], `Leaving group "${status.currentGroup}"…`);
       return;
     }
 
+    const fresh = status.indexed && !status.stale;
     const choice = await vscode.window.showInformationMessage(
-      `Switch to group "${group}"? This will re-analyze the repo (may take a moment).`,
+      fresh
+        ? `Switch to group "${group}"? The index is up to date — no re-analyze needed.`
+        : `Switch to group "${group}"? This will re-analyze the repo (may take a moment).`,
       { modal: true },
       'Switch'
     );
@@ -351,7 +371,11 @@ export class SidebarActions {
       this.getView()?.webview.postMessage({ type: 'gitnexusStatus', status });
       return;
     }
-    this.runGroupTerminal(this.joinGroupCmds(group, status));
+    if (!fresh) this.getView()?.webview.postMessage({ type: 'gitnexusAnalyzeStarted' });
+    await this.runGitnexusCommandsBg(
+      this.joinGroupCmds(group, status, fresh),
+      fresh ? `Switching to group "${group}"…` : `Re-analyzing & switching to "${group}"…`
+    );
   }
 
   /** Deletes a run file, its report, and audit log entries after confirmation. */

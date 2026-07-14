@@ -121,6 +121,9 @@ export function activate(context: vscode.ExtensionContext) {
         CockpitPanel.currentPanel?.postMessage({ type: 'navigateToTab', tab: tab as 'flows' | 'agents' | 'skills' });
       }),
       vscode.commands.registerCommand('ai-stepflow.refreshAll', refreshAll),
+      // Re-probe MCP + repaint the sidebar (used after the Overview panel connects GitNexus, so the
+      // sidebar's GitNexus row — gated on the connection — appears without a manual reload).
+      vscode.commands.registerCommand('ai-stepflow.refreshSidebarMcp', () => void sidebar.refresh(true)),
       output,
       vscode.commands.registerCommand('ai-stepflow.installDefaults', async () => {
         const items: (vscode.QuickPickItem & { scope: 'global' | 'project' })[] = [

@@ -52,7 +52,7 @@ interface OverviewTabProps {
   onRunCommand: (command: RunnableCommand) => void;
   onOpenWorkspace: (path: string) => void;
   onRevealPath: (path: string) => void;
-  onInstallGitnexus: () => void;
+  onConnectGitnexus: () => void;
 }
 
 const fmtUsd = (n: number) => `$${n < 0.01 && n > 0 ? n.toFixed(4) : n.toFixed(2)}`;
@@ -167,7 +167,7 @@ const TrendChart: React.FC<{ trend: DayPoint[]; metric: TrendMetric }> = ({ tren
 
 export const OverviewTab: React.FC<OverviewTabProps> = ({
   flows, agents, skills, runSummaries, connectedMcpServers, defaultLibraryInstalled, recentWorkspaces, runTotalsAll, runTrendAll,
-  globalPath, projectPath, scope, onScopeChange, onNavigate, onConnectMcp, onRunCommand, onOpenWorkspace, onRevealPath, onInstallGitnexus
+  globalPath, projectPath, scope, onScopeChange, onNavigate, onConnectMcp, onRunCommand, onOpenWorkspace, onRevealPath, onConnectGitnexus
 }) => {
   const [trendMetric, setTrendMetric] = React.useState<TrendMetric>('costUsd');
   const [recentQuery, setRecentQuery] = React.useState('');
@@ -218,6 +218,9 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   const trendLabel = range === 'all' ? 'last 14 days' : rangeLabel;
 
   const gitnexusConnected = connectedMcpServers.some(s => /gitnexus|ast-graph/i.test(s));
+  // The Connect action registers the GitNexus MCP specifically — gate it on gitnexus alone (NOT
+  // ast-graph) so it stays consistent with the sidebar's gitnexus-only row gating.
+  const gitnexusMcpConnected = connectedMcpServers.some(s => /gitnexus/i.test(s));
 
   return (
     <div className="page ov-page">
@@ -370,7 +373,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             </button>
           </div>
 
-          {!gitnexusConnected && (
+          {!gitnexusMcpConnected && (
             <div className="ov-setting-row">
               <div className="ov-setting-main">
                 <div className="ov-setting-name">
@@ -378,11 +381,11 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 </div>
                 <div className="muted small">
                   <span className="ov-warn">Not connected</span>
-                  {' · code-graph CLI for impact analysis & symbol search — if it isn’t installed yet, install it globally via npm'}
+                  {' · registers the GitNexus MCP server (runs via npx — no install needed). Connect once, then Analyze repos from the sidebar.'}
                 </div>
               </div>
-              <button className="btn primary" onClick={onInstallGitnexus} title="Open a terminal and run: npm install -g gitnexus">
-                <span className="btn-glyph"><Icon.Terminal size={14} /></span>Install
+              <button className="btn primary" onClick={onConnectGitnexus} title="Run: claude mcp add gitnexus -- npx gitnexus mcp">
+                <span className="btn-glyph"><Icon.Zap size={14} /></span>Connect
               </button>
             </div>
           )}

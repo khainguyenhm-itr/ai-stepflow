@@ -205,6 +205,9 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     .menu-item:hover { background: var(--hover); }
     .menu-item.danger { color: var(--error); }
     .menu-item[disabled] { opacity: .4; cursor: default; pointer-events: none; }
+    .menu-item .mi-check { width: 12px; margin-right: 4px; opacity: .9; flex: 0 0 auto; }
+    .menu-label { padding: 5px 8px 2px; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted, #888); }
+    .menu-sep { height: 1px; margin: 3px 4px; background: var(--border); }
 
     /* ── select dropdowns ── */
     .select-wrap { position: relative; display: inline-block; min-width: 90px; }
@@ -358,7 +361,6 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
             </details>
           </div>
           <div class="gx-ctl">
-            <span class="select-wrap" id="gitnexus-group-select-wrap" style="display:none"><select id="gitnexus-group-select" class="input"><option value="default">Default (no group)</option></select></span>
             <button id="gitnexus-analyze-btn" class="pill accent" type="button">Analyze</button>
           </div>
         </div>
@@ -765,72 +767,83 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     return Math.round(h / 24) + 'd ago';
   }
 
-  // Single merged GitNexus row: status (dot+desc) on the left; contextual action button,
-  // group select, and a ··· menu (Analyze/Re-analyze, Open registry, Open group config) on the right.
+  // True while an analyze/group/clean run is in flight — set by 'gitnexusAnalyzeStarted', cleared
+  // when the next real status ('data'/'gitnexusStatus') arrives. Drives the transient "Analyzing…" row.
+  let gitnexusAnalyzing = false;
+
+  // Single merged GitNexus row. Shown ONLY once the GitNexus MCP server is connected — connecting
+  // is a one-time global setup handled in the Overview panel. Once connected, this row drives the
+  // per-repo index lifecycle: analyzing → not-indexed (Analyze) → stale (Re-analyze) → up to date.
   function updateGitnexusRow() {
     const row = document.getElementById('gitnexus-setting-row');
     const dot = document.getElementById('gitnexus-dot');
     const desc = document.getElementById('gitnexus-desc');
     const btn = document.getElementById('gitnexus-analyze-btn');
-    const sel = document.getElementById('gitnexus-group-select');
-    const selWrap = document.getElementById('gitnexus-group-select-wrap');
     const menuPop = document.getElementById('gitnexus-menu-pop');
-    if (!row || !dot || !desc || !btn || !sel || !selWrap || !menuPop) return;
+    if (!row || !dot || !desc || !btn || !menuPop) return;
+
+    // Gated on the MCP connection: until GitNexus is connected (set up in Overview) there's nothing
+    // to query, so the row stays hidden and Overview owns the "connect" step.
     row.style.display = gitnexusConnected ? '' : 'none';
     if (!gitnexusConnected) return;
 
     const indexed = gitnexusStatus.indexed;
     const stale = gitnexusStatus.stale;
+
+    // ---- Transient: a run is in flight ----
+    if (gitnexusAnalyzing) {
+      dot.style.display = 'none';
+      desc.textContent = 'Analyzing…';
+      btn.style.display = ''; btn.disabled = true; btn.textContent = 'Analyzing…';
+      menuPop.innerHTML = '';
+      return;
+    }
     btn.disabled = false;
 
-    // Status dot + description.
+    const parts = [];
+    if (gitnexusStatus.files) parts.push(gitnexusStatus.files + ' files');
+    const t = gxRelTime(gitnexusStatus.indexedAt);
+    if (t) parts.push('indexed ' + t);
+    const grp = gitnexusStatus.currentGroup ? ' · group: ' + gitnexusStatus.currentGroup : '';
+    const meta = (parts.length ? ' · ' + parts.join(' · ') : '') + grp;
+    const AMBER = 'var(--vscode-charts-yellow, #d7a000)';
+
     if (!indexed) {
+      // Never analyzed → Analyze is the primary action; group choice lives in the ··· menu.
       dot.style.display = 'none';
-      desc.textContent = 'Not indexed — pick group (optional), then Analyze';
+      desc.textContent = 'Not indexed — click Analyze (or pick a group from ···)';
+      btn.style.display = ''; btn.textContent = 'Analyze';
     } else if (stale) {
-      dot.style.display = 'inline-block';
-      dot.style.background = 'var(--vscode-charts-yellow, #d7a000)';
-      desc.textContent = 'Out of date — re-analyze recommended';
-    } else {
-      dot.style.display = 'inline-block';
-      dot.style.background = 'var(--success)';
-      const parts = [];
-      if (gitnexusStatus.files) parts.push(gitnexusStatus.files + ' files');
-      const t = gxRelTime(gitnexusStatus.indexedAt);
-      if (t) parts.push('indexed ' + t);
-      const grp = gitnexusStatus.currentGroup ? ' · group: ' + gitnexusStatus.currentGroup : '';
-      desc.textContent = 'Up to date' + (parts.length ? ' · ' + parts.join(' · ') : '') + grp;
-    }
-
-    // Group select is always shown — picking a group before the first analyze runs
-    // analyze + join in one flow, so the user chooses the group up front (no re-analyze).
-    selWrap.style.display = '';
-    const current = gitnexusStatus.currentGroup || 'default';
-    const groups = gitnexusStatus.groups || [];
-    sel.innerHTML = '<option value="default">Default (no group)</option>' +
-      groups.map(g => '<option value="' + esc(g) + '">' + esc(g) + '</option>').join('') +
-      '<option value="__create__">＋ Create new group…</option>';
-    sel.value = current;
-
-    // Inline action button: shown when not indexed or stale. Label reflects the pending group choice
-    // when not yet indexed, so the user sees exactly what clicking Analyze will do.
-    if (!indexed) {
-      btn.style.display = '';
-      const pendingGroup = sel.value;
-      btn.textContent = (pendingGroup && pendingGroup !== 'default' && pendingGroup !== '__create__')
-        ? 'Analyze into ' + pendingGroup : 'Analyze';
-    } else if (stale) {
+      // Indexed but code moved on (new commit, branch switch, or an edit since analyze) → re-analyze.
+      dot.style.display = 'inline-block'; dot.style.background = AMBER;
+      desc.textContent = 'Out of date — re-analyze recommended' + meta;
       btn.style.display = ''; btn.textContent = 'Re-analyze';
     } else {
+      // Indexed and fresh → nothing to do; re-analyze still available from the ··· menu.
+      dot.style.display = 'inline-block'; dot.style.background = 'var(--success)';
+      desc.textContent = 'Up to date' + meta;
       btn.style.display = 'none';
     }
 
-    // ··· menu: Re-analyze always available when indexed (as button when stale, here always for discovery).
+    // ··· menu: Re-analyze + the full Group picker (join/switch/leave/create) + file/clean actions.
+    // Group management lives here (not on the row) so Analyze stays the single primary action outside.
+    const current = gitnexusStatus.currentGroup || 'default';
+    const groups = gitnexusStatus.groups || [];
+    // Built as raw HTML (not menuItem, which escapes its label) so the ✓ marker renders.
+    const groupItem = (value, label) =>
+      '<button class="menu-item" type="button" data-act="group" data-group="' + esc(value) + '">' +
+        '<span class="mi-check">' + (value === current ? '✓' : '') + '</span>' + esc(label) + '</button>';
+
     const items = [];
     if (indexed) items.push(menuItem('Re-analyze', 'data-act="analyze"'));
+    items.push('<div class="menu-label">Group</div>');
+    items.push(groupItem('default', 'Default (no group)'));
+    groups.forEach(g => items.push(groupItem(g, g)));
+    items.push(menuItem('＋ Create new group…', 'data-act="createGroup"'));
+    items.push('<div class="menu-sep"></div>');
     items.push(menuItem('Open registry file', 'data-act="openRegistry"'));
     if (indexed && gitnexusStatus.currentGroup) items.push(menuItem('Open group config', 'data-act="openGroup"'));
-    if (indexed) items.push(menuItem('Remove analyze', 'data-act="clean"'));
+    if (indexed) items.push(menuItem('Remove analyze', 'data-act="clean"', true));
     menuPop.innerHTML = items.join('');
   }
 
@@ -1075,6 +1088,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
         mcpReceived = true;
         pluginsReceived = true;
         if (m.gitnexus) gitnexusStatus = m.gitnexus;
+        gitnexusAnalyzing = false; // a full refresh means any in-flight run has finished
         setMcpData(m.mcp);
         setPluginData(m.plugins, m.pluginsAvailable);
         renderRuns(m.runFiles, m.totalRunFiles);
@@ -1088,9 +1102,11 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
         pluginsReceived = true;
         setPluginData(m.plugins, m.pluginsAvailable);
       } else if (m.type === 'gitnexusAnalyzeStarted') {
+        gitnexusAnalyzing = true;
         updateGitnexusRow();
       } else if (m.type === 'gitnexusStatus') {
         // Lightweight status push — used to reset the select after a cancelled group switch.
+        gitnexusAnalyzing = false;
         if (m.status) { gitnexusStatus = m.status; updateGitnexusRow(); }
       }
     } catch (err) {
@@ -1120,29 +1136,9 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
   });
 
   document.getElementById('gitnexus-analyze-btn').addEventListener('click', function() {
-    const sel = document.getElementById('gitnexus-group-select');
-    const group = sel ? sel.value : 'default'; // pre-index: apply the up-front group choice
-    this.disabled = true;
-    this.textContent = 'Analyzing…';
-    vscode.postMessage({ type: 'gitnexusAnalyze', group });
-  });
-
-  document.getElementById('gitnexus-group-select').addEventListener('change', function() {
-    const current = gitnexusStatus.currentGroup || 'default';
-    if (this.value === '__create__') {
-      this.value = current; // the create action is async; keep the select on its real value
-      vscode.postMessage({ type: 'gitnexusCreateGroup' });
-      return;
-    }
-    // Before the first analyze the select is a pending choice — update the button to reflect it.
-    if (!gitnexusStatus.indexed) {
-      const btn = document.getElementById('gitnexus-analyze-btn');
-      if (btn) btn.textContent = (this.value && this.value !== 'default')
-        ? 'Analyze into ' + this.value : 'Analyze';
-      return;
-    }
-    if (this.value === current) return;
-    vscode.postMessage({ type: 'gitnexusSelectGroup', group: this.value });
+    gitnexusAnalyzing = true; // immediate feedback; the extension also posts gitnexusAnalyzeStarted
+    updateGitnexusRow();
+    vscode.postMessage({ type: 'gitnexusAnalyze' }); // plain analyze; group is chosen from the ··· menu
   });
 
   document.getElementById('gitnexus-menu-pop').addEventListener('click', function(e) {
@@ -1151,7 +1147,21 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     const menu = document.getElementById('gitnexus-menu');
     if (menu) menu.open = false;
     const act = item.getAttribute('data-act');
-    if (act === 'analyze') vscode.postMessage({ type: 'gitnexusAnalyze' });
+    if (act === 'analyze') { gitnexusAnalyzing = true; updateGitnexusRow(); vscode.postMessage({ type: 'gitnexusAnalyze' }); }
+    else if (act === 'createGroup') vscode.postMessage({ type: 'gitnexusCreateGroup' });
+    else if (act === 'group') {
+      const group = item.getAttribute('data-group') || 'default';
+      const current = gitnexusStatus.currentGroup || 'default';
+      if (group === current) return; // already in this group — no-op
+      if (!gitnexusStatus.indexed) {
+        // Pre-index: analyze straight into the chosen group in one pass (analyze + join).
+        gitnexusAnalyzing = true; updateGitnexusRow();
+        vscode.postMessage({ type: 'gitnexusAnalyze', group });
+      } else {
+        // Indexed: switch/leave group (confirms in the extension; re-analyzes only if stale).
+        vscode.postMessage({ type: 'gitnexusSelectGroup', group });
+      }
+    }
     else if (act === 'openRegistry') vscode.postMessage({ type: 'gitnexusOpenRegistry' });
     else if (act === 'openGroup') vscode.postMessage({ type: 'gitnexusOpenGroup' });
     else if (act === 'clean') vscode.postMessage({ type: 'gitnexusClean' });
