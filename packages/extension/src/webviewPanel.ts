@@ -361,7 +361,7 @@ export class CockpitPanel {
         return;
       case 'openWorkspace':
         try {
-          await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(message.path), { forceNewWindow: false });
+          await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(message.path), { forceNewWindow: true });
         } catch (e) {
           vscode.window.showErrorMessage(`AI StepFlow: failed to open '${message.path}'. ${e instanceof Error ? e.message : String(e)}`);
         }
