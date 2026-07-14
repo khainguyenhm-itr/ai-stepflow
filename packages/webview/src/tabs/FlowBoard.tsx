@@ -275,8 +275,8 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
         <td className="mono muted">{fmtAgo(runSummaries.reduce((m, s) => Math.max(m, s.mtimeMs), 0))}</td>
         <td className="drow-actions-cell">
           <span className="drow-actions">
-            <button className={`icon-btn ${graphOpen ? 'active' : ''}`} title="Flow graph" onClick={() => setGraphOpen(o => !o)}><Icon.GitBranch size={14} /></button>
-            <button className={`icon-btn ${runsOpen ? 'active' : ''}`} title="Runs" onClick={toggleRuns}><Icon.List size={14} /></button>
+            <button className={`icon-btn ${runsOpen ? 'active' : ''}`} title="Runs" onClick={toggleRuns}>{runsOpen ? <Icon.Terminal size={14} /> : <Icon.List size={14} />}</button>
+            <button className={`icon-btn ${graphOpen ? 'active' : ''}`} title="Flow graph" onClick={() => setGraphOpen(o => !o)}>{graphOpen ? <Icon.GitBranchMinus size={14} /> : <Icon.GitBranch size={14} />}</button>
 
             <button className="icon-btn pencil" title="Edit flow" onClick={() => onEdit(flow)}><Icon.Pencil size={14} /></button>
             <button className="icon-btn" title="Details" onClick={() => onDetail(flow)}><Icon.Info size={14} /></button>

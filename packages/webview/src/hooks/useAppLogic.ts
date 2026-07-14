@@ -253,8 +253,31 @@ export const useAppLogic = () => {
           return { ...prev, steps: { ...prev.steps, [message.stepId]: { ...ps, aiReviewOutput } } };
         });
         break;
-      case 'runStateChanged':
+      case 'runStateChanged': {
         runState.setRunState(message.runState);
+        // Keep the outer run table row in sync with the live run — otherwise steps/cost/tokens
+        // only refresh on a full reload, so the detail drawer updates but the table lags behind.
+        const changed = message.runState;
+        const steps = Object.values(changed.steps || {}) as any[];
+        const span = (from?: string, to?: string) => {
+          if (!from || !to) return 0;
+          const ms = new Date(to).getTime() - new Date(from).getTime();
+          return Number.isFinite(ms) && ms > 0 ? ms : 0;
+        };
+        const agg = {
+          completedSteps: steps.filter(s => s.completionStatus === 'done').length,
+          failedSteps: steps.filter(s => s.executionStatus === 'failed').length,
+          totalSteps: steps.length,
+          costUsd: steps.reduce((t, s) => t + (s.costUsd ?? 0), 0),
+          tokensUsed: steps.reduce((t, s) => t + (s.tokensUsed ?? 0), 0),
+          taskTimeMs: steps.reduce((t, s) => t + span(s.startedAt, s.completedAt), 0),
+          reviewTimeMs: steps.reduce((t, s) => t + span(s.completedAt, s.reviewCompletedAt), 0)
+        };
+        libState.setRunSummaries(prev => prev.map(s =>
+          s.flowId === changed.flowId && s.runId === changed.runId
+            ? { ...s, ...agg, runName: changed.runName, isClosed: !!changed.isClosed, mtimeMs: Date.now() }
+            : s
+        ));
         if (message.historyEvent && runState.activeFlowRef.current) {
           const flowId = runState.activeFlowRef.current.id;
           const newEvent = { ...message.historyEvent, runId: message.runState.runId };
@@ -273,6 +296,7 @@ export const useAppLogic = () => {
           });
         }
         break;
+      }
       case 'fileImported':
         if (message.kind === 'agent') {
           buildState.setAgentForm(prev => ({ ...prev, ...message.item, scope: 'project' }));
