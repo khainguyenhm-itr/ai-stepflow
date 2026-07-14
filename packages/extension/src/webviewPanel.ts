@@ -701,10 +701,18 @@ export class CockpitPanel {
 
   private async _handleOpenFile(filePath: string | undefined) {
     if (!filePath) return;
-    const absPath = path.isAbsolute(filePath) ? filePath : path.join(this.configManager.getProjectPath() || '', filePath);
+    let absPath = path.isAbsolute(filePath) ? filePath : path.join(this.configManager.getProjectPath() || '', filePath);
     if (!fs.existsSync(absPath)) {
-      vscode.window.showInformationMessage(`AI StepFlow: file not found yet — ${filePath}`);
-      return;
+      // requires/produces are declared as plain filenames that live under the per-run output dir
+      // (`.ai-stepflow/output/{flow}/{run}/…`, possibly nested), not at the project root — resolve
+      // them through the runner before giving up.
+      const resolved = this._runner.resolveArtifactPath(filePath);
+      if (resolved && fs.existsSync(resolved)) {
+        absPath = resolved;
+      } else {
+        vscode.window.showInformationMessage(`AI StepFlow: file not found yet — ${filePath}`);
+        return;
+      }
     }
     const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(absPath));
     await vscode.window.showTextDocument(doc, { preview: false });

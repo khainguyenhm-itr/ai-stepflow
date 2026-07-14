@@ -287,6 +287,7 @@ export class RunOrchestrator {
         const metrics = await this._readInteractiveMetrics(stepId);
         await this._setRunState(s => machine.markDone(machine.applyHumanReview(machine.markCompleted(s, flow, stepId, metrics), flow, stepId, { decision: 'approved' }), flow, stepId), { stepId, status: 'completed', message: 'Approved by user' });
         this.terminals.cancelStep(stepId);
+        if (step) await this._writeReviewReport(step, stepId, { verdict: 'approved', source: 'human', reason: 'Approved by reviewer.' });
         this._advanceReadySteps();
         return;
       }
@@ -298,6 +299,7 @@ export class RunOrchestrator {
       const metrics = await this._readInteractiveMetrics(stepId);
       await this._setRunState(s => machine.applyHumanReview(machine.markCompleted(s, flow, stepId, metrics), flow, stepId, { decision: 'rejected' }), { stepId, status: 'rejected', message: 'Rejected by user' });
       this.terminals.cancelStep(stepId);
+      if (step) await this._writeReviewReport(step, stepId, { verdict: 'rejected', source: 'human', reason: 'Rejected by reviewer.' });
       return;
     }
 
@@ -305,6 +307,7 @@ export class RunOrchestrator {
     await this._persistInteractiveMetrics(stepId);
     const review = { decision };
     await this._setRunState(s => machine.applyHumanReview(s, flow, stepId, review), { stepId, status: decision, message: `Human review ${decision}` });
+    if (step) await this._writeReviewReport(step, stepId, { verdict: decision, source: 'human', reason: decision === 'approved' ? 'Approved by reviewer.' : 'Rejected by reviewer.' });
 
     if (decision === 'approved' && this._runState.steps[stepId]?.completionStatus === 'done') {
       this._advanceReadySteps();
@@ -554,6 +557,21 @@ export class RunOrchestrator {
     return this._spawnClaudeStreaming(opts, stepId);
   }
 
+  /**
+   * Resolve a step's declared `requires`/`produces` entry (a plain filename, workspace-relative
+   * path, or absolute path) to where the artifact actually lives for the CURRENT run — applying
+   * input templating and the same nested-file lookup the runner uses. A plain filename resolves
+   * under `.ai-stepflow/output/{flow}/{run}/`, not the project root. Returns undefined when there
+   * is no active run to scope the lookup.
+   */
+  resolveArtifactPath(declared: string): string | undefined {
+    const flow = this._currentFlow;
+    if (!flow || !this._runState) return undefined;
+    const projectPath = this.configManager.getProjectPath() || '';
+    const [resolved] = machine.resolveTemplates([declared], this._runState.inputs || {});
+    return machine.locateProducedFile(resolved, flow.name, projectPath, this._runSlug());
+  }
+
   /** Terminate every in-flight headless run. The cockpit owns terminal/panel cleanup. */
   dispose(): void {
     for (const child of this._activeRuns) child.kill();
@@ -744,6 +762,8 @@ export class RunOrchestrator {
     this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[review (${result.source}): ${result.status} — ${result.note}]\n` });
 
     if (result.status === 'approved') {
+      // Write an approval report so the step's Files tab shows the review that passed it.
+      await this._writeReviewReport(step, stepId, { verdict: 'approved', source: result.source, reason: result.note, correct: result.correct, issues: result.issues, suggestions: result.suggestions });
       this._advanceReadySteps();
     } else if (result.status === 'rejected' && (result.source === 'validator' || result.source === 'freshness') && !this._autoRetryStepIds.has(stepId)) {
       // Auto-retry only for a deterministic rejection (a concrete, fixable miss: a missing/empty
@@ -756,12 +776,19 @@ export class RunOrchestrator {
     } else if (result.status === 'rejected') {
       // Final rejection (LLM verdict, or a second validator rejection): the flow halts here, so
       // write a full AI review report file (what's right/wrong, why, and how to fix it).
-      await this._writeReviewReport(step, stepId, result);
+      await this._writeReviewReport(step, stepId, { verdict: 'rejected', source: result.source, reason: result.note, correct: result.correct, issues: result.issues, suggestions: result.suggestions });
     }
   }
 
-  /** Render + persist a per-step AI review report for a rejected step; post its path to the webview. */
-  private async _writeReviewReport(step: FlowStep, stepId: string, result: machine.ReviewResult): Promise<void> {
+  /** Render + persist a per-step review report (approved or rejected); post its path to the webview. */
+  private async _writeReviewReport(step: FlowStep, stepId: string, report: {
+    verdict: 'approved' | 'rejected';
+    source: string;
+    reason: string;
+    correct?: string[];
+    issues?: string[];
+    suggestions?: string[];
+  }): Promise<void> {
     if (!this._runState) return;
     const st = this._runState.steps[stepId];
     const markdown = machine.renderReviewReport({
@@ -769,11 +796,12 @@ export class RunOrchestrator {
       flowName: this._currentFlow?.name,
       runName: this._runState.runName,
       runId: this._runState.runId,
-      source: result.source,
-      reason: result.note,
-      correct: result.correct,
-      issues: result.issues,
-      suggestions: result.suggestions,
+      verdict: report.verdict,
+      source: report.source,
+      reason: report.reason,
+      correct: report.correct,
+      issues: report.issues,
+      suggestions: report.suggestions,
       startedAt: st?.startedAt,
       completedAt: st?.completedAt,
       reviewCompletedAt: st?.reviewCompletedAt,

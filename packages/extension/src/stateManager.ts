@@ -131,7 +131,7 @@ export class StateManager {
 
   /**
    * Delete the per-step AI review reports (written by {@link saveReviewReport} when a step is
-   * rejected) for the given steps of a run. Exact per-step filenames — not a prefix glob — so a run
+   * approved or rejected) for the given steps of a run. Exact per-step filenames — not a prefix glob — so a run
    * whose slug is a prefix of another's never has its reports deleted by mistake. No-op if absent.
    */
   public async deleteReviewReports(run: FlowRunState, stepIds: string[]): Promise<void> {

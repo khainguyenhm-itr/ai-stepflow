@@ -310,9 +310,11 @@ export interface ReviewReportInput {
   flowName?: string;
   runName?: string;
   runId: string;
+  /** Approved or rejected — drives the verdict badge and the reason heading. */
+  verdict: 'approved' | 'rejected';
   /** Which review layer produced the verdict. */
   source: string;
-  /** One-line reason the step was rejected. */
+  /** One-line reason for the verdict. */
   reason: string;
   correct?: string[];
   issues?: string[];
@@ -326,11 +328,13 @@ export interface ReviewReportInput {
 }
 
 /**
- * Render a human-readable Markdown AI-review report for a rejected step: a summary table (step,
+ * Render a human-readable Markdown review report for a reviewed step: a summary table (step,
  * timing, model, token/cost) followed by "what's correct", "issues", and "suggested fixes" tables.
- * Pure — the caller persists the returned string wherever it wants.
+ * The verdict badge and reason heading adapt to approved vs rejected. Pure — the caller persists
+ * the returned string wherever it wants.
  */
 export function renderReviewReport(input: ReviewReportInput): string {
+  const approved = input.verdict === 'approved';
   const title = input.step.title || input.step.id;
   const taskMs = reviewSpanMs(input.startedAt, input.completedAt);
   const reviewMs = reviewSpanMs(input.completedAt, input.reviewCompletedAt);
@@ -338,7 +342,7 @@ export function renderReviewReport(input: ReviewReportInput): string {
     ['Step', `${reviewCell(title)} (\`${input.step.id}\`)`],
     ['Flow', reviewCell(input.flowName || '—')],
     ['Run', reviewCell(input.runName || input.runId)],
-    ['Verdict', '❌ Rejected'],
+    ['Verdict', approved ? '✅ Approved' : '❌ Rejected'],
     ['Review source', reviewCell(input.source)],
     ['Model', reviewCell(input.modelUsed || '—')],
     ['Started', reviewCell(input.startedAt || '—')],
@@ -357,7 +361,7 @@ export function renderReviewReport(input: ReviewReportInput): string {
     '| --- | --- |',
     summary,
     '',
-    '## Why it was rejected',
+    approved ? '## Why it was approved' : '## Why it was rejected',
     '',
     reviewCell(input.reason) || '_No reason provided._',
     '',

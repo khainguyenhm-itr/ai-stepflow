@@ -200,7 +200,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   // creates. Listed in the Files tab so the user can open/inspect each one.
   const inputFiles = activeStep?.requires ?? [];
   const outputFiles = activeStep?.produces ?? [];
-  // Report file written by AI review when the step was rejected; absent if review never wrote one.
+  // Review report written when the step is approved or rejected; absent if no review ran yet.
   const reviewFile = activeStepState?.reviewReportPath;
 
   // Cost + History render as aligned monospace reports (same look as the console block).

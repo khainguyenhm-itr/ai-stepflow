@@ -140,7 +140,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     .stat-lbl { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-top: 2px; }
 
     /* default library expandable */
-    .lib-toggle { display: flex; align-items: center; gap: 7px; margin-top: 2px; padding: 9px 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); cursor: pointer; width: 100%; text-align: left; font-family: inherit; color: var(--fg); transition: background .1s; }
+    .lib-toggle { display: flex; align-items: center; gap: 7px; padding: 9px 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); cursor: pointer; width: 100%; text-align: left; font-family: inherit; color: var(--fg); transition: background .1s; }
     .lib-toggle:hover { background: var(--hover); }
     .lib-caret { font-size: 9px; color: var(--muted); transition: transform .15s; flex: 0 0 auto; }
     .lib-caret.open { transform: rotate(90deg); }
