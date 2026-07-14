@@ -110,6 +110,7 @@ export type WebviewMessage =
 export const RUNNABLE_COMMANDS = [
   'ai-stepflow.installDefaults',
   'ai-stepflow.refreshAll',
+  'ai-stepflow.astGraph.install',
   'ai-stepflow.astGraph.rescan',
   'ai-stepflow.astGraph.reregisterMcp',
   'workbench.action.openSettings'

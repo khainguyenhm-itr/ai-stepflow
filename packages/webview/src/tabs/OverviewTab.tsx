@@ -7,6 +7,7 @@ import { Tab, ScopeFilter } from '../hooks/appState/types';
 export type RunnableCommand =
   | 'ai-stepflow.installDefaults'
   | 'ai-stepflow.refreshAll'
+  | 'ai-stepflow.astGraph.install'
   | 'ai-stepflow.astGraph.rescan'
   | 'ai-stepflow.astGraph.reregisterMcp'
   | 'workbench.action.openSettings';
@@ -221,6 +222,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   // The Connect action registers the GitNexus MCP specifically — gate it on gitnexus alone (NOT
   // ast-graph) so it stays consistent with the sidebar's gitnexus-only row gating.
   const gitnexusMcpConnected = connectedMcpServers.some(s => /gitnexus/i.test(s));
+  // AST graph is installed once its MCP server is registered; before that, offer an Install button.
+  const astConnected = connectedMcpServers.some(s => /ast-graph/i.test(s));
 
   return (
     <div className="page ov-page">
@@ -417,12 +420,23 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               <div className="ov-setting-name">
                 <span className="btn-glyph"><Icon.Zap size={14} /></span>AST graph &amp; run settings
               </div>
-              <div className="muted small">Enable/disable AST graph, run timeout, max turns, headless MCP servers</div>
+              <div className="muted small">
+                <span className={astConnected ? 'ov-ok' : 'ov-warn'}>
+                  {astConnected ? 'Installed' : 'Not installed'}
+                </span>
+                {' · downloads the ast-graph CLI, indexes this workspace, and exposes it as an MCP server'}
+              </div>
             </div>
             <div className="btn-group">
-              <button className="btn" onClick={() => onRunCommand('ai-stepflow.astGraph.rescan')} title="Rescan AST graph">
-                <span className="btn-glyph"><Icon.RotateCw size={14} /></span>Rescan
-              </button>
+              {!astConnected ? (
+                <button className="btn primary" onClick={() => onRunCommand('ai-stepflow.astGraph.install')} title="Install AST graph (download CLI + index workspace)">
+                  <span className="btn-glyph"><Icon.Download size={14} /></span>Install
+                </button>
+              ) : (
+                <button className="btn" onClick={() => onRunCommand('ai-stepflow.astGraph.rescan')} title="Rescan AST graph">
+                  <span className="btn-glyph"><Icon.RotateCw size={14} /></span>Rescan
+                </button>
+              )}
               <button className="btn" onClick={() => onRunCommand('workbench.action.openSettings')} title="Open AI StepFlow settings">
                 <span className="btn-glyph"><Icon.Settings size={14} /></span>Settings
               </button>

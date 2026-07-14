@@ -92,6 +92,12 @@
         "icon": "$(cloud-download)"
       },
       {
+        "command": "ai-stepflow.astGraph.install",
+        "title": "Install AST Graph",
+        "category": "AI StepFlow",
+        "icon": "$(cloud-download)"
+      },
+      {
         "command": "ai-stepflow.astGraph.rescan",
         "title": "Rescan AST Graph",
         "category": "AI StepFlow",
