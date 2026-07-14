@@ -66,7 +66,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     /* ── accordion: expanded section fills remaining sidebar height ── */
     .sec.expanded { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
     .sec.expanded > .sec-hdr { flex: 0 0 auto; }
-    .sec.expanded > .box { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+    .sec.expanded > .box { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; margin-top: 5px; }
     .sec.expanded > .box > .box-tabs,
     .sec.expanded > .box > .box-search { flex: 0 0 auto; }
     .sec.expanded > .box > #mcp,
@@ -76,7 +76,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     .sec.expanded > .box > #plugins::-webkit-scrollbar,
     .sec.expanded > .box > #runs::-webkit-scrollbar { display: none; }
     /* Default Library expanded */
-    .sec.expanded > #defaults-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    .sec.expanded > #defaults-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; margin-top: 3px; }
     .sec.expanded .lib-panel { flex: 1; min-height: 0; max-height: none; overflow-y: auto; }
 
     /* ── run cards ── */
@@ -140,7 +140,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     .stat-lbl { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-top: 2px; }
 
     /* default library expandable */
-    .lib-toggle { display: flex; align-items: center; gap: 7px; margin-top: 6px; padding: 9px 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); cursor: pointer; width: 100%; text-align: left; font-family: inherit; color: var(--fg); transition: background .1s; }
+    .lib-toggle { display: flex; align-items: center; gap: 7px; margin-top: 2px; padding: 9px 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); cursor: pointer; width: 100%; text-align: left; font-family: inherit; color: var(--fg); transition: background .1s; }
     .lib-toggle:hover { background: var(--hover); }
     .lib-caret { font-size: 9px; color: var(--muted); transition: transform .15s; flex: 0 0 auto; }
     .lib-caret.open { transform: rotate(90deg); }
