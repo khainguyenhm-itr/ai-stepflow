@@ -46,8 +46,9 @@ export const Modal: React.FC<{
   children?: React.ReactNode;
 }> = ({ title, open, onClose, footer, width = 520, children }) => {
   if (!open) return null;
+  // Intentionally no overlay-click close: popups only close via the X or a footer button.
   return (
-    <div className="modal-overlay" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="modal-overlay">
       <div className="modal" style={{ width, maxWidth: 'calc(100vw - 32px)' }}>
         <div className="modal-head">
           <span className="modal-title">{title}</span>
@@ -57,6 +58,37 @@ export const Modal: React.FC<{
         </div>
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-foot">{footer}</div>}
+      </div>
+    </div>
+  );
+};
+
+/** Small confirmation popup layered above other modals. Closes only via its buttons or X. */
+export const ConfirmDialog: React.FC<{
+  open: boolean;
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  danger?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}> = ({ open, title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', danger, onConfirm, onCancel }) => {
+  if (!open) return null;
+  return (
+    <div className="modal-overlay" style={{ zIndex: 300 }}>
+      <div className="modal" style={{ width: 380, maxWidth: 'calc(100vw - 32px)' }}>
+        <div className="modal-head">
+          <span className="modal-title">{title}</span>
+          <button className="icon-btn" title="Close" onClick={onCancel}>
+            <X size={16} />
+          </button>
+        </div>
+        <div className="modal-body"><p>{message}</p></div>
+        <div className="modal-foot">
+          <button className={`btn ${danger ? 'danger' : 'primary'}`} onClick={onConfirm}>{confirmLabel}</button>
+          <button className="btn" onClick={onCancel}>{cancelLabel}</button>
+        </div>
       </div>
     </div>
   );

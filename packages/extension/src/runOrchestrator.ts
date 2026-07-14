@@ -48,6 +48,8 @@ export class RunOrchestrator {
   private _activeRuns = new Set<ChildProcess>();
   /** The in-flight headless child per step, so a "Cancel" can kill exactly that run. */
   private _runChildrenByStep = new Map<string, ChildProcess>();
+  /** In-flight AI-generation children (agent/skill/flow drafts), so a cancel can kill exactly those. */
+  private _generationRuns = new Set<ChildProcess>();
   /** Steps the user cancelled, so the resolving run handler skips its own failure transition. */
   private _cancelledStepIds = new Set<string>();
   /** Steps already launched in the current run, so the DAG orchestrator never starts one twice. Reset when the runId changes. */
@@ -554,7 +556,13 @@ export class RunOrchestrator {
    * cockpit can reuse it for ad-hoc drafts and get the same timeout + dispose cleanup.
    */
   spawnClaudeStreaming(opts: ClaudeStreamingRunOptions, stepId?: string): Promise<ClaudeStreamingRunResult> {
-    return this._spawnClaudeStreaming(opts, stepId);
+    return this._spawnClaudeStreaming(opts, stepId, true);
+  }
+
+  /** Kill every in-flight AI-generation child so a closed generate modal leaves nothing running. */
+  cancelGeneration(): void {
+    for (const child of this._generationRuns) child.kill();
+    this._generationRuns.clear();
   }
 
   /**
@@ -863,13 +871,15 @@ export class RunOrchestrator {
     }
   }
 
-  private _spawnClaudeStreaming(opts: ClaudeStreamingRunOptions, stepId?: string): Promise<ClaudeStreamingRunResult> {
+  private _spawnClaudeStreaming(opts: ClaudeStreamingRunOptions, stepId?: string, isGeneration = false): Promise<ClaudeStreamingRunResult> {
     const handle = runClaudeStreaming({ mcpConfig: this._headlessMcpConfig(), ...opts, timeoutMs: opts.timeoutMs ?? this._runTimeoutMs() });
     this._activeRuns.add(handle.child);
     if (stepId) this._runChildrenByStep.set(stepId, handle.child);
+    if (isGeneration) this._generationRuns.add(handle.child);
     return handle.completed.finally(() => {
       this._activeRuns.delete(handle.child);
       if (stepId && this._runChildrenByStep.get(stepId) === handle.child) this._runChildrenByStep.delete(stepId);
+      if (isGeneration) this._generationRuns.delete(handle.child);
     });
   }
 

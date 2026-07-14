@@ -20,6 +20,7 @@ import { RunInputsModal } from './modals/RunInputsModal';
 import { FlowBuilderModal } from './modals/FlowBuilderModal';
 import { StepModal } from './modals/StepModal';
 import { StandaloneRunModal } from './modals/StandaloneRunModal';
+import { ConfirmDialog } from './components/primitives';
 
 const App: React.FC = () => {
   const logic = useAppLogic();
@@ -86,6 +87,18 @@ const App: React.FC = () => {
   } = logic;
 
   useVsCodeBridge(handleHostMessage, seedPreview);
+
+  // Closing an AI-generate modal mid-generation is gated by a confirm popup that,
+  // on confirm, cancels all related generation processes on the host.
+  const [pendingCancelGen, setPendingCancelGen] = React.useState<null | 'agent' | 'skill' | 'flow'>(null);
+  const closeAgentModal = () => { setAgentModalOpen(false); setEditingAgentSource(null); };
+  const closeSkillModal = () => { setSkillModalOpen(false); setEditingSkillSource(null); };
+  const closeFlowModal = () => setEditingFlow(null);
+  const requestClose = (which: 'agent' | 'skill' | 'flow', close: () => void) => () => {
+    const generating = which === 'flow' ? flowAiLoading : draftLoading === which;
+    if (generating) setPendingCancelGen(which);
+    else close();
+  };
 
   const getScope = (sourcePath: string) => {
     if (globalPath && sourcePath.startsWith(globalPath)) return 'Global';
@@ -342,7 +355,7 @@ const App: React.FC = () => {
         connectedMcpServers={connectedMcpServers}
         aiPrompt={agentAiPrompt}
         aiMessages={agentAiMessages}
-        onClose={() => { setAgentModalOpen(false); setEditingAgentSource(null); }}
+        onClose={requestClose('agent', closeAgentModal)}
         onConnectMcp={() => setConnectMcpModalOpen(true)}
         onChange={patch => setAgentForm(prev => ({ ...prev, ...patch }))}
         onSubmit={submitAgentModal}
@@ -375,7 +388,7 @@ const App: React.FC = () => {
         draftLoading={draftLoading === 'skill'}
         aiPrompt={skillAiPrompt}
         aiMessages={skillAiMessages}
-        onClose={() => { setSkillModalOpen(false); setEditingSkillSource(null); }}
+        onClose={requestClose('skill', closeSkillModal)}
         onChange={patch => setSkillForm(prev => ({ ...prev, ...patch }))}
         onSubmit={submitSkillModal}
         onAiPromptChange={setSkillAiPrompt}
@@ -452,7 +465,7 @@ const App: React.FC = () => {
         aiPrompt={flowAiPrompt}
         aiMessages={flowAiMessages}
         aiLoading={flowAiLoading}
-        onClose={() => setEditingFlow(null)}
+        onClose={requestClose('flow', closeFlowModal)}
         onSave={saveEditingFlow}
         onChange={patch => setEditingFlow(prev => prev ? ({ ...prev, ...patch }) : null)}
         onChangeScope={setEditingFlowScope}
@@ -562,6 +575,24 @@ const App: React.FC = () => {
         onSave={saveStepEdit}
         onChange={patch => setEditingStep(prev => prev ? ({ ...prev, step: { ...prev.step, ...patch } }) : null)}
         getItemScope={getItemScope}
+      />
+
+      <ConfirmDialog
+        open={pendingCancelGen !== null}
+        title="Cancel AI generation?"
+        message="Generation is still in progress. Closing will cancel all related generation processes."
+        confirmLabel="Cancel & close"
+        cancelLabel="Keep generating"
+        danger
+        onConfirm={() => {
+          const which = pendingCancelGen;
+          sendToVSCode('cancelGenerate');
+          if (which === 'flow') { setFlowAiLoading(false); closeFlowModal(); }
+          else if (which === 'agent') { setDraftLoading(null); closeAgentModal(); }
+          else if (which === 'skill') { setDraftLoading(null); closeSkillModal(); }
+          setPendingCancelGen(null);
+        }}
+        onCancel={() => setPendingCancelGen(null)}
       />
     </div>
   );

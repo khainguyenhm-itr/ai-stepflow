@@ -334,6 +334,9 @@ export class CockpitPanel {
       case 'generateFlow':
         await this._handleGenerateFlow(message.description, message.flow, message.history);
         return;
+      case 'cancelGenerate':
+        this._runner.cancelGeneration();
+        return;
       case 'connectMcpServer':
         try {
           const res = await addMcpServer({

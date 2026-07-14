@@ -99,6 +99,7 @@ export type WebviewMessage =
   | { type: 'generateDraft'; kind: 'agent' | 'skill'; prompt: string; history?: { role: 'user' | 'assistant'; content: string }[] }
   | { type: 'savePref'; key: string; value: string; global?: boolean }
   | { type: 'generateFlow'; description: string; flow?: Flow; history?: { role: 'user' | 'assistant'; content: string }[] }
+  | { type: 'cancelGenerate' }
   | { type: 'connectMcpServer'; config: { name: string; scope: 'global' | 'local'; command: string; args: string[]; env?: Record<string, string> } }
   | { type: 'runCommand'; command: RunnableCommand }
   | { type: 'openWorkspace'; path: string }
@@ -173,6 +174,7 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   editRun: m => (m.runName === undefined || isString(m.runName)) && isObject(m.inputs),
   generateDraft: m => (m.kind === 'agent' || m.kind === 'skill') && isString(m.prompt),
   generateFlow: m => isString(m.description) && (m.flow === undefined || isFlowLike(m.flow)),
+  cancelGenerate: () => true,
   connectMcpServer: m => isObject(m.config) && isString(m.config.name) && isString(m.config.command),
   runCommand: m => isString(m.command) && (RUNNABLE_COMMANDS as readonly string[]).includes(m.command),
   openWorkspace: m => isString(m.path),
