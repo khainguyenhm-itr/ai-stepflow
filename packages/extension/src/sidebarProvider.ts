@@ -284,6 +284,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           runId: file.runId,
           runName: file.runName,
           completed: file.completedSteps,
+          inProgress: file.inProgressSteps,
+          reviewing: file.reviewing,
           total: file.totalSteps,
           filePath: file.filePath,
           isClosed: file.isClosed,

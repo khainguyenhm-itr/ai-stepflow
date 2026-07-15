@@ -6,7 +6,7 @@ import {
   getDefaultActiveStepId,
   hasDependencyCycle
 } from '../flowUtils';
-import { previewFlow, previewAgents, previewSkills } from '../previewData';
+import { previewFlow, previewAgents, previewSkills, previewRunState, previewAuditLogs, previewRunSummaries } from '../previewData';
 
 import { useLibraryState } from './appState/useLibraryState';
 import { useRunState } from './appState/useRunState';
@@ -264,8 +264,14 @@ export const useAppLogic = () => {
           const ms = new Date(to).getTime() - new Date(from).getTime();
           return Number.isFinite(ms) && ms > 0 ? ms : 0;
         };
+        const isReviewing = (s: any) => s.reviewStatus === 'ai_review_running' || s.reviewStatus === 'waiting_human';
         const agg = {
           completedSteps: steps.filter(s => s.completionStatus === 'done').length,
+          // Steps that have started but aren't done yet (running or under review) — counted toward
+          // the table's "N/total" so a step in flight shows its own position (e.g. 2/5), and used
+          // to flag the run as under review (yellow) rather than plain running (blue).
+          inProgressSteps: steps.filter(s => s.executionStatus === 'running' || isReviewing(s)).length,
+          reviewing: steps.some(isReviewing),
           failedSteps: steps.filter(s => s.executionStatus === 'failed').length,
           totalSteps: steps.length,
           costUsd: steps.reduce((t, s) => t + (s.costUsd ?? 0), 0),
@@ -578,6 +584,14 @@ export const useAppLogic = () => {
     libState.setSkills(previewSkills);
     libState.setGlobalPath('/preview/global');
     libState.setProjectPath('/preview/project');
+    // Open straight into the finished sample run so the runner sub-tabs (Console / Files /
+    // Cost / History) have real content to inspect without a VS Code host.
+    libState.setAuditLogs(previewAuditLogs);
+    libState.setRunSummaries(previewRunSummaries);
+    runState.setActiveFlow(previewFlow);
+    runState.setRunState(previewRunState);
+    runState.setActiveStepId('write-docs');
+    runState.setRunnerVisible(true);
   };
 
   const seedPreviewRun = (stepId: string, runDescription?: string) => {

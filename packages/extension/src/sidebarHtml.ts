@@ -95,12 +95,15 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     .run-card-bar-fill { height: 100%; border-radius: 2px; background: var(--vscode-progressBar-background, #0e70c0); transition: width .3s ease; }
     .run-card.run-active .run-card-bar-fill { background: var(--btn); }
     .run-card.run-done .run-card-bar-fill { background: var(--success); }
+    .run-card.run-reviewing::before { background: var(--vscode-charts-yellow, #d7ba7d); }
+    .run-card.run-reviewing .run-card-bar-fill { background: var(--vscode-charts-yellow, #d7ba7d); }
     .run-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
     .run-card-meta { font-size: 10px; color: var(--muted); }
     .run-card-acts { flex-shrink: 0; opacity: 1; }
     .run-card:hover .run-card-acts, .run-card.run-active .run-card-acts { opacity: 1; }
     .run-sbadge { display: inline-flex; align-items: center; height: 14px; padding: 0 5px; border-radius: 9px; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; white-space: nowrap; flex-shrink: 0; margin-top: 1px; }
     .run-sbadge.running { background: var(--vscode-charts-blue, var(--focus)); color: #fff; }
+    .run-sbadge.reviewing { background: var(--vscode-charts-yellow, #d7ba7d); color: #1e1e1e; }
     .run-sbadge.done { background: var(--success); color: #fff; }
     .run-sbadge.partial { background: rgba(215,160,0,.18); color: var(--vscode-charts-yellow, #d7ba7d); }
     .run-step-row { display: flex; align-items: center; gap: 4px; overflow: hidden; }
@@ -1041,12 +1044,16 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     el.innerHTML = filteredFiles.map(f => {
       const isActive = !!f.isActive;
       const isFinalized = !!f.isClosed;
+      const reviewing = !!f.reviewing;
       const isDone = f.completed === f.total && f.total > 0;
+      // Count the in-flight step (running or under review) toward the tally so a step in progress
+      // shows its own position, e.g. "2/5" while step 2 is running/being reviewed.
+      const shown = Math.min(f.completed + (f.inProgress || 0), f.total);
       const isPartial = f.completed > 0 && !isDone;
-      const percent = f.total > 0 ? Math.round((f.completed / f.total) * 100) : 0;
-      const cardCls = isActive ? ' run-active' : (isDone ? ' run-done' : '');
-      const badgeCls = isActive ? 'running' : isFinalized ? 'done' : isDone ? 'done' : isPartial ? 'partial' : '';
-      const badgeLabel = isActive ? 'Active' : isFinalized ? '✓ Finalized' : isDone ? '✓ Done' : f.completed + '/' + f.total;
+      const percent = f.total > 0 ? Math.round((shown / f.total) * 100) : 0;
+      const cardCls = reviewing ? ' run-reviewing' : isActive ? ' run-active' : (isDone ? ' run-done' : '');
+      const badgeCls = isFinalized ? 'done' : isDone ? 'done' : reviewing ? 'reviewing' : isActive ? 'running' : isPartial ? 'partial' : '';
+      const badgeLabel = isFinalized ? '✓ Finalized' : isDone ? '✓ Done' : reviewing ? 'Reviewing' : isActive ? 'Active' : shown + '/' + f.total;
       return '<div class="run-card' + cardCls + '">' +
         '<div class="run-card-head">' +
           '<div class="run-card-titles">' +
@@ -1065,7 +1072,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
         '<div class="run-card-bar"><div class="run-card-bar-fill" style="width:' + percent + '%"></div></div>' +
         '<div class="run-card-foot">' +
           '<span class="run-card-meta">' + fmtDate(f.runId) + '</span>' +
-          '<span class="run-card-meta">' + f.completed + '/' + f.total + ' steps</span>' +
+          '<span class="run-card-meta">' + shown + '/' + f.total + ' steps</span>' +
         '</div>' +
       '</div>';
     }).join('');

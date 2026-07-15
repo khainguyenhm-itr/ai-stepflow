@@ -31,6 +31,7 @@ import {
   Search,
   MoreHorizontal,
   FolderOpen,
+  FileText,
   List,
   SlidersHorizontal,
 } from 'lucide-react';
@@ -168,6 +169,7 @@ export const Icon = {
   Search,
   More: MoreHorizontal,
   FolderOpen,
+  FileText,
   List,
   Sliders: SlidersHorizontal,
 };

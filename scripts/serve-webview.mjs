@@ -82,14 +82,18 @@ function buildSidebarHtml() {
         flowName: 'Preview Docs Flow',
         runName: 'run-2024-01',
         completed: 1,
-        total: 2,
-        percent: 50,
-        isRunning: true,
+        total: 5,
+        percent: 40,
+        isRunning: false,
         filePath: null,
-        currentStep: { title: 'Write Docs', status: 'running' }
+        currentStep: { title: 'Write Docs', status: 'waiting_human' }
       },
-      runFiles: [],
-      totalRunFiles: 0,
+      runFiles: [
+        { flowId: 'preview-docs-flow', flowName: 'Preview Docs Flow', runId: '2026-07-15T02:30:00.000Z', runName: 'Preview run · docs', completed: 1, inProgress: 1, reviewing: true,  total: 5, filePath: '/preview/run-reviewing.json', isClosed: false, isActive: true },
+        { flowId: 'preview-docs-flow', flowName: 'Preview Docs Flow', runId: '2026-07-14T09:10:00.000Z', runName: 'Nightly build',       completed: 3, inProgress: 1, reviewing: false, total: 5, filePath: '/preview/run-running.json',   isClosed: false, isActive: false },
+        { flowId: 'preview-docs-flow', flowName: 'Preview Docs Flow', runId: '2026-07-13T18:00:00.000Z', runName: 'Release 1.0',          completed: 5, inProgress: 0, reviewing: false, total: 5, filePath: '/preview/run-done.json',      isClosed: false, isActive: false }
+      ],
+      totalRunFiles: 3,
       uiPrefs: { 'review:activeKit': 'aisf-review-default.md' },
       reviewKits: [
         { name: 'AISF Review Default', file: 'aisf-review-default.md', scope: 'global' },

@@ -23,6 +23,52 @@ function formatDuration(ms: number): string {
   return `${h}h ${m % 60}m`;
 }
 
+/** Split a path into its directory prefix and filename for two-line display. */
+function splitPath(p: string): { dir: string; name: string } {
+  const parts = p.split(/[\\/]/);
+  const name = parts.pop() || p;
+  return { dir: parts.join('/'), name };
+}
+
+/** One collapsible-looking artifact group (Inputs / Outputs / AI Review) in the Files tab. */
+function renderFileGroup(
+  kind: 'inputs' | 'outputs' | 'review',
+  label: string,
+  icon: React.ReactNode,
+  files: string[],
+  emptyText: string,
+  onOpenFile: (path: string) => void,
+) {
+  return (
+    <div className={`files-group files-group--${kind}`}>
+      <div className="files-group-head">
+        <span className="files-group-icon">{icon}</span>
+        <span className="files-group-label">{label}</span>
+        <span className="files-group-count">{files.length}</span>
+      </div>
+      {files.length > 0 ? (
+        <div className="files-list">
+          {files.map(f => {
+            const { dir, name } = splitPath(f);
+            return (
+              <button key={`${kind}-${f}`} type="button" className="file-row" title={`Open ${f}`} onClick={() => onOpenFile(f)}>
+                <Icon.FileText size={15} className="file-row-icon" />
+                <span className="file-row-text">
+                  <span className="file-name">{name}</span>
+                  {dir && <span className="file-dir">{dir}</span>}
+                </span>
+                <Icon.ChevronRight size={14} className="file-row-open" />
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        emptyText && <div className="files-empty">{emptyText}</div>
+      )}
+    </div>
+  );
+}
+
 interface InlineRunnerProps {
   flow: Flow;
   runState: FlowRunState;
@@ -452,34 +498,9 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
         {/* Input (requires) / output (produces) artifact files for this step; click to open. */}
         {rtab === 'files' && (
           <div className="files-panel">
-            <div className="files-group">
-              <div className="divider-label">Inputs</div>
-              {inputFiles.length > 0
-                ? inputFiles.map(f => (
-                    <button key={`in-${f}`} type="button" className="file-row" title={`Open ${f}`} onClick={() => onOpenFile(f)}>
-                      <Icon.FolderOpen size={13} /><span className="file-path">{f}</span>
-                    </button>
-                  ))
-                : <div className="run-empty">No input files declared.</div>}
-            </div>
-            <div className="files-group">
-              <div className="divider-label">Outputs</div>
-              {outputFiles.length > 0
-                ? outputFiles.map(f => (
-                    <button key={`out-${f}`} type="button" className="file-row" title={`Open ${f}`} onClick={() => onOpenFile(f)}>
-                      <Icon.FolderOpen size={13} /><span className="file-path">{f}</span>
-                    </button>
-                  ))
-                : <div className="run-empty">No output files declared.</div>}
-            </div>
-            {reviewFile && (
-              <div className="files-group">
-                <div className="divider-label">Review</div>
-                <button type="button" className="file-row" title={`Open ${reviewFile}`} onClick={() => onOpenFile(reviewFile)}>
-                  <Icon.FolderOpen size={13} /><span className="file-path">{reviewFile}</span>
-                </button>
-              </div>
-            )}
+            {renderFileGroup('inputs', 'Inputs', <Icon.Download size={14} />, inputFiles, 'No input files declared.', onOpenFile)}
+            {renderFileGroup('outputs', 'Outputs', <Icon.Upload size={14} />, outputFiles, 'No output files declared.', onOpenFile)}
+            {reviewFile && renderFileGroup('review', 'AI Review', <Icon.Sparkles size={14} />, [reviewFile], '', onOpenFile)}
           </div>
         )}
 

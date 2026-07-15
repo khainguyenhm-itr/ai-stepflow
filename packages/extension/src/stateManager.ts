@@ -12,6 +12,10 @@ export interface RunSummary {
   completedSteps: number;
   /** Steps whose execution failed. */
   failedSteps: number;
+  /** Steps that have started but aren't done yet (running or under review). */
+  inProgressSteps: number;
+  /** True while a step is awaiting review (AI review running or waiting for a human). */
+  reviewing: boolean;
   totalSteps: number;
   mtimeMs: number;
   isClosed: boolean;
@@ -311,6 +315,8 @@ export class StateManager {
           filePath,
           completedSteps: steps.filter(step => step.completionStatus === 'done').length,
           failedSteps: steps.filter(step => step.executionStatus === 'failed').length,
+          inProgressSteps: steps.filter(step => step.executionStatus === 'running' || step.reviewStatus === 'ai_review_running' || step.reviewStatus === 'waiting_human').length,
+          reviewing: steps.some(step => step.reviewStatus === 'ai_review_running' || step.reviewStatus === 'waiting_human'),
           totalSteps: steps.length,
           mtimeMs: stat.mtimeMs,
           isClosed: !!run.isClosed,

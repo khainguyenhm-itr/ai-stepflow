@@ -289,7 +289,7 @@ export class RunOrchestrator {
         const metrics = await this._readInteractiveMetrics(stepId);
         await this._setRunState(s => machine.markDone(machine.applyHumanReview(machine.markCompleted(s, flow, stepId, metrics), flow, stepId, { decision: 'approved' }), flow, stepId), { stepId, status: 'completed', message: 'Approved by user' });
         this.terminals.cancelStep(stepId);
-        if (step) await this._writeReviewReport(step, stepId, { verdict: 'approved', source: 'human', reason: 'Approved by reviewer.' });
+        // Human review does not produce a report file (only AI review does).
         this._advanceReadySteps();
         return;
       }
@@ -301,7 +301,7 @@ export class RunOrchestrator {
       const metrics = await this._readInteractiveMetrics(stepId);
       await this._setRunState(s => machine.applyHumanReview(machine.markCompleted(s, flow, stepId, metrics), flow, stepId, { decision: 'rejected' }), { stepId, status: 'rejected', message: 'Rejected by user' });
       this.terminals.cancelStep(stepId);
-      if (step) await this._writeReviewReport(step, stepId, { verdict: 'rejected', source: 'human', reason: 'Rejected by reviewer.' });
+      // Human review does not produce a report file (only AI review does).
       return;
     }
 
@@ -309,7 +309,7 @@ export class RunOrchestrator {
     await this._persistInteractiveMetrics(stepId);
     const review = { decision };
     await this._setRunState(s => machine.applyHumanReview(s, flow, stepId, review), { stepId, status: decision, message: `Human review ${decision}` });
-    if (step) await this._writeReviewReport(step, stepId, { verdict: decision, source: 'human', reason: decision === 'approved' ? 'Approved by reviewer.' : 'Rejected by reviewer.' });
+    // Human review does not produce a report file (only AI review does).
 
     if (decision === 'approved' && this._runState.steps[stepId]?.completionStatus === 'done') {
       this._advanceReadySteps();

@@ -10,6 +10,7 @@ type RunSummary = {
   flowId: string; runId: string; runName?: string;
   completedSteps: number; totalSteps: number; mtimeMs: number; isClosed: boolean;
   costUsd?: number; tokensUsed?: number; taskTimeMs?: number; failedSteps?: number;
+  inProgressSteps?: number; reviewing?: boolean;
 };
 
 interface FlowBoardProps {
@@ -147,16 +148,20 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
     const isActive = runnerOpen && runState?.runId === s.runId;
     const done = s.completedSteps >= s.totalSteps;
     const failed = (s.failedSteps ?? 0) > 0;
-    const statusKey = s.isClosed ? 'done' : failed ? 'fail' : done ? 'ok' : 'run';
-    const statusLabel = s.isClosed ? 'Finalized' : failed ? 'Failed' : done ? 'Done' : 'Running';
+    const reviewing = !!s.reviewing;
+    // Count the in-flight step toward the tally so a running/reviewing step shows its own
+    // position (e.g. step 2 of 5 → "2/5"), capped at the total.
+    const shownSteps = Math.min(s.completedSteps + (s.inProgressSteps ?? 0), s.totalSteps);
+    const statusKey = s.isClosed ? 'done' : failed ? 'fail' : reviewing ? 'review' : done ? 'ok' : 'run';
+    const statusLabel = s.isClosed ? 'Finalized' : failed ? 'Failed' : reviewing ? 'Reviewing' : done ? 'Done' : 'Running';
     return (
       <React.Fragment key={s.runId}>
         <tr
-          className={`run-row ${isActive ? 'open' : ''} ${statusKey === 'run' ? 'live' : ''}`}
+          className={`run-row ${isActive ? 'open' : ''} ${statusKey === 'run' ? 'live' : ''} ${statusKey === 'review' ? 'reviewing' : ''}`}
           title={new Date(s.mtimeMs).toLocaleString()}
         >
           <td className="rt-status">
-            <span className={`run-status ${statusKey === 'run' || statusKey === 'fail' ? '' : 'muted'}`}>
+            <span className={`run-status ${statusKey === 'run' || statusKey === 'fail' || statusKey === 'review' ? '' : 'muted'}`}>
               <span className={`ddot ${statusKey}`} />
               <span>{statusLabel}</span>
             </span>
@@ -173,11 +178,12 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
               {Array.from({ length: s.totalSteps }).map((_, i) => {
                 const cls = i < s.completedSteps ? 'done'
                   : i === s.completedSteps && failed && !s.isClosed ? 'fail'
+                  : i === s.completedSteps && reviewing && !s.isClosed ? 'review'
                   : i === s.completedSteps && !done && !s.isClosed ? 'active'
                   : '';
                 return <span key={i} className={`seg ${cls}`} />;
               })}
-              <span className="pipe-num">{s.completedSteps}/{s.totalSteps}</span>
+              <span className="pipe-num">{shownSteps}/{s.totalSteps}</span>
             </span>
           </td>
           <td className="rt-started">{fmtAgo(s.mtimeMs)}</td>
