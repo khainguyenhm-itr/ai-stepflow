@@ -100,6 +100,18 @@ const App: React.FC = () => {
     else close();
   };
 
+  // Suggest a run name as `<workflow-slug>-<n>`, where n is the next number after the
+  // highest existing `<slug>-N` run for this flow, so repeated clicks never collide.
+  const generateRunName = () => {
+    if (!runInputsTarget) return;
+    const base = runInputsTarget.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'run';
+    const re = new RegExp(`^${base}-(\\d+)$`);
+    const max = runSummaries
+      .filter(s => s.flowId === runInputsTarget.id)
+      .reduce((m, s) => { const mt = s.runName?.match(re); return mt ? Math.max(m, parseInt(mt[1], 10)) : m; }, 0);
+    setRunName(`${base}-${max + 1}`);
+  };
+
   const getScope = (sourcePath: string) => {
     if (globalPath && sourcePath.startsWith(globalPath)) return 'Global';
     if (projectPath && sourcePath.startsWith(projectPath)) return 'Current repo';
@@ -450,6 +462,7 @@ const App: React.FC = () => {
         error={runInputsError}
         onClose={() => { setRunInputsTarget(null); setRunInputsEditing(false); }}
         onRunNameChange={setRunName}
+        onGenerateName={generateRunName}
         onValueChange={(k, v) => setRunInputValues(prev => ({ ...prev, [k]: v }))}
         onSubmit={submitRunInputs}
       />

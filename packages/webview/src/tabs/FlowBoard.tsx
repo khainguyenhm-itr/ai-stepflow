@@ -152,7 +152,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
     return (
       <React.Fragment key={s.runId}>
         <tr
-          className={`run-row ${isActive ? 'open' : ''}`}
+          className={`run-row ${isActive ? 'open' : ''} ${statusKey === 'run' ? 'live' : ''}`}
           title={new Date(s.mtimeMs).toLocaleString()}
         >
           <td className="rt-status">
@@ -190,7 +190,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
                 aria-expanded={isActive}
                 onClick={() => sendToVSCode(isActive ? 'closeRun' : 'switchRun', isActive ? { finalize: false } : { flowId: flow.id, runId: s.runId })}
               >
-                {isActive ? <Icon.Pause size={16} /> : <Icon.Play size={16} />}
+                {isActive ? <Icon.ChevronDown size={16} /> : <Icon.ChevronRight size={16} />}
               </button>
               {isActive && !runFinalized && (
                 <>
@@ -373,7 +373,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
                       <th className="rt-actions"></th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className={runnerOpen && runState && rows.some(s => s.runId === runState.runId) ? 'has-open' : ''}>
                     {rows.length === 0 ? (
                       <tr className="run-empty-row">
                         <td colSpan={8}>Không có data hiển thị</td>

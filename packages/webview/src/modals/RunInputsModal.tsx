@@ -10,6 +10,7 @@ interface RunInputsModalProps {
   error: string | null;
   onClose: () => void;
   onRunNameChange: (value: string) => void;
+  onGenerateName: () => void;
   onValueChange: (name: string, value: string) => void;
   onSubmit: () => void;
 }
@@ -22,6 +23,7 @@ export const RunInputsModal: React.FC<RunInputsModalProps> = ({
   error,
   onClose,
   onRunNameChange,
+  onGenerateName,
   onValueChange,
   onSubmit
 }) => (
@@ -40,12 +42,16 @@ export const RunInputsModal: React.FC<RunInputsModalProps> = ({
     <div className="stack">
       {error && <div className="error-banner">{error}</div>}
       <Field label="Run Name (optional)" hint="Name this run to distinguish it in history (e.g. fix-bug-1).">
-        <input
-          className="input"
-          placeholder="e.g. bug-fix-1"
-          value={runName}
-          onChange={e => onRunNameChange(e.target.value)}
-        />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            className="input"
+            style={{ flex: 1 }}
+            placeholder="e.g. bug-fix-1"
+            value={runName}
+            onChange={e => onRunNameChange(e.target.value)}
+          />
+          <button className="btn" type="button" title="Auto-generate a name from the workflow name" onClick={onGenerateName}>Auto</button>
+        </div>
       </Field>
       {target && Object.entries(target.inputs || {}).map(([name, def]) => (
         <Field key={name} label={`${def.label || name}${def.required ? ' *' : ''}`}>

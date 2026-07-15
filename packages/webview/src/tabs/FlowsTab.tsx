@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Flow, FlowRunState, Agent, Skill } from '@ai-stepflow/core/types';
-import { Icon } from '../components/primitives';
+import { Icon, Sparkline } from '../components/primitives';
 import { EmptyState } from '../components/ResourceCard';
 import { ScopeFilter, SaveScope, ViewFilter, SortOrder, UnifiedFilterPanel } from '../components/ScopeControls';
 import { FlowBoard } from './FlowBoard';
@@ -18,19 +18,6 @@ const fmtDuration = (ms: number) => {
   if (m < 60) return `${m}m ${s % 60}s`;
   const h = Math.floor(m / 60);
   return `${h}h ${m % 60}m`;
-};
-
-/** Tiny inline line chart for the run-stat cards. */
-const Sparkline: React.FC<{ data: number[]; color: string }> = ({ data, color }) => {
-  const w = 76, h = 26;
-  const max = Math.max(1, ...data);
-  const n = data.length;
-  const pts = data.map((v, i) => `${n <= 1 ? w : (i / (n - 1)) * w},${(h - 1) - (v / max) * (h - 2)}`).join(' ');
-  return (
-    <svg className="flow-spark" viewBox={`0 0 ${w} ${h}`} width={w} height={h} preserveAspectRatio="none" aria-hidden="true">
-      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
-  );
 };
 
 interface FlowsTabProps {

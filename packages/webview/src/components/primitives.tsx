@@ -115,6 +115,20 @@ export const ProgressBar: React.FC<{ percent: number }> = ({ percent }) => (
   </div>
 );
 
+/** Tiny inline line chart for stat cards (used by Workflows + Overview). */
+export const Sparkline: React.FC<{ data: number[]; color: string }> = ({ data, color }) => {
+  const w = 76, h = 26, pad = 3;
+  const max = Math.max(1, ...data);
+  const n = data.length;
+  // Keep the baseline off the bottom edge so a flat/no-data series still shows a visible line.
+  const pts = data.map((v, i) => `${n <= 1 ? w : (i / (n - 1)) * w},${(h - pad) - (v / max) * (h - pad * 2)}`).join(' ');
+  return (
+    <svg className="flow-spark" viewBox={`0 0 ${w} ${h}`} width={w} height={h} preserveAspectRatio="none" aria-hidden="true">
+      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+};
+
 /** Meta value cell; missing values show a descriptive muted placeholder instead of a bare dash. */
 export const metaValue = (value: string | undefined, placeholder: string, mono = false) =>
   value

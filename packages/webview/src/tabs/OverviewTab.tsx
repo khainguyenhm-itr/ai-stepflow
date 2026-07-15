@@ -1,6 +1,6 @@
 import React from 'react';
 import { Flow, Agent, Skill } from '@ai-stepflow/core/types';
-import { Icon } from '../components/primitives';
+import { Icon, Sparkline } from '../components/primitives';
 import { Tab, ScopeFilter } from '../hooks/appState/types';
 
 /** VS Code command ids the quick-settings panel triggers; must stay in sync with RUNNABLE_COMMANDS in extension/messages.ts. */
@@ -78,11 +78,16 @@ const fmtAgo = (ms: number) => {
   return `${d}d ago`;
 };
 
-const Stat: React.FC<{ label: string; value: string; hint?: string; onClick?: () => void }> = ({ label, value, hint, onClick }) => (
+const Stat: React.FC<{ label: string; value: string; hint?: string; onClick?: () => void; spark?: number[]; sparkColor?: string }> = ({ label, value, hint, onClick, spark, sparkColor }) => (
   <div className={`ov-stat${onClick ? ' clickable' : ''}`} onClick={onClick} role={onClick ? 'button' : undefined}>
     <div className="ov-stat-value">{value}</div>
     <div className="ov-stat-label">{label}</div>
-    {hint && <div className="ov-stat-hint muted small">{hint}</div>}
+    {spark
+      ? <div className="ov-stat-foot">
+          {hint && <span className="ov-stat-hint muted small">{hint}</span>}
+          <Sparkline data={spark} color={sparkColor || 'var(--running)'} />
+        </div>
+      : hint && <div className="ov-stat-hint muted small">{hint}</div>}
   </div>
 );
 
@@ -278,10 +283,10 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           <div className="ov-note muted small">Runs are tracked per repository — switch to “Repo” or “All” to see run statistics.</div>
         ) : (
           <div className="ov-grid">
-            <Stat label="Total runs" value={`${totals.runs}`} hint={`${totals.completed} completed · ${totals.inProgress} in progress`} />
-            <Stat label="Total cost" value={fmtUsd(totals.costUsd)} hint={runsHint} />
-            <Stat label="Tokens" value={fmtTokens(totals.tokensUsed)} hint="input + output + cache" />
-            <Stat label="Execution time" value={fmtDuration(totals.taskTimeMs)} hint="steps running" />
+            <Stat label="Total runs" value={`${totals.runs}`} hint={`${totals.completed} completed · ${totals.inProgress} in progress`} spark={trend.map(d => d.runs)} sparkColor="var(--success)" />
+            <Stat label="Total cost" value={fmtUsd(totals.costUsd)} hint={runsHint} spark={trend.map(d => d.costUsd)} sparkColor="var(--muted)" />
+            <Stat label="Tokens" value={fmtTokens(totals.tokensUsed)} hint="input + output + cache" spark={trend.map(d => d.tokensUsed)} sparkColor="var(--running)" />
+            <Stat label="Execution time" value={fmtDuration(totals.taskTimeMs)} hint="steps running" spark={trend.map(d => d.taskTimeMs)} sparkColor="var(--warn)" />
           </div>
         )}
       </section>
