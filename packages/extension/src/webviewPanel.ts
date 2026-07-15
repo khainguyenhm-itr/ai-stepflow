@@ -751,6 +751,8 @@ export class CockpitPanel {
       this._runner.setFlowAndRunState(flow, run);
       this.postMessage({ type: 'restoreRun', flow, runState: run });
       this.postMessage({ type: 'navigateToTab', tab: 'flows' });
+      // Sidebar-only: expand the flow's runs list and scroll its run detail into view.
+      this.postMessage({ type: 'revealRun', flowId, runId });
     }
   }
 

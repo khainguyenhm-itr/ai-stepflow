@@ -172,6 +172,9 @@ export const useAppLogic = () => {
           libState.setActiveTab(message.tab);
         }
         break;
+      case 'revealRun':
+        runState.setRevealRun(prev => ({ flowId: message.flowId, runId: message.runId, nonce: (prev?.nonce ?? 0) + 1 }));
+        break;
       case 'restoreRun':
         // A reset mints a new runId; remap the old summary row to it (progress cleared) so the row
         // matches the restored run and its detail drawer stays openable.

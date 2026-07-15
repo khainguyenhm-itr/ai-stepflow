@@ -29,6 +29,7 @@ interface FlowsTabProps {
   activeFlow: Flow | null;
   runState: FlowRunState | null;
   runnerVisible: boolean;
+  revealRun: { flowId: string; runId: string; nonce: number } | null;
   activeStepId: string | null;
   completedSteps: number;
   activeProgress: number;
@@ -63,6 +64,7 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
   activeFlow,
   runState,
   runnerVisible,
+  revealRun,
   activeStepId,
   completedSteps,
   activeProgress,
@@ -283,6 +285,7 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
               auditLogs={auditLogs}
               runSummaries={runSummaries.filter(s => s.flowId === flow.id)}
               runnerVisible={runnerVisible}
+              revealRun={revealRun}
               activeStepId={activeStepId}
               completedSteps={completedSteps}
               activeProgress={activeProgress}

@@ -59,6 +59,7 @@ export type HostMessage =
   | { type: 'draftGenerated'; kind: 'agent' | 'skill'; name?: string; description?: string; content?: string; reply?: string; error?: string }
   | { type: 'flowGenerated'; flow?: Flow; reply?: string; error?: string }
   | { type: 'navigateToTab'; tab: 'flows' | 'agents' | 'skills' | 'reviews' | 'overview' }
+  | { type: 'revealRun'; flowId: string; runId: string }
   | { type: 'runClosed'; flowId?: string; runId?: string; finalized?: boolean };
 
 /** Every message the webview is allowed to send to the extension host. */

@@ -2180,6 +2180,10 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 /* When one run is expanded, fade the rest so the active one is the clear focus. */
 .runs-table tbody.has-open .run-row:not(.open) { opacity: .5; transition: opacity .12s ease-out; }
 .runs-table tbody.has-open .run-row:not(.open):hover { opacity: 1; }
+/* The bold, bright run title stays too legible under row opacity alone — mute it so it recedes
+   with everything else; restore on hover. */
+.runs-table tbody.has-open .run-row:not(.open) .run-name { color: var(--muted); font-weight: 500; }
+.runs-table tbody.has-open .run-row:not(.open):hover .run-name { color: var(--fg); font-weight: 600; }
 
 /* Balanced column widths (sum = 100%); table-layout:fixed scales them to the panel. */
 .rt-run { width: 21%; }

@@ -1063,7 +1063,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
           (badgeCls ? '<span class="run-sbadge ' + badgeCls + '">' + badgeLabel + '</span>' : '') +
           '<span class="run-card-acts">' +
             actionMenu([
-              menuItem('Open cockpit', 'data-act="openRun" data-flow-id="' + esc(f.flowId) + '" data-run-id="' + esc(f.runId) + '"'),
+              menuItem('Open runs', 'data-act="openRun" data-flow-id="' + esc(f.flowId) + '" data-run-id="' + esc(f.runId) + '"'),
               menuItem('View run file', 'data-act="openFile" data-path="' + esc(f.filePath) + '"'),
               menuItem('Delete run', 'data-act="deleteRun" data-path="' + esc(f.filePath) + '"', true)
             ]) +

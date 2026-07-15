@@ -7,6 +7,8 @@ export const useRunState = () => {
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
   const [runnerVisible, setRunnerVisible] = useState(false);
   const [commandCopied, setCommandCopied] = useState(false);
+  // Sidebar "Open runs" signal: expand + scroll to a run detail. nonce re-triggers on repeat opens.
+  const [revealRun, setRevealRun] = useState<{ flowId: string; runId: string; nonce: number } | null>(null);
 
   const [standaloneRun, setStandaloneRun] = useState<{ type: 'agent'; agent: Agent } | { type: 'skill'; skill: Skill } | null>(null);
   const [standaloneRunDescription, setStandaloneRunDescription] = useState('');
@@ -31,6 +33,7 @@ export const useRunState = () => {
     activeStepId, setActiveStepId,
     runnerVisible, setRunnerVisible,
     commandCopied, setCommandCopied,
+    revealRun, setRevealRun,
     standaloneRun, setStandaloneRun,
     standaloneRunDescription, setStandaloneRunDescription,
     runInputsTarget, setRunInputsTarget,

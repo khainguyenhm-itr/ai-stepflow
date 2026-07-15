@@ -33,6 +33,7 @@ const App: React.FC = () => {
     runState,
     activeStepId, setActiveStepId,
     runnerVisible,
+    revealRun,
     commandCopied, setCommandCopied,
     standaloneRun, setStandaloneRun,
     standaloneRunDescription, setStandaloneRunDescription,
@@ -180,6 +181,7 @@ const App: React.FC = () => {
           activeFlow={activeFlow}
           runState={runState}
           runnerVisible={runnerVisible}
+          revealRun={revealRun}
           activeStepId={activeStepId}
           completedSteps={completedSteps}
           activeProgress={activeProgress}

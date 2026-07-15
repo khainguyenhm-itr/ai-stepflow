@@ -20,6 +20,7 @@ interface FlowBoardProps {
   auditLogs: Record<string, any[]>;
   runSummaries: RunSummary[];
   runnerVisible: boolean;
+  revealRun: { flowId: string; runId: string; nonce: number } | null;
   activeStepId: string | null;
   completedSteps: number;
   activeProgress: number;
@@ -67,6 +68,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
   auditLogs,
   runSummaries,
   runnerVisible,
+  revealRun,
   activeStepId,
   completedSteps,
   activeProgress,
@@ -94,6 +96,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
   const [runMenuOpen, setRunMenuOpen] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
   const runMenuRef = useRef<HTMLDivElement>(null);
+  const revealRowRef = useRef<HTMLTableRowElement>(null);
 
   useEffect(() => {
     if (!runnerOpen) return;
@@ -109,6 +112,19 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
     document.addEventListener('mousedown', onDocClick);
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [runMenuOpen]);
+  // Sidebar "Open runs": expand this flow's runs list on the tab holding the target run.
+  useEffect(() => {
+    if (!revealRun || revealRun.flowId !== flow.id) return;
+    const s = runSummaries.find(r => r.runId === revealRun.runId);
+    if (s) setRunsTab(isFinished(s) ? 'done' : 'running');
+    setRunsOpen(true);
+  }, [revealRun?.nonce]);
+  // Once the target's detail drawer is rendered, scroll it into view.
+  useEffect(() => {
+    if (!revealRun || revealRun.flowId !== flow.id || !runsOpen || !runnerOpen) return;
+    const id = requestAnimationFrame(() => revealRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+    return () => cancelAnimationFrame(id);
+  }, [revealRun?.nonce, runsOpen, runnerOpen]);
 
   // Run-level actions target the currently-open run, so they render on that row only.
   const activeSteps = runnerOpen && runState ? Object.values(runState.steps) : [];
@@ -157,6 +173,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
     return (
       <React.Fragment key={s.runId}>
         <tr
+          ref={isActive ? revealRowRef : undefined}
           className={`run-row ${isActive ? 'open' : ''} ${statusKey === 'run' ? 'live' : ''} ${statusKey === 'review' ? 'reviewing' : ''}`}
           title={new Date(s.mtimeMs).toLocaleString()}
         >
