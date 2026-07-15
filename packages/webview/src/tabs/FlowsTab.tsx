@@ -152,11 +152,17 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
   const todayStart = startOfDay(Date.now());
   const inDay = (t: number, start: number) => t >= start && t < start + DAY;
   const sum = (arr: number[]) => arr.reduce((a, b) => a + b, 0);
+  // Bucket by run creation time (runId is an ISO timestamp), not file mtime —
+  // reopening/previewing an old run rewrites its file and would otherwise bump it into "today".
+  const runTime = (r: { runId: string; mtimeMs: number }) => {
+    const t = Date.parse(r.runId);
+    return Number.isFinite(t) ? t : r.mtimeMs;
+  };
 
   const activeRuns = runSummaries.filter(r => !r.isClosed && r.completedSteps < r.totalSteps).length;
-  const runsToday = runSummaries.filter(r => inDay(r.mtimeMs, todayStart));
+  const runsToday = runSummaries.filter(r => inDay(runTime(r), todayStart));
   const tokensToday = sum(runsToday.map(r => r.tokensUsed || 0));
-  const tokensYest = sum(runSummaries.filter(r => inDay(r.mtimeMs, todayStart - DAY)).map(r => r.tokensUsed || 0));
+  const tokensYest = sum(runSummaries.filter(r => inDay(runTime(r), todayStart - DAY)).map(r => r.tokensUsed || 0));
   const costToday = sum(runsToday.map(r => r.costUsd || 0));
   const taskMsToday = sum(runsToday.map(r => r.taskTimeMs || 0));
   const reviewMsToday = sum(runsToday.map(r => r.reviewTimeMs || 0));
@@ -167,7 +173,7 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
     const days = 14;
     const arr = new Array<number>(days).fill(0);
     for (const r of runSummaries) {
-      const idx = Math.round((todayStart - startOfDay(r.mtimeMs)) / DAY);
+      const idx = Math.round((todayStart - startOfDay(runTime(r))) / DAY);
       if (idx >= 0 && idx < days) arr[days - 1 - idx] += pick(r);
     }
     return arr;

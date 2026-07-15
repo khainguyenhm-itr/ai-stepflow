@@ -2137,16 +2137,13 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 .runs-table td { padding: 11px 14px; vertical-align: middle; }
 .runs-table .run-row > td { overflow: hidden; }
 .rt-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.runs-table .run-row { cursor: pointer; border-bottom: 1px solid var(--border); transition: background .12s ease-out; }
+.runs-table .run-row { border-bottom: 1px solid var(--border); transition: background .12s ease-out; }
 .runs-table tbody tr:last-child { border-bottom: 0; }
 .run-row:hover { background: var(--hover); }
 .run-row.open { background: var(--panel-2); }
 
 /* Balanced column widths (sum = 100%); table-layout:fixed scales them to the panel. */
-.rt-chev { width: 4%; padding-right: 0 !important; }
 .rt-run { width: 21%; }
-.rt-chevron { display: inline-flex; color: var(--muted); transition: transform .18s ease-out; }
-.run-row.open .rt-chevron { transform: rotate(90deg); color: var(--fg); }
 
 .rt-status { width: 12%; }
 .run-status { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }

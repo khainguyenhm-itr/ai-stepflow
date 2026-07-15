@@ -154,9 +154,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
         <tr
           className={`run-row ${isActive ? 'open' : ''}`}
           title={new Date(s.mtimeMs).toLocaleString()}
-          onClick={() => sendToVSCode(isActive ? 'closeRun' : 'switchRun', isActive ? { finalize: false } : { flowId: flow.id, runId: s.runId })}
         >
-          <td className="rt-chev"><span className="rt-chevron"><Icon.ChevronRight size={14} /></span></td>
           <td className="rt-status">
             <span className={`run-status ${statusKey === 'run' || statusKey === 'fail' ? '' : 'muted'}`}>
               <span className={`ddot ${statusKey}`} />
@@ -184,8 +182,18 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
           </td>
           <td className="rt-started">{fmtAgo(s.mtimeMs)}</td>
           <td className="rt-actions" onClick={e => e.stopPropagation()}>
-            {isActive && !runFinalized && (
-              <div className="run-row-actions">
+            <div className="run-row-actions">
+              <button
+                className="icon-btn"
+                title={isActive ? 'Close run details' : 'Open run details'}
+                aria-label={isActive ? 'Close run details' : 'Open run details'}
+                aria-expanded={isActive}
+                onClick={() => sendToVSCode(isActive ? 'closeRun' : 'switchRun', isActive ? { finalize: false } : { flowId: flow.id, runId: s.runId })}
+              >
+                {isActive ? <Icon.Pause size={16} /> : <Icon.Play size={16} />}
+              </button>
+              {isActive && !runFinalized && (
+                <>
                 {runFlowDone && (
                   <button className="btn success" title="Finalize run — mark it done and clear the active status" onClick={() => sendToVSCode('closeRun', { finalize: true })}>
                     <Icon.Check size={14} />Done
@@ -220,14 +228,15 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
                     </div>
                   )}
                 </div>
-              </div>
-            )}
+                </>
+              )}
+            </div>
           </td>
         </tr>
 
         {isActive && runState && (
           <tr className="run-detail">
-            <td colSpan={9}>
+            <td colSpan={8}>
               <div className="run-drawer">
                 <InlineRunner
                   flow={flow}
@@ -354,7 +363,6 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
                 <table className="runs-table">
                   <thead>
                     <tr>
-                      <th className="rt-chev"></th>
                       <th className="rt-status">Status</th>
                       <th className="rt-run">Run</th>
                       <th className="rt-cost">Cost</th>
@@ -368,7 +376,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
                   <tbody>
                     {rows.length === 0 ? (
                       <tr className="run-empty-row">
-                        <td colSpan={9}>Không có data hiển thị</td>
+                        <td colSpan={8}>Không có data hiển thị</td>
                       </tr>
                     ) : (
                       rows.map(renderRunRow)
