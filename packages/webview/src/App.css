@@ -1739,44 +1739,128 @@ textarea.input {
 
 /* --------------------------- step builder ------------------------- */
 
-.step-list {
-  border: 1px solid var(--border);
-  border-radius: 3px;
+.wf-steps {
+  display: flex;
+  flex-direction: column;
 }
 
-.step-list-item {
+.wf-steps-empty {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 10px;
-  cursor: grab;
+  padding: 16px;
+  color: var(--muted);
+  font-size: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
 }
 
-.step-list-item + .step-list-item {
-  border-top: 1px solid var(--border);
+.wf-step {
+  display: flex;
+  gap: 10px;
 }
 
-.step-list-item:hover {
-  background: var(--hover);
+/* Numbered rail with a subtle connector line linking steps into a sequence. */
+.wf-step-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
 }
 
-.drag-handle {
+.wf-step-num {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
   color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  flex-shrink: 0;
 }
 
-.step-list-main {
+.wf-step-line {
+  flex: 1;
+  width: 1px;
+  min-height: 6px;
+  margin: 3px 0;
+  background: var(--border);
+}
+
+.wf-step-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 6px;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  cursor: grab;
+  transition: border-color 0.12s ease;
+}
+
+.wf-step-card:hover {
+  border-color: var(--muted);
+}
+
+.wf-step-drag {
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+  cursor: grab;
+  opacity: 0.6;
+}
+
+.wf-step-body {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 3px;
   flex: 1;
   min-width: 0;
 }
 
-.step-list-title {
+.wf-step-title {
   font-weight: 600;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wf-step-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Calm chips: neutral text, only the icon carries a hint of color. */
+.wf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.wf-chip svg { flex-shrink: 0; }
+.wf-chip.agent svg { color: var(--link); }
+.wf-chip.skill svg { color: var(--review-ai); }
+.wf-chip.is-empty { font-style: italic; opacity: 0.7; }
+
+.wf-step-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .input-def-row {

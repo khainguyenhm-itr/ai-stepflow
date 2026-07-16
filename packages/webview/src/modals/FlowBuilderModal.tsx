@@ -187,37 +187,64 @@ export const FlowBuilderModal: React.FC<FlowBuilderModalProps> = ({
           </div>
         </Field>
         <div className="section-label">Workflow Steps</div>
-        <div className="step-list">
-          {flow.steps.length === 0 && <div className="muted pad-sm">No steps configured.</div>}
-          {flow.steps.map((step, index) => (
-            <div
-              key={step.id}
-              className="step-list-item"
-              draggable
-              onDragStart={e => onDragStart(e, index)}
-              onDragOver={e => e.preventDefault()}
-              onDrop={e => onDrop(e, index)}
-            >
-              <span className="drag-handle" title="Drag to reorder"><Icon.GripVertical size={14} /></span>
-              <div className="step-list-main">
-                <span className="step-list-title">{step.title || step.id}</span>
-                <span className="muted small">
-                  {step.agent || 'No agent'}
-                  {getAgentByName(step.agent) && <> {renderScopeBadge(getAgentByName(step.agent)!.sourcePath)}</>}
-                  {' / '}
-                  {getStepSkills(step).length === 0 ? 'No skill' : getStepSkills(step).map((skillName, skillIndex) => (
-                    <React.Fragment key={skillName}>
-                      {skillIndex > 0 && ', '}
-                      {skillName}
-                      {getSkillByName(skillName) && <> {renderScopeBadge(getSkillByName(skillName)!.sourcePath)}</>}
-                    </React.Fragment>
-                  ))}
-                </span>
-              </div>
-              <button className="icon-btn boxed" title="Configure step" onClick={() => onEditStep(step, index)}><Icon.Settings size={14} /></button>
-              <button className="icon-btn boxed danger" title="Delete step" onClick={() => onDeleteStep(index)}><Icon.X size={14} /></button>
+        <div className="wf-steps">
+          {flow.steps.length === 0 && (
+            <div className="wf-steps-empty">
+              <Icon.List size={18} />
+              <span>No steps yet — add one below or generate with AI.</span>
             </div>
-          ))}
+          )}
+          {flow.steps.map((step, index) => {
+            const agent = getAgentByName(step.agent);
+            const skills = getStepSkills(step);
+            const isLast = index === flow.steps.length - 1;
+            return (
+              <div
+                key={step.id}
+                className="wf-step"
+                draggable
+                onDragStart={e => onDragStart(e, index)}
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => onDrop(e, index)}
+              >
+                <div className="wf-step-rail">
+                  <span className="wf-step-num">{index + 1}</span>
+                  {!isLast && <span className="wf-step-line" />}
+                </div>
+                <div className="wf-step-card">
+                  <span className="wf-step-drag" title="Drag to reorder"><Icon.GripVertical size={14} /></span>
+                  <div className="wf-step-body">
+                    <span className="wf-step-title">{step.title || step.id}</span>
+                    <div className="wf-step-chips">
+                      <span className={`wf-chip ${agent ? 'agent' : 'is-empty'}`}>
+                        <Icon.Bot size={12} />
+                        {step.agent || 'No agent'}
+                        {agent && renderScopeBadge(agent.sourcePath)}
+                      </span>
+                      {skills.length === 0 ? (
+                        <span className="wf-chip is-empty"><Icon.Zap size={12} />No skill</span>
+                      ) : (
+                        skills.map(skillName => {
+                          const skill = getSkillByName(skillName);
+                          return (
+                            <span className="wf-chip skill" key={skillName}>
+                              <Icon.Zap size={12} />
+                              {skillName}
+                              {skill && renderScopeBadge(skill.sourcePath)}
+                            </span>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                  <div className="wf-step-actions">
+                    <button className="icon-btn boxed" title="Configure step" onClick={() => onEditStep(step, index)}><Icon.Settings size={14} /></button>
+                    <button className="icon-btn boxed danger" title="Delete step" onClick={() => onDeleteStep(index)}><Icon.X size={14} /></button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
         <button
           className="btn block dashed"
