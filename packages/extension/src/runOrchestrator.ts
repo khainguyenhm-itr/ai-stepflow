@@ -33,6 +33,28 @@ import {
  */
 const ARTIFACT_QUIET_MS = 12_000;
 
+/** Everything a single run needs to advance in isolation from every other concurrent run. */
+interface RunCtx {
+  flow: Flow;
+  runState: FlowRunState;
+  /** Steps already launched, so the DAG orchestrator never starts one twice. */
+  startedStepIds: Set<string>;
+  /** Interactive steps already announced as parked, so the notice isn't repeated each advance. */
+  parkedStepIds: Set<string>;
+  /** Steps that already consumed their one automatic AI-review retry. */
+  autoRetryStepIds: Set<string>;
+  /** When each interactive step started, used to locate its Claude session file. */
+  stepStartTimes: Map<string, Date>;
+  /** Fallback-probe quiescence snapshots per step (last artifact change-signature + when first seen). */
+  readinessSnapshots: Map<string, { sig: string; since: number }>;
+  /** Skills read from disk once per run and reused by every step. */
+  skillsCache: Skill[] | undefined;
+  /** Buffered streamed output chunks per step (flushed on the shared 50 ms tick). */
+  outputChunkBuffer: Map<string, string>;
+  /** Serializes THIS run's own state transitions (independent of other runs' queues). */
+  stateUpdateQueue: Promise<void>;
+}
+
 /**
  * Owns the run state machine and every transition that drives it: launching a step (headless or
  * interactive), the two-layer review, cancel, mark-done, human review, the DAG auto-advance, plus
@@ -42,44 +64,54 @@ const ARTIFACT_QUIET_MS = 12_000;
  * `runState` — the panel reads them only for restore/cleanup, never mutates them directly.
  */
 export class RunOrchestrator {
-  private _currentFlow: Flow | undefined;
-  private _runState: FlowRunState | undefined;
+  /**
+   * All live runs, keyed by runId. Each holds its own flow, state, bookkeeping, and update queue,
+   * so concurrent runs never clobber one another (the isolation guarantee). The two singleton
+   * fields this replaced (`_currentFlow`/`_runState`) are now derived from `_focusedRunId`.
+   */
+  private _runs = new Map<string, RunCtx>();
+  /** The run the webview is currently viewing — backs the currentFlow/runState getters and every
+   *  webview-originated action (which always operates on the visible run). */
+  private _focusedRunId: string | undefined;
+  /** The flow selected in the webview, even when no run is open yet (loadFlow with no runState). */
+  private _focusedFlow: Flow | undefined;
+  /** The run that currently owns the single interactive terminal. The terminal callbacks carry only
+   *  a stepId, so this attributes their events to the right run even after focus moves elsewhere. */
+  private _activeInteractiveRunId: string | undefined;
   /** Headless `claude -p` runs (AI-step execution + AI review) in flight, killed on dispose. */
   private _activeRuns = new Set<ChildProcess>();
-  /** The in-flight headless child per step, so a "Cancel" can kill exactly that run. */
+  /** In-flight headless child per `${runId}::${stepId}`, so a "Cancel" can kill exactly that run. */
   private _runChildrenByStep = new Map<string, ChildProcess>();
   /** In-flight AI-generation children (agent/skill/flow drafts), so a cancel can kill exactly those. */
   private _generationRuns = new Set<ChildProcess>();
-  /** Steps the user cancelled, so the resolving run handler skips its own failure transition. */
+  /** `${runId}::${stepId}` the user cancelled, so the resolving run handler skips its own failure transition. */
   private _cancelledStepIds = new Set<string>();
-  /** Steps already launched in the current run, so the DAG orchestrator never starts one twice. Reset when the runId changes. */
-  private _startedStepIds = new Set<string>();
-  /** Interactive steps we've already told the user are parked (waiting for the terminal), so the notice isn't repeated each advance. Reset with the run. */
-  private _parkedStepIds = new Set<string>();
-  /** Steps that have already consumed their one automatic AI-review retry this run. Reset when the runId changes. */
-  private _autoRetryStepIds = new Set<string>();
-  /** Timestamp when each interactive step started, used to locate its Claude session file. */
-  private _stepStartTimes = new Map<string, Date>();
-  /** Fallback-probe quiescence snapshots: last artifact change-signature per step and when it was first seen. */
-  private _readinessSnapshots = new Map<string, { sig: string; since: number }>();
-  private _bookkeepingRunId: string | undefined;
-  private _stateUpdateQueue = Promise.resolve();
-
-  /**
-   * Per-run skills cache. Skills are read from disk once per run (populated on the first
-   * headless step and reused by every parallel step that follows). Cleared whenever the
-   * run ID changes so a reload in the middle of a run picks up new skills.
-   */
-  private _skillsCache: Skill[] | undefined;
-
-  /**
-   * Output streaming buffer: accumulate text chunks from headless `claude` runs and flush
-   * them to the webview in a single postMessage per 50 ms tick. This prevents React from
-   * re-rendering on every streamed token (LLMs emit ~10–30 chunks/s) and keeps the UI
-   * responsive even during long-running steps.
-   */
-  private _outputChunkBuffer = new Map<string, string>();
+  /** Single 50 ms flush timer shared across every run's output buffer. */
   private _outputFlushTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** Composite key so process-global maps never confuse two runs that share a stepId (e.g. "step-1"). */
+  private _rk(runId: string, stepId: string): string { return `${runId}::${stepId}`; }
+
+  /** The focused run's context, or undefined when no run is open. */
+  private _focused(): RunCtx | undefined {
+    return this._focusedRunId ? this._runs.get(this._focusedRunId) : undefined;
+  }
+
+  /** Build a fresh RunCtx with clean per-run bookkeeping (bookkeeping is born with the run). */
+  private _newRunCtx(flow: Flow, runState: FlowRunState): RunCtx {
+    return {
+      flow,
+      runState,
+      startedStepIds: machine.seedStartedSteps(runState.steps),
+      parkedStepIds: new Set<string>(),
+      autoRetryStepIds: new Set<string>(),
+      stepStartTimes: new Map<string, Date>(),
+      readinessSnapshots: new Map<string, { sig: string; since: number }>(),
+      skillsCache: undefined,
+      outputChunkBuffer: new Map<string, string>(),
+      stateUpdateQueue: Promise.resolve(),
+    };
+  }
 
   constructor(
     private readonly configManager: ConfigManager,
@@ -88,10 +120,14 @@ export class RunOrchestrator {
     private readonly post: (message: HostMessage) => void
   ) {
     this.terminals.onDidCloseRunningStep(async stepId => {
-      if (this._currentFlow && this._runState && this._runState.steps[stepId]?.executionStatus === 'running') {
-        await this._setRunState(machine.markCancelled(this._runState, this._currentFlow, stepId), { stepId, status: 'cancelled', message: 'Terminal closed by user' });
+      // Attribute the terminal event to the run that OWNS the terminal, not whatever run is focused.
+      const runId = this._activeInteractiveRunId;
+      const rc = runId ? this._runs.get(runId) : undefined;
+      if (rc && rc.runState.steps[stepId]?.executionStatus === 'running') {
+        await this._setRunState(runId!, machine.markCancelled(rc.runState, rc.flow, stepId), { stepId, status: 'cancelled', message: 'Terminal closed by user' });
         this.post({ type: 'stepUpdate', stepId, append: true, output: '\n[terminal closed — run cancelled]\n' });
       }
+      this._activeInteractiveRunId = undefined;
     });
     // Fallback readiness probe (shell integration unavailable): report whether the step's declared
     // artifacts are done being written, so the fallback reviews the real output instead of firing
@@ -100,57 +136,68 @@ export class RunOrchestrator {
     // whole time — so we require the change-signature (newest mtime + total size) to hold steady for
     // ARTIFACT_QUIET_MS, i.e. the agent has stopped writing.
     this.terminals.onCheckStepReady(stepId => {
-      const flow = this._currentFlow, runState = this._runState;
-      if (!flow || !runState) return undefined;
+      const runId = this._activeInteractiveRunId;
+      const rc = runId ? this._runs.get(runId) : undefined;
+      if (!rc) return undefined;
+      const { flow, runState } = rc;
       const step = flow.steps.find(s => s.id === stepId);
       if (!step) return undefined;
       const hasArtifactSpec = (step.produces?.length ?? 0) > 0 || !!step.review.filePath;
       if (!hasArtifactSpec) return undefined;
       const projectPath = this.configManager.getProjectPath() || '';
       const inputs = runState.inputs || {};
-      const stale = machine.findStaleProducedFile(step, projectPath, inputs, runState.steps[stepId]?.startedAt, flow.name, this._runSlug(), this._legacyRunSlug());
-      const artifactSig = stale ? null : machine.producedArtifactsSignature(step, projectPath, inputs, flow.name, this._runSlug(), this._legacyRunSlug());
-      if (!artifactSig) { this._readinessSnapshots.delete(stepId); return false; } // missing or stale → keep waiting
+      const stale = machine.findStaleProducedFile(step, projectPath, inputs, runState.steps[stepId]?.startedAt, flow.name, this._runSlug(runId!), this._legacyRunSlug(runId!));
+      const artifactSig = stale ? null : machine.producedArtifactsSignature(step, projectPath, inputs, flow.name, this._runSlug(runId!), this._legacyRunSlug(runId!));
+      if (!artifactSig) { rc.readinessSnapshots.delete(stepId); return false; } // missing or stale → keep waiting
       // Fold the session transcript's change-signature into the quiescence check. The declared
       // artifact can go quiet early (written up front) while the agent keeps working — writing
       // OTHER files, running tests, iterating — so an artifact-only quiet window fires the review
       // before the terminal has actually finished. The `<sessionId>.jsonl` transcript is appended
       // on every message/tool-call, so it reflects ALL the agent's activity: the step is done only
       // once BOTH the artifact and the transcript have held steady for ARTIFACT_QUIET_MS.
-      const sig = `${artifactSig}|${this._sessionTranscriptSignature(stepId)}`;
-      const prev = this._readinessSnapshots.get(stepId);
+      const sig = `${artifactSig}|${this._sessionTranscriptSignature(runId!, stepId)}`;
+      const prev = rc.readinessSnapshots.get(stepId);
       const now = Date.now();
-      if (!prev || prev.sig !== sig) { this._readinessSnapshots.set(stepId, { sig, since: now }); return false; }
+      if (!prev || prev.sig !== sig) { rc.readinessSnapshots.set(stepId, { sig, since: now }); return false; }
       return now - prev.since >= ARTIFACT_QUIET_MS;
     });
     this.terminals.onDidEndRunningStep(async stepId => {
-      if (!this._currentFlow || !this._runState) return;
-      if (this._runState.steps[stepId]?.executionStatus !== 'running') return;
-      const step = this._currentFlow.steps.find(s => s.id === stepId);
+      const runId = this._activeInteractiveRunId;
+      const rc = runId ? this._runs.get(runId) : undefined;
+      if (!rc) return;
+      if (rc.runState.steps[stepId]?.executionStatus !== 'running') return;
+      const step = rc.flow.steps.find(s => s.id === stepId);
       if (!step) return;
-      const metrics = await this._readInteractiveMetrics(stepId);
+      const metrics = await this._readInteractiveMetrics(runId!, stepId);
       // Every step is reviewed: mark completed then run the review (AI reviews auto-decide,
       // human reviews wait for approval).
-      await this._setRunState(s => machine.markCompleted(s, this._currentFlow!, stepId, metrics), { stepId, status: 'completed', message: 'Terminal session ended — reviewing' });
-      await this._reviewStep(step, stepId);
+      await this._setRunState(runId!, s => machine.markCompleted(s, rc.flow, stepId, metrics), { stepId, status: 'completed', message: 'Terminal session ended — reviewing' });
+      this._activeInteractiveRunId = undefined; // terminal freed for the next interactive step
+      await this._reviewStep(runId!, step, stepId);
     });
   }
 
-  get currentFlow(): Flow | undefined { return this._currentFlow; }
-  get runState(): FlowRunState | undefined { return this._runState; }
+  get currentFlow(): Flow | undefined { return this._focused()?.flow ?? this._focusedFlow; }
+  get runState(): FlowRunState | undefined { return this._focused()?.runState; }
 
-  /** Replace the panel-selected flow/run mirror (loadFlow). No transition, no broadcast. */
+  /** Upsert a run into the map and focus it (loadFlow / switchRun / openRun). No transition, no broadcast. */
   setFlowAndRunState(flow: Flow | undefined, runState: FlowRunState | undefined): void {
-    this._currentFlow = flow;
-    this._runState = runState;
+    this._focusedFlow = flow;
+    if (flow && runState) {
+      const existing = this._runs.get(runState.runId);
+      if (existing) { existing.flow = flow; existing.runState = runState; }
+      else this._runs.set(runState.runId, this._newRunCtx(flow, runState));
+      this._focusedRunId = runState.runId;
+    } else {
+      // Selecting a flow with no run open: keep other runs live, just clear the focused run.
+      this._focusedRunId = undefined;
+    }
   }
 
-  /** Forget the current run if `flowId` is the one being deleted. */
+  /** Forget every run of `flowId` if that flow is being deleted. */
   clearIfFlow(flowId: string): void {
-    if (this._currentFlow?.id === flowId) {
-      this._currentFlow = undefined;
-      this._runState = undefined;
-    }
+    for (const [rid, rc] of this._runs) if (rc.flow.id === flowId) this._runs.delete(rid);
+    if (this._focusedFlow?.id === flowId) { this._focusedFlow = undefined; this._focusedRunId = undefined; }
   }
 
   /**
@@ -158,7 +205,10 @@ export class RunOrchestrator {
    * webview already has it. Used for display-only mirror updates that aren't a transition.
    */
   async adoptRunState(runState: FlowRunState, historyEvent?: HistoryEvent): Promise<void> {
-    this._runState = runState;
+    const existing = this._runs.get(runState.runId);
+    if (existing) existing.runState = runState;
+    else if (this._focusedFlow) this._runs.set(runState.runId, this._newRunCtx(this._focusedFlow, runState));
+    this._focusedRunId = runState.runId;
     await this.stateManager.saveRun(runState);
     if (historyEvent) {
       await this.stateManager.appendAuditLog(runState.flowId, runState.runId, historyEvent.stepId, {
@@ -171,8 +221,9 @@ export class RunOrchestrator {
 
   /** Restore the latest persisted run on panel open, broadcasting it to the webview. */
   async restore(): Promise<void> {
-    let runState = this._runState;
-    let flow = this._currentFlow;
+    const focused = this._focused();
+    let runState = focused?.runState;
+    let flow = focused?.flow;
     if (!runState) {
       runState = await this.stateManager.loadLatestRun();
       if (!runState) return;
@@ -180,38 +231,57 @@ export class RunOrchestrator {
       flow = flows.find(f => f.id === runState!.flowId);
     }
     if (!flow || !runState) return;
-    this._currentFlow = flow;
-    this._runState = runState;
+    const existing = this._runs.get(runState.runId);
+    if (existing) { existing.flow = flow; existing.runState = runState; }
+    else this._runs.set(runState.runId, this._newRunCtx(flow, runState));
+    this._focusedFlow = flow;
+    this._focusedRunId = runState.runId;
     this.post({ type: 'restoreRun', flow, runState });
   }
 
   /**
-   * Entry point from the webview's "Run step". Seeds the backend's authoritative state — the
-   * webview owns flow selection and the initial run state, but the backend takes ownership of
-   * every transition from here on so a stale webview copy can never roll back a transition.
+   * Entry point from the webview's "Run step". Seeds the backend's authoritative state for a NEW
+   * run — the webview owns flow selection and the initial run state, but the backend takes ownership
+   * of every transition from here on so a stale webview copy can never roll back a transition.
+   * Mid-run, the backend's own RunCtx state wins (the webview's copy is not adopted).
    */
   async runStep(stepId: string, opts: { flow?: Flow; runState?: FlowRunState; description?: string } = {}): Promise<void> {
-    if (opts.flow) this._currentFlow = opts.flow;
-    // Seed only for a new run; mid-run, the backend's own state wins.
-    if (opts.runState && (!this._runState || this._runState.runId !== opts.runState.runId)) {
-      this._runState = opts.runState;
+    if (opts.flow) this._focusedFlow = opts.flow;
+    const rs = opts.runState;
+    if (rs) {
+      let rc = this._runs.get(rs.runId);
+      if (!rc) {
+        const flow = opts.flow ?? this._focusedFlow;
+        if (!flow) return;
+        rc = this._newRunCtx(flow, rs);
+        this._runs.set(rs.runId, rc);
+      } else if (opts.flow) {
+        rc.flow = opts.flow;
+      }
+      this._focusedRunId = rs.runId;
+      await this._run(rs.runId, stepId, opts.description);
+      return;
     }
-    await this._run(stepId, opts.description);
+    // Mid-run re-run without a resent runState: act on the focused run.
+    if (this._focusedRunId) {
+      const rc = this._focused();
+      if (rc && opts.flow) rc.flow = opts.flow;
+      await this._run(this._focusedRunId, stepId, opts.description);
+    }
   }
 
-  private async _run(stepId: string, description?: string): Promise<void> {
-    if (!this._currentFlow || !this._runState) return;
-    const flow = this._currentFlow;
+  private async _run(runId: string, stepId: string, description?: string): Promise<void> {
+    const rc = this._runs.get(runId);
+    if (!rc) return;
+    const { flow } = rc;
     const step = flow.steps.find(s => s.id === stepId);
     if (!step) return;
 
-    this._resetBookkeepingIfNewRun();
-
     const cleared = await checkStepGuards(
-      stepId, step, flow, this._runState,
-      (next, audit) => this._setRunState(next, audit),
+      stepId, step, flow, rc.runState,
+      (next, audit) => this._setRunState(runId, next, audit),
       msg => this.post(msg),
-      step => this._validateRequires(step)
+      step => this._validateRequires(runId, step)
     );
     if (!cleared) return;
 
@@ -226,57 +296,64 @@ export class RunOrchestrator {
       return;
     }
 
-    this._startedStepIds.add(stepId);
+    rc.startedStepIds.add(stepId);
     const projectPath = this.configManager.getProjectPath() || '';
 
-    // Build the shared context object injected into runner functions.
+    // Build the shared context object injected into runner functions. Every closure is pinned to
+    // THIS runId, so an async callback for this step always resolves against its own run — never
+    // whatever run happens to be focused when the callback fires.
     const ctx: StepRunContext = {
       flow,
-      runState: this._runState,
+      runState: rc.runState,
       step,
       stepId,
       agent,
       stepSkillNames,
-      skills: await this._getSkillsForRun(),
+      skills: await this._getSkillsForRun(runId),
       projectPath,
       description,
-      spawnClaudeStreaming: (opts, sid) => this._spawnClaudeStreaming(opts, sid),
-      bufferOutput: (sid, chunk) => this._bufferOutput(sid, chunk),
+      spawnClaudeStreaming: (opts, sid) => this._spawnClaudeStreaming(opts, sid ? this._rk(runId, sid) : undefined),
+      bufferOutput: (sid, chunk) => this._bufferOutput(runId, sid, chunk),
       flushOutputBuffer: () => this._flushOutputBuffer(),
-      setRunState: (next, audit) => this._setRunState(next, audit),
-      patchStepState: (sid, patch) => this._patchStepState(sid, patch),
-      consumeCancelledStep: sid => this._cancelledStepIds.delete(sid),
+      setRunState: (next, audit) => this._setRunState(runId, next, audit),
+      patchStepState: (sid, patch) => this._patchStepState(runId, sid, patch),
+      consumeCancelledStep: sid => this._cancelledStepIds.delete(this._rk(runId, sid)),
       post: msg => this.post(msg),
-      advanceReadySteps: () => this._advanceReadySteps(),
-      runAiReview: (s, sid, pp) => this._runAiReview(s, sid, pp),
-      validateProduces: s => this._validateProduces(s),
+      advanceReadySteps: () => this._advanceReadySteps(runId),
+      runAiReview: (s, sid, pp) => this._runAiReview(runId, s, sid, pp),
+      validateProduces: s => this._validateProduces(runId, s),
       runMaxTurns: a => this._runMaxTurns(a),
-      setStepStartTime: (sid, t) => this._stepStartTimes.set(sid, t),
+      setStepStartTime: (sid, t) => rc.stepStartTimes.set(sid, t),
     };
 
+    // This run now owns the single interactive terminal (used by the terminal callbacks to
+    // attribute their stepId-only events back to this run).
+    this._activeInteractiveRunId = runId;
     // All steps run in the interactive terminal and auto-submit (like an agent/skill run) so
     // pressing "Run Step" actually executes; AI-reviewed steps are auto-verified in
     // onDidEndRunningStep.
     await runInteractiveStep(ctx, this.terminals, true);
   }
 
-  /** Approve/reject a step from the webview's human-review buttons. */
+  /** Approve/reject a step from the webview's human-review buttons (acts on the focused run). */
   async reviewStep(stepId: string, decision: 'approved' | 'rejected'): Promise<void> {
-    if (!this._currentFlow || !this._runState) return;
-    const flow = this._currentFlow;
+    const runId = this._focusedRunId;
+    const rc = this._focused();
+    if (!runId || !rc) return;
+    const flow = rc.flow;
     const step = flow.steps.find(s => s.id === stepId);
-    const isRunning = this._runState.steps[stepId]?.executionStatus === 'running';
+    const isRunning = rc.runState.steps[stepId]?.executionStatus === 'running';
 
     if (decision === 'approved') {
       if (step) {
-        const prod = this._validateProduces(step);
+        const prod = this._validateProduces(runId, step);
         if (!prod.ok) {
           const msg = `produces check failed: ${prod.message}`;
           this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[cannot approve — ${msg}]\n` });
           vscode.window.showErrorMessage(`Cannot approve '${step.title || step.id}': ${prod.message}`);
           return;
         }
-        const content = await this._verifyProducesContent(step);
+        const content = await this._verifyProducesContent(runId, step);
         if (!content.ok) {
           this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[cannot approve — ${content.message}]\n` });
           vscode.window.showErrorMessage(`Cannot approve '${step.title || step.id}': ${content.message}`);
@@ -286,11 +363,11 @@ export class RunOrchestrator {
 
       if (isRunning) {
         // Terminal still running: mark done first (so close-terminal handler is a no-op), then close.
-        const metrics = await this._readInteractiveMetrics(stepId);
-        await this._setRunState(s => machine.markDone(machine.applyHumanReview(machine.markCompleted(s, flow, stepId, metrics), flow, stepId, { decision: 'approved' }), flow, stepId), { stepId, status: 'completed', message: 'Approved by user' });
+        const metrics = await this._readInteractiveMetrics(runId, stepId);
+        await this._setRunState(runId, s => machine.markDone(machine.applyHumanReview(machine.markCompleted(s, flow, stepId, metrics), flow, stepId, { decision: 'approved' }), flow, stepId), { stepId, status: 'completed', message: 'Approved by user' });
         this.terminals.cancelStep(stepId);
         // Human review does not produce a report file (only AI review does).
-        this._advanceReadySteps();
+        this._advanceReadySteps(runId);
         return;
       }
     }
@@ -298,21 +375,21 @@ export class RunOrchestrator {
     if (decision === 'rejected' && isRunning) {
       // Terminal still running: mark completed then apply rejection so state is 'ready' before
       // closing terminal (prevents onDidCloseRunningStep from overwriting with 'cancelled').
-      const metrics = await this._readInteractiveMetrics(stepId);
-      await this._setRunState(s => machine.applyHumanReview(machine.markCompleted(s, flow, stepId, metrics), flow, stepId, { decision: 'rejected' }), { stepId, status: 'rejected', message: 'Rejected by user' });
+      const metrics = await this._readInteractiveMetrics(runId, stepId);
+      await this._setRunState(runId, s => machine.applyHumanReview(machine.markCompleted(s, flow, stepId, metrics), flow, stepId, { decision: 'rejected' }), { stepId, status: 'rejected', message: 'Rejected by user' });
       this.terminals.cancelStep(stepId);
       // Human review does not produce a report file (only AI review does).
       return;
     }
 
     // Terminal already ended: apply review decision to the completed step.
-    await this._persistInteractiveMetrics(stepId);
+    await this._persistInteractiveMetrics(runId, stepId);
     const review = { decision };
-    await this._setRunState(s => machine.applyHumanReview(s, flow, stepId, review), { stepId, status: decision, message: `Human review ${decision}` });
+    await this._setRunState(runId, s => machine.applyHumanReview(s, flow, stepId, review), { stepId, status: decision, message: `Human review ${decision}` });
     // Human review does not produce a report file (only AI review does).
 
-    if (decision === 'approved' && this._runState.steps[stepId]?.completionStatus === 'done') {
-      this._advanceReadySteps();
+    if (decision === 'approved' && rc.runState.steps[stepId]?.completionStatus === 'done') {
+      this._advanceReadySteps(runId);
     }
   }
 
@@ -322,13 +399,15 @@ export class RunOrchestrator {
    * only be changed while every step is still pristine (no history). Reset the run to change it.
    */
   async setAutoReview(enabled: boolean): Promise<void> {
-    if (!this._runState || this._runState.autoReview === enabled) return;
-    const anyStepStarted = Object.values(this._runState.steps).some(
+    const runId = this._focusedRunId;
+    const rc = this._focused();
+    if (!runId || !rc || rc.runState.autoReview === enabled) return;
+    const anyStepStarted = Object.values(rc.runState.steps).some(
       s => (s.history?.length ?? 0) > 0 || (s.executionStatus !== 'ready' && s.executionStatus !== 'locked')
     );
     if (anyStepStarted) return;
-    await this._setRunState(s => ({ ...s, autoReview: enabled }));
-    if (enabled) this._advanceReadySteps();
+    await this._setRunState(runId, s => ({ ...s, autoReview: enabled }));
+    if (enabled) this._advanceReadySteps(runId);
   }
 
   /**
@@ -339,69 +418,85 @@ export class RunOrchestrator {
    * (`previousRunId` = current runId) so the run summary row's displayed name updates in place.
    */
   async editRunMeta(runName: string | undefined, inputs: Record<string, string>): Promise<void> {
-    if (!this._currentFlow || !this._runState) return;
-    const anyStepStarted = Object.values(this._runState.steps).some(
+    const runId = this._focusedRunId;
+    const rc = this._focused();
+    if (!runId || !rc) return;
+    const anyStepStarted = Object.values(rc.runState.steps).some(
       s => (s.history?.length ?? 0) > 0 || (s.executionStatus !== 'ready' && s.executionStatus !== 'locked')
     );
     if (anyStepStarted) return;
-    const runId = this._runState.runId;
     const name = runName?.trim() || undefined;
-    await this._setRunState(s => ({ ...s, runName: name, inputs }));
-    this.post({ type: 'restoreRun', flow: this._currentFlow, runState: this._runState, previousRunId: runId });
+    await this._setRunState(runId, s => ({ ...s, runName: name, inputs }));
+    this.post({ type: 'restoreRun', flow: rc.flow, runState: rc.runState, previousRunId: runId });
   }
 
   /**
    * Finalize a step whose "Mark step done" was pressed. Gates requires/produces, then either
    * completes (no review needed, or already approved) and advances the DAG, or opens the review gate.
    */
-  /** Reset the current run to a fresh state, terminating any in-flight processes. */
+  /** Kill (and mark cancelled) only the headless step children belonging to `runId`. */
+  private _killRunChildren(runId: string): void {
+    const prefix = `${runId}::`;
+    for (const [key, child] of this._runChildrenByStep) {
+      if (key.startsWith(prefix)) { this._cancelledStepIds.add(key); child.kill(); }
+    }
+  }
+
+  /** Drop a dead run's `${runId}::*` entries from the global cancelled set. */
+  private _purgeRunKeys(runId: string): void {
+    const prefix = `${runId}::`;
+    for (const key of [...this._cancelledStepIds]) if (key.startsWith(prefix)) this._cancelledStepIds.delete(key);
+  }
+
+  /** Reset the focused run to a fresh state, terminating its in-flight processes. */
   async resetRun(): Promise<void> {
-    if (!this._currentFlow || !this._runState) return;
-    const flow = this._currentFlow;
-    const oldSteps = this._runState.steps;
+    const oldRunId = this._focusedRunId;
+    const rc = this._focused();
+    if (!oldRunId || !rc) return;
+    const flow = rc.flow;
+    const oldSteps = rc.runState.steps;
+    const oldRunState = rc.runState;
 
     // Capture this run's artifacts BEFORE the state swap (reset mints a new runId → new slug).
     const projectPath = this.configManager.getProjectPath() || '';
-    const runArtifacts = this._producedFilePaths(flow.steps.map(s => s.id));
-    const runOutputDir = machine.flowOutputDir(flow.name, projectPath, this._runSlug());
+    const runArtifacts = this._producedFilePaths(oldRunId, flow.steps.map(s => s.id));
+    const runOutputDir = machine.flowOutputDir(flow.name, projectPath, this._runSlug(oldRunId));
 
-    // Mark headless runs cancelled so their completion handlers skip state transitions.
-    for (const stepId of this._runChildrenByStep.keys()) {
-      this._cancelledStepIds.add(stepId);
-    }
-    for (const child of this._activeRuns) child.kill();
+    // Only this run's headless children — a concurrent run's work is left untouched.
+    this._killRunChildren(oldRunId);
 
     // Each run owns its artifacts; reset discards them so a re-run starts from a clean slate.
     const deleted = this._deleteFiles(runArtifacts);
     this._deleteRunOutputDir(runOutputDir);
     vscode.window.showInformationMessage(`AI StepFlow: run reset — cleared this run's artifacts${deleted.length ? ` (${deleted.length} file${deleted.length === 1 ? '' : 's'})` : ''}.`);
 
-    // Broadcast fresh state BEFORE disposing the terminal so that when onDidCloseRunningStep
-    // fires, _runState is already freshState (step is 'ready') and the handler is a no-op.
-    const oldRunId = this._runState.runId;
     const freshState = machine.initRunState(flow, {
       runId: new Date().toISOString(),
       // Reset re-runs the SAME run from a clean slate, so keep its human-facing name and inputs.
       // Dropping runName made the run fall back to the timestamp runId for its display/output slug.
-      runName: this._runState.runName,
-      projectPath: this._runState.projectPath,
-      inputs: this._runState.inputs,
+      runName: oldRunState.runName,
+      projectPath: oldRunState.projectPath,
+      inputs: oldRunState.inputs,
     });
     await Promise.all([
       this.stateManager.clearAuditLog(flow.id, oldRunId),
-      this.stateManager.deleteRunFile(this._runState),
-      this.stateManager.deleteReportFile(this._runState),
-      this.stateManager.deleteReviewReports(this._runState, flow.steps.map(s => s.id)),
+      this.stateManager.deleteRunFile(oldRunState),
+      this.stateManager.deleteReportFile(oldRunState),
+      this.stateManager.deleteReviewReports(oldRunState, flow.steps.map(s => s.id)),
     ]);
     this.post({ type: 'resetAuditLog', flowId: flow.id });
-    await this._setRunState(freshState);
+
+    // Move the run to its fresh runId with clean bookkeeping before broadcasting.
+    this._runs.delete(oldRunId);
+    this._purgeRunKeys(oldRunId);
+    if (this._activeInteractiveRunId === oldRunId) this._activeInteractiveRunId = undefined;
+    this._runs.set(freshState.runId, this._newRunCtx(flow, freshState));
+    if (this._focusedRunId === oldRunId) this._focusedRunId = freshState.runId;
+    await this._setRunState(freshState.runId, freshState);
     // Carry the old runId so the webview can remap this run's summary row to the new runId — reset
     // mints a fresh runId, and without the remap the row keeps pointing at the deleted run file and
     // its detail drawer can't reopen.
     this.post({ type: 'restoreRun', flow, runState: freshState, previousRunId: oldRunId });
-    this._resetBookkeepingIfNewRun();
-    // Clear stale cancelled IDs so re-runs are not silently skipped.
-    this._cancelledStepIds.clear();
 
     // Dispose any running terminal only after freshState is in place.
     for (const [stepId, state] of Object.entries(oldSteps)) {
@@ -409,74 +504,75 @@ export class RunOrchestrator {
     }
   }
 
-  /** Clear the current active run from the cockpit view. */
+  /** Clear the focused run from the cockpit view. */
   async closeRun(finalize?: boolean): Promise<void> {
-    const flowId = this._currentFlow?.id;
-    const runId = this._runState?.runId;
-    if (this._runState) {
+    const runId = this._focusedRunId;
+    const rc = this._focused();
+    const flowId = rc?.flow.id;
+    if (rc && runId) {
       if (finalize) {
         // When finalizing, mark the whole flow closed.
-        this._runState = { ...this._runState, isClosed: true };
+        rc.runState = { ...rc.runState, isClosed: true };
       }
-      await this.stateManager.saveRun(this._runState);
+      await this.stateManager.saveRun(rc.runState);
+      this._runs.delete(runId);
+      this._purgeRunKeys(runId);
+      if (this._activeInteractiveRunId === runId) this._activeInteractiveRunId = undefined;
     }
-    this._currentFlow = undefined;
-    this._runState = undefined;
-    this._cancelledStepIds.clear();
-    this._startedStepIds.clear();
-    this._parkedStepIds.clear();
+    this._focusedRunId = undefined;
+    this._focusedFlow = undefined;
     this.post({ type: 'runClosed', flowId, runId, finalized: !!finalize });
   }
 
-  /** Delete the current run: terminate in-flight processes, remove the saved file, notify the webview. */
+  /** Delete the focused run: terminate its in-flight processes, remove the saved file, notify the webview. */
   async deleteRun(): Promise<void> {
-    if (!this._currentFlow || !this._runState) return;
-    const flow = this._currentFlow;
-    const runId = this._runState.runId;
+    const runId = this._focusedRunId;
+    const rc = this._focused();
+    if (!runId || !rc) return;
+    const flow = rc.flow;
 
-    for (const stepId of this._runChildrenByStep.keys()) {
-      this._cancelledStepIds.add(stepId);
-    }
-    for (const child of this._activeRuns) child.kill();
+    this._killRunChildren(runId);
 
     await Promise.all([
       this.stateManager.clearAuditLog(flow.id, runId),
-      this.stateManager.deleteRunFile(this._runState),
-      this.stateManager.deleteReportFile(this._runState),
-      this.stateManager.deleteReviewReports(this._runState, flow.steps.map(s => s.id)),
+      this.stateManager.deleteRunFile(rc.runState),
+      this.stateManager.deleteReportFile(rc.runState),
+      this.stateManager.deleteReviewReports(rc.runState, flow.steps.map(s => s.id)),
     ]);
 
-    this._currentFlow = undefined;
-    this._runState = undefined;
-    this._cancelledStepIds.clear();
-    this._startedStepIds.clear();
-    this._parkedStepIds.clear();
+    this._runs.delete(runId);
+    this._purgeRunKeys(runId);
+    if (this._activeInteractiveRunId === runId) this._activeInteractiveRunId = undefined;
+    this._focusedRunId = undefined;
+    this._focusedFlow = undefined;
 
     this.post({ type: 'runDeleted', flowId: flow.id, runId });
   }
 
   async verify(): Promise<void> {
-    if (!this._currentFlow || !this._runState) return;
+    const rc = this._focused();
+    if (!rc) return;
     const projectPath = this.configManager.getProjectPath();
     if (!projectPath) return;
 
-    const report = verifyRun(this._currentFlow, this._runState, projectPath);
+    const report = verifyRun(rc.flow, rc.runState, projectPath);
     if (report.ok) {
-      vscode.window.showInformationMessage(`AI StepFlow: verify passed for run '${this._runState.runId}'.`);
+      vscode.window.showInformationMessage(`AI StepFlow: verify passed for run '${rc.runState.runId}'.`);
       return;
     }
 
-    const markdown = renderVerifyReportMarkdown(this._currentFlow, this._runState, report);
+    const markdown = renderVerifyReportMarkdown(rc.flow, rc.runState, report);
     const doc = await vscode.workspace.openTextDocument({ language: 'markdown', content: markdown });
     await vscode.window.showTextDocument(doc, { preview: false });
     vscode.window.showWarningMessage(`AI StepFlow: verify found drift in ${report.drift.length} step(s).`);
   }
 
   async exportReport(): Promise<void> {
-    if (!this._currentFlow || !this._runState) return;
-    const auditLog = await this.stateManager.loadAuditLog(this._currentFlow.id);
-    const markdown = renderRunReport(this._currentFlow, this._runState, auditLog);
-    const filePath = await this.stateManager.saveReport(this._runState, markdown);
+    const rc = this._focused();
+    if (!rc) return;
+    const auditLog = await this.stateManager.loadAuditLog(rc.flow.id);
+    const markdown = renderRunReport(rc.flow, rc.runState, auditLog);
+    const filePath = await this.stateManager.saveReport(rc.runState, markdown);
     if (!filePath) return;
     const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
     await vscode.window.showTextDocument(doc, { preview: false });
@@ -484,17 +580,18 @@ export class RunOrchestrator {
     vscode.window.showInformationMessage(`AI StepFlow: run report exported to ${base}.`);
   }
 
-  /** Terminate a step's running process (headless or terminal) and record it as cancelled. */
+  /** Terminate a step's running process (headless or terminal) and record it as cancelled (focused run). */
   async cancelStep(stepId: string): Promise<void> {
-    const child = this._runChildrenByStep.get(stepId);
-    if (child) {
+    const runId = this._focusedRunId;
+    const rc = this._focused();
+    const key = runId ? this._rk(runId, stepId) : '';
+    const child = key ? this._runChildrenByStep.get(key) : undefined;
+    if (child && runId && rc) {
       // Headless run — kill the tracked child process directly
-      this._cancelledStepIds.add(stepId);
+      this._cancelledStepIds.add(key);
       child.kill();
       this.post({ type: 'stepUpdate', stepId, append: true, output: '\n[run cancelled by user]\n' });
-      if (this._currentFlow && this._runState) {
-        await this._setRunState(machine.markCancelled(this._runState, this._currentFlow, stepId), { stepId, status: 'cancelled', message: 'Cancelled by user' });
-      }
+      await this._setRunState(runId, machine.markCancelled(rc.runState, rc.flow, stepId), { stepId, status: 'cancelled', message: 'Cancelled by user' });
       return;
     }
     // Terminal (interactive) run — flip the state to cancelled BEFORE disposing the terminal, so
@@ -502,9 +599,10 @@ export class RunOrchestrator {
     // onDidCloseRunningStep to set the state: TerminalManager.cancelStep clears its _terminal ref
     // synchronously, so the later onDidCloseTerminal identity check fails and the callback never
     // fires — which would leave the step wedged at "running" (Stop button appears to do nothing).
-    this._cancelledStepIds.add(stepId);
-    if (this._currentFlow && this._runState && this._runState.steps[stepId]?.executionStatus === 'running') {
-      await this._setRunState(machine.markCancelled(this._runState, this._currentFlow, stepId), { stepId, status: 'cancelled', message: 'Cancelled by user' });
+    if (key) this._cancelledStepIds.add(key);
+    if (rc && runId && rc.runState.steps[stepId]?.executionStatus === 'running') {
+      await this._setRunState(runId, machine.markCancelled(rc.runState, rc.flow, stepId), { stepId, status: 'cancelled', message: 'Cancelled by user' });
+      if (this._activeInteractiveRunId === runId) this._activeInteractiveRunId = undefined;
     }
     this.terminals.cancelStep(stepId);
     this.post({ type: 'stepUpdate', stepId, append: true, output: '\n[run cancelled by user]\n' });
@@ -516,37 +614,41 @@ export class RunOrchestrator {
    * then broadcasts the fresh state.
    */
   async resetStep(stepId: string): Promise<void> {
-    if (!this._currentFlow || !this._runState) return;
-    const flow = this._currentFlow;
-    const runId = this._runState.runId;
+    const runId = this._focusedRunId;
+    const rc = this._focused();
+    if (!runId || !rc) return;
+    const flow = rc.flow;
     const ids = [stepId, ...machine.dependentStepIds(flow, stepId)];
 
     // Kill any in-flight run for the affected steps before the state flips, so their completion
     // handlers become no-ops.
     for (const id of ids) {
-      this._cancelledStepIds.add(id);
-      const child = this._runChildrenByStep.get(id);
+      const key = this._rk(runId, id);
+      this._cancelledStepIds.add(key);
+      const child = this._runChildrenByStep.get(key);
       if (child) child.kill();
       this.terminals.cancelStep(id);
     }
+    // The terminal was just cancelled for one of this run's steps — release ownership.
+    if (this._activeInteractiveRunId === runId) this._activeInteractiveRunId = undefined;
 
     // Delete the artifacts this step (and its now-reset dependents) produced, so the re-run
     // regenerates them instead of an AI review reading a stale file from the previous attempt.
-    const deleted = this._deleteFiles(this._producedFilePaths(ids));
+    const deleted = this._deleteFiles(this._producedFilePaths(runId, ids));
 
     // Also drop any AI review reports these steps left behind when rejected, so a re-run doesn't
     // carry stale verdicts. runName/runId are unchanged by resetStep, so the run slug still matches.
-    await this.stateManager.deleteReviewReports(this._runState, ids);
+    await this.stateManager.deleteReviewReports(rc.runState, ids);
 
     await this.stateManager.clearAuditLog(flow.id, runId, ids);
     this.post({ type: 'resetAuditLog', flowId: flow.id, runId, stepIds: ids });
-    await this._setRunState(s => machine.resetStep(s, flow, stepId));
-    this.post({ type: 'restoreRun', flow, runState: this._runState });
+    await this._setRunState(runId, s => machine.resetStep(s, flow, stepId));
+    this.post({ type: 'restoreRun', flow, runState: rc.runState });
     if (deleted.length) {
       this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[reset — deleted ${deleted.length} produced file${deleted.length === 1 ? '' : 's'}]\n` });
     }
     // Clear stale cancelled IDs so the re-run is not silently skipped.
-    for (const id of ids) this._cancelledStepIds.delete(id);
+    for (const id of ids) this._cancelledStepIds.delete(this._rk(runId, id));
   }
 
   /**
@@ -573,11 +675,12 @@ export class RunOrchestrator {
    * is no active run to scope the lookup.
    */
   resolveArtifactPath(declared: string): string | undefined {
-    const flow = this._currentFlow;
-    if (!flow || !this._runState) return undefined;
+    const runId = this._focusedRunId;
+    const rc = this._focused();
+    if (!runId || !rc) return undefined;
     const projectPath = this.configManager.getProjectPath() || '';
-    const [resolved] = machine.resolveTemplates([declared], this._runState.inputs || {});
-    return machine.locateProducedFile(resolved, flow.name, projectPath, this._runSlug(), this._legacyRunSlug());
+    const [resolved] = machine.resolveTemplates([declared], rc.runState.inputs || {});
+    return machine.locateProducedFile(resolved, rc.flow.name, projectPath, this._runSlug(runId), this._legacyRunSlug(runId));
   }
 
   /** Terminate every in-flight headless run. The cockpit owns terminal/panel cleanup. */
@@ -591,13 +694,14 @@ export class RunOrchestrator {
    * Absolute paths of every file the given steps declare in `produces`, resolved for the CURRENT
    * run (flow name + run slug + inputs). Used to delete a run's/step's artifacts on reset.
    */
-  private _producedFilePaths(stepIds: string[]): string[] {
-    const flow = this._currentFlow;
-    if (!flow || !this._runState) return [];
+  private _producedFilePaths(runId: string, stepIds: string[]): string[] {
+    const rc = this._runs.get(runId);
+    if (!rc) return [];
+    const flow = rc.flow;
     const projectPath = this.configManager.getProjectPath() || '';
-    const inputs = this._runState.inputs || {};
-    const slug = this._runSlug();
-    const legacySlug = this._legacyRunSlug();
+    const inputs = rc.runState.inputs || {};
+    const slug = this._runSlug(runId);
+    const legacySlug = this._legacyRunSlug(runId);
     const paths = new Set<string>();
     for (const id of stepIds) {
       const step = flow.steps.find(s => s.id === id);
@@ -642,11 +746,17 @@ export class RunOrchestrator {
    * renders it without computing its own transitions. Optionally records an audit event.
    * All updates are queued to guarantee atomicity and prevent race conditions across concurrent runs.
    */
-  private _setRunState(next: FlowRunState | ((prev: FlowRunState) => FlowRunState), audit?: { stepId: string; status: string; message?: string }): Promise<void> {
-    const promise = this._stateUpdateQueue.then(async () => {
-      if (!this._runState) return;
-      const resolvedNext = typeof next === 'function' ? next(this._runState) : next;
-      this._runState = resolvedNext;
+  private _setRunState(runId: string, next: FlowRunState | ((prev: FlowRunState) => FlowRunState), audit?: { stepId: string; status: string; message?: string }): Promise<void> {
+    const rc = this._runs.get(runId);
+    if (!rc) return Promise.resolve();
+    const promise = rc.stateUpdateQueue.then(async () => {
+      // Re-fetch: the run may have been deleted while this transition was queued.
+      const live = this._runs.get(runId);
+      if (!live) return;
+      // Resolve against the run's OWN state (never a shared/focused field), so a focus switch
+      // between enqueue and drain can't make this transition read or overwrite another run.
+      const resolvedNext = typeof next === 'function' ? next(live.runState) : next;
+      live.runState = resolvedNext;
       await this.stateManager.saveRun(resolvedNext);
       const historyEvent = audit ? { timestamp: new Date().toISOString(), ...audit } : undefined;
       if (historyEvent) {
@@ -658,16 +768,16 @@ export class RunOrchestrator {
       }
       this.post({ type: 'runStateChanged', runState: resolvedNext, historyEvent });
     });
-    this._stateUpdateQueue = promise;
+    rc.stateUpdateQueue = promise;
     return promise;
   }
 
   /**
-   * Update the authoritative run state with a partial patch for one step, e.g. to accumulate
+   * Update a run's authoritative state with a partial patch for one step, e.g. to accumulate
    * incremental output during a run without triggering a full state transition.
    */
-  private async _patchStepState(stepId: string, patch: Partial<StepRunState>): Promise<void> {
-    await this._setRunState(s => {
+  private async _patchStepState(runId: string, stepId: string, patch: Partial<StepRunState>): Promise<void> {
+    await this._setRunState(runId, s => {
       const prev = s.steps[stepId];
       if (!prev) return s;
       return { ...s, steps: { ...s.steps, [stepId]: { ...prev, ...patch } } };
@@ -679,9 +789,10 @@ export class RunOrchestrator {
    * run the two-layer auto-review; a step with an explicit `validatorPath` runs that validator;
    * everything else waits for a human decision.
    */
-  private async _reviewStep(step: FlowStep, stepId: string): Promise<void> {
-    const flow = this._currentFlow;
-    if (!flow || !this._runState) return;
+  private async _reviewStep(runId: string, step: FlowStep, stepId: string): Promise<void> {
+    const rc = this._runs.get(runId);
+    if (!rc) return;
+    const flow = rc.flow;
     const projectPath = this.configManager.getProjectPath() || '';
     const isAutoStep = step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai');
 
@@ -689,20 +800,20 @@ export class RunOrchestrator {
     // auto-review step does NOT call AI review, open a terminal, or run a skill review — it just
     // waits for the user to click "Finish" (markCompleted already parked it at 'waiting_human').
     if (isAutoStep) {
-      if (this._runState.autoReview) {
-        await this._runAiReview(step, stepId, projectPath);
+      if (rc.runState.autoReview) {
+        await this._runAiReview(runId, step, stepId, projectPath);
       } else {
         this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[auto review off — click "Finish Step" to continue]\n` });
       }
       return;
     }
     if (step.review.validatorPath) {
-      const verdict = await runValidator({ workspaceRoot: projectPath, step, runState: this._runState, stepOutput: '' });
+      const verdict = await runValidator({ workspaceRoot: projectPath, step, runState: rc.runState, stepOutput: '' });
       const status: 'approved' | 'rejected' = verdict.decision === 'pass' ? 'approved' : 'rejected';
       const note = `Validator review: ${status} — ${verdict.reason}`;
-      await this._setRunState(machine.applyAiReview(this._runState, flow, stepId, status, note + '\n'), { stepId, status, message: `Validator review ${status}` });
+      await this._setRunState(runId, machine.applyAiReview(rc.runState, flow, stepId, status, note + '\n'), { stepId, status, message: `Validator review ${status}` });
       this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[${note}]\n` });
-      if (status === 'approved') this._advanceReadySteps();
+      if (status === 'approved') this._advanceReadySteps(runId);
       return;
     }
     // Human-only review: wait for a decision via the approve/reject buttons. markCompleted
@@ -717,9 +828,10 @@ export class RunOrchestrator {
    * A pass auto-marks the step done and advances; a rejection sends it back to ready. The validator
    * runs first so an obviously-incomplete artifact is rejected without spending review tokens.
    */
-  private async _runAiReview(step: FlowStep, stepId: string, projectPath: string): Promise<void> {
-    const flow = this._currentFlow;
-    if (!flow || !this._runState) return;
+  private async _runAiReview(runId: string, step: FlowStep, stepId: string, projectPath: string): Promise<void> {
+    const rc = this._runs.get(runId);
+    if (!rc) return;
+    const flow = rc.flow;
 
     const deep = step.review.deep !== false;
     const reviewer = step.review.reviewers?.find(r => r.type === 'ai');
@@ -732,16 +844,16 @@ export class RunOrchestrator {
       ? (step.review.reviewKit || (await this.configManager.loadUiPrefs().catch(() => ({} as Record<string, string>)))['review:activeKit'])
       : '';
     const reviewKit = deep ? machine.loadReviewKit(projectPath, activeKit || undefined) : '';
-    const artifacts = deep ? machine.readProducedArtifacts(step, projectPath, this._runState.inputs || {}, flow.name, this._runSlug(), this._legacyRunSlug()) : { text: '', count: 0 };
+    const artifacts = deep ? machine.readProducedArtifacts(step, projectPath, rc.runState.inputs || {}, flow.name, this._runSlug(runId), this._legacyRunSlug(runId)) : { text: '', count: 0 };
     if (deep && reviewKit && artifacts.count > 0) {
-      await this._setRunState(s => machine.applyAiReview(s, flow, stepId, 'ai_review_running', ''));
+      await this._setRunState(runId, s => machine.applyAiReview(s, flow, stepId, 'ai_review_running', ''));
     }
 
     let reviewOut = '';
     const result = await machine.reviewStepArtifacts({
       workspaceRoot: projectPath,
       step,
-      runState: this._runState!,
+      runState: rc.runState,
       deep,
       reviewKit,
       artifacts,
@@ -761,36 +873,36 @@ export class RunOrchestrator {
     // approve/reject deliberately.
     if (result.status === 'waiting_human') {
       const warn = `Auto review could not verify "${step.title || step.id}": ${result.note} Approve or reject it manually.`;
-      await this._setRunState(s => machine.applyAiReview(s, flow, stepId, 'waiting_human', `⚠ ${warn}\n`), { stepId, status: 'waiting_human', message: warn });
+      await this._setRunState(runId, s => machine.applyAiReview(s, flow, stepId, 'waiting_human', `⚠ ${warn}\n`), { stepId, status: 'waiting_human', message: warn });
       this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[⚠ ${warn}]\n` });
       vscode.window.showWarningMessage(`AI StepFlow: ${warn}`);
       return;
     }
 
-    await this._setRunState(s => machine.applyAiReview(s, flow, stepId, result.status, detail, reviewMetrics), { stepId, status: result.status, message: `Review ${result.status}` });
+    await this._setRunState(runId, s => machine.applyAiReview(s, flow, stepId, result.status, detail, reviewMetrics), { stepId, status: result.status, message: `Review ${result.status}` });
     this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[review (${result.source}): ${result.status} — ${result.note}]\n` });
 
     if (result.status === 'approved') {
       // Write an approval report so the step's Files tab shows the review that passed it.
-      await this._writeReviewReport(step, stepId, { verdict: 'approved', source: result.source, reason: result.note, correct: result.correct, issues: result.issues, suggestions: result.suggestions });
-      this._advanceReadySteps();
-    } else if (result.status === 'rejected' && (result.source === 'validator' || result.source === 'freshness') && !this._autoRetryStepIds.has(stepId)) {
+      await this._writeReviewReport(runId, step, stepId, { verdict: 'approved', source: result.source, reason: result.note, correct: result.correct, issues: result.issues, suggestions: result.suggestions });
+      this._advanceReadySteps(runId);
+    } else if (result.status === 'rejected' && (result.source === 'validator' || result.source === 'freshness') && !rc.autoRetryStepIds.has(stepId)) {
       // Auto-retry only for a deterministic rejection (a concrete, fixable miss: a missing/empty
       // file, a leftover TODO, or a stale artifact the step didn't regenerate). A subjective LLM
       // rejection is surfaced to the user instead, so we don't burn a full re-run + re-review on a
       // verdict a retry is unlikely to flip.
-      this._autoRetryStepIds.add(stepId);
+      rc.autoRetryStepIds.add(stepId);
       this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[${result.source} rejected — retrying automatically (1/1)]\n` });
-      await this._run(stepId);
+      await this._run(runId, stepId);
     } else if (result.status === 'rejected') {
       // Final rejection (LLM verdict, or a second validator rejection): the flow halts here, so
       // write a full AI review report file (what's right/wrong, why, and how to fix it).
-      await this._writeReviewReport(step, stepId, { verdict: 'rejected', source: result.source, reason: result.note, correct: result.correct, issues: result.issues, suggestions: result.suggestions });
+      await this._writeReviewReport(runId, step, stepId, { verdict: 'rejected', source: result.source, reason: result.note, correct: result.correct, issues: result.issues, suggestions: result.suggestions });
     }
   }
 
   /** Render + persist a per-step review report (approved or rejected); post its path to the webview. */
-  private async _writeReviewReport(step: FlowStep, stepId: string, report: {
+  private async _writeReviewReport(runId: string, step: FlowStep, stepId: string, report: {
     verdict: 'approved' | 'rejected';
     source: string;
     reason: string;
@@ -798,13 +910,14 @@ export class RunOrchestrator {
     issues?: string[];
     suggestions?: string[];
   }): Promise<void> {
-    if (!this._runState) return;
-    const st = this._runState.steps[stepId];
+    const rc = this._runs.get(runId);
+    if (!rc) return;
+    const st = rc.runState.steps[stepId];
     const markdown = machine.renderReviewReport({
       step,
-      flowName: this._currentFlow?.name,
-      runName: this._runState.runName,
-      runId: this._runState.runId,
+      flowName: rc.flow.name,
+      runName: rc.runState.runName,
+      runId: rc.runState.runId,
       verdict: report.verdict,
       source: report.source,
       reason: report.reason,
@@ -819,13 +932,13 @@ export class RunOrchestrator {
       modelUsed: st?.modelUsed,
     });
     try {
-      const filePath = await this.stateManager.saveReviewReport(this._runState, stepId, markdown);
+      const filePath = await this.stateManager.saveReviewReport(rc.runState, stepId, markdown);
       if (filePath) {
         const base = filePath.split(/[\\/]/).pop();
         const rel = `.ai-stepflow/reports/reviews/${base}`;
         this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[AI review report written → ${rel}]\n` });
         // Expose the report path to the webview so the step's Files tab can offer to open it.
-        await this._setRunState(s => ({ ...s, steps: { ...s.steps, [stepId]: { ...s.steps[stepId], reviewReportPath: rel } } }));
+        await this._setRunState(runId, s => ({ ...s, steps: { ...s.steps, [stepId]: { ...s.steps[stepId], reviewReportPath: rel } } }));
       }
     } catch (err) {
       // A report-write failure must not break the review flow (the rejection is already recorded).
@@ -884,15 +997,17 @@ export class RunOrchestrator {
     });
   }
 
-  /** Per-run output subfolder slug, so each run's artifacts stay separate. */
-  private _runSlug(): string {
-    return runOutputSlug(this._runState?.runName, this._runState?.runId);
+  /** Per-run output subfolder slug for `runId`, so each run's artifacts stay separate. */
+  private _runSlug(runId: string): string {
+    const rc = this._runs.get(runId);
+    return runOutputSlug(rc?.runState.runName, rc?.runState.runId);
   }
 
-  /** Legacy (pre-fingerprint) slug, passed as a READ fallback so runs created before the runId
-   * suffix existed still resolve their artifacts. '' when it equals the current slug. */
-  private _legacyRunSlug(): string {
-    return legacyRunOutputSlug(this._runState?.runName, this._runState?.runId);
+  /** Legacy (pre-fingerprint) slug for `runId`, passed as a READ fallback so runs created before the
+   * runId suffix existed still resolve their artifacts. '' when it equals the current slug. */
+  private _legacyRunSlug(runId: string): string {
+    const rc = this._runs.get(runId);
+    return legacyRunOutputSlug(rc?.runState.runName, rc?.runState.runId);
   }
 
   /**
@@ -902,8 +1017,8 @@ export class RunOrchestrator {
    * grows on every message/tool-call, so a step that appears done by its declared artifact but is
    * still active keeps this signature changing until the agent truly goes idle.
    */
-  private _sessionTranscriptSignature(stepId: string): string {
-    const sessionId = this._runState?.steps[stepId]?.sessionId;
+  private _sessionTranscriptSignature(runId: string, stepId: string): string {
+    const sessionId = this._runs.get(runId)?.runState.steps[stepId]?.sessionId;
     const projectPath = this.configManager.getProjectPath();
     if (!sessionId || !projectPath) return '';
     try {
@@ -916,13 +1031,15 @@ export class RunOrchestrator {
     }
   }
 
-  private _validateRequires(step: FlowStep): { ok: boolean; message?: string } {
-    return validateRequires(step, this.configManager.getProjectPath() || '', this._runState?.inputs || {}, this._currentFlow?.name || '', this._runSlug(), this._legacyRunSlug());
+  private _validateRequires(runId: string, step: FlowStep): { ok: boolean; message?: string } {
+    const rc = this._runs.get(runId);
+    return validateRequires(step, this.configManager.getProjectPath() || '', rc?.runState.inputs || {}, rc?.flow.name || '', this._runSlug(runId), this._legacyRunSlug(runId));
   }
 
   /** Deterministic gate: the step's declared `produces`/review files must exist on disk. */
-  private _validateProduces(step: FlowStep): { ok: boolean; message?: string } {
-    return validateProducesFiles(step, this.configManager.getProjectPath() || '', this._runState?.inputs || {}, this._currentFlow?.name || '', this._runSlug(), this._legacyRunSlug());
+  private _validateProduces(runId: string, step: FlowStep): { ok: boolean; message?: string } {
+    const rc = this._runs.get(runId);
+    return validateProducesFiles(step, this.configManager.getProjectPath() || '', rc?.runState.inputs || {}, rc?.flow.name || '', this._runSlug(runId), this._legacyRunSlug(runId));
   }
 
   /**
@@ -930,16 +1047,17 @@ export class RunOrchestrator {
    * Markers present verbatim pass for free; the rest are judged by an LLM (meaning, not exact
    * wording), so a draft need not echo the requirement text. Lenient on judge failure.
    */
-  private _verifyProducesContent(step: FlowStep): Promise<{ ok: boolean; message?: string }> {
+  private _verifyProducesContent(runId: string, step: FlowStep): Promise<{ ok: boolean; message?: string }> {
+    const rc = this._runs.get(runId);
     return verifyProducesContent(
       step,
       this.configManager.getProjectPath() || '',
-      this._runState?.inputs || {},
-      this._currentFlow?.name || '',
+      rc?.runState.inputs || {},
+      rc?.flow.name || '',
       opts => this._spawnClaudeStreaming({ ...opts, maxTurns: 1 }),
       undefined,
-      this._runSlug(),
-      this._legacyRunSlug()
+      this._runSlug(runId),
+      this._legacyRunSlug(runId)
     );
   }
 
@@ -949,53 +1067,56 @@ export class RunOrchestrator {
    * Interactive (human/terminal) steps share one chat box, so only the first launches; the rest
    * are parked with a one-time message until a terminal slot frees up.
    */
-  private _advanceReadySteps(): void {
-    if (!this._currentFlow || !this._runState) return;
-    const orch = new machine.FlowOrchestrator(this._currentFlow, this._runState);
+  private _advanceReadySteps(runId: string): void {
+    const rc = this._runs.get(runId);
+    if (!rc) return;
+    const orch = new machine.FlowOrchestrator(rc.flow, rc.runState);
     const actions = orch.getAutoAdvanceActions();
-    this._startedStepIds = orch.getStartedStepIds();
+    rc.startedStepIds = orch.getStartedStepIds();
 
     for (const action of actions) {
       if (action.type === 'launch_interactive') {
-        const step = this._currentFlow?.steps.find(s => s.id === action.stepId);
+        const step = rc.flow.steps.find(s => s.id === action.stepId);
         const hasAiReview = !!step && (step.review.type === 'ai' || !!step.review.reviewers?.some(r => r.type === 'ai'));
 
         // Auto-pilot runs every ready step itself (human-review steps run too, then halt at their
         // approval gate). Otherwise only AI-reviewed steps auto-run; the rest park for a manual click.
-        if (hasAiReview || this._runState?.autoReview) {
-          void this._run(action.stepId);
+        if (hasAiReview || rc.runState.autoReview) {
+          void this._run(runId, action.stepId);
         } else {
-          if (this._parkedStepIds.has(action.stepId)) continue;
-          this._parkedStepIds.add(action.stepId);
+          if (rc.parkedStepIds.has(action.stepId)) continue;
+          rc.parkedStepIds.add(action.stepId);
           this.post({ type: 'stepUpdate', stepId: action.stepId, append: true, output: '\n[step ready — click "Run Step" to start]\n' });
         }
       } else if (action.type === 'park_interactive') {
-        if (this._parkedStepIds.has(action.stepId)) continue;
-        this._parkedStepIds.add(action.stepId);
+        if (rc.parkedStepIds.has(action.stepId)) continue;
+        rc.parkedStepIds.add(action.stepId);
         this.post({ type: 'stepUpdate', stepId: action.stepId, append: true, output: '\n[step ready — waiting for terminal slot...]\n' });
       }
     }
   }
 
   /** Read session stats from Claude CLI's .jsonl files for an interactive step. Never throws. */
-  private async _readInteractiveMetrics(stepId: string): Promise<machine.StepMetrics> {
-    const startTime = this._stepStartTimes.get(stepId)
-      ?? (this._runState?.steps[stepId]?.startedAt ? new Date(this._runState.steps[stepId].startedAt!) : undefined);
+  private async _readInteractiveMetrics(runId: string, stepId: string): Promise<machine.StepMetrics> {
+    const rc = this._runs.get(runId);
+    const startTime = rc?.stepStartTimes.get(stepId)
+      ?? (rc?.runState.steps[stepId]?.startedAt ? new Date(rc.runState.steps[stepId].startedAt!) : undefined);
     const projectPath = this.configManager.getProjectPath();
     if (!startTime || Number.isNaN(startTime.getTime()) || !projectPath) return {};
-    const sessionId = this._runState?.steps[stepId]?.sessionId;
+    const sessionId = rc?.runState.steps[stepId]?.sessionId;
     return readInteractiveSessionStats(projectPath, startTime, sessionId);
   }
 
   /** Persist recovered interactive metrics onto the step so the run JSON is the single UI source of truth. */
-  private async _persistInteractiveMetrics(stepId: string): Promise<void> {
-    if (!this._runState) return;
+  private async _persistInteractiveMetrics(runId: string, stepId: string): Promise<void> {
+    const rc = this._runs.get(runId);
+    if (!rc) return;
 
-    const metrics = await this._readInteractiveMetrics(stepId);
+    const metrics = await this._readInteractiveMetrics(runId, stepId);
     const hasMetrics = metrics.modelUsed != null || metrics.tokensUsed != null || metrics.costUsd != null || !!metrics.output;
     if (!hasMetrics) return;
 
-    const prev = this._runState.steps[stepId];
+    const prev = rc.runState.steps[stepId];
     if (!prev) return;
 
     const nextModelUsed = metrics.modelUsed ?? prev.modelUsed;
@@ -1008,7 +1129,7 @@ export class RunOrchestrator {
       || nextOutput !== prev.output;
     if (!changed) return;
 
-    await this._setRunState(s => ({
+    await this._setRunState(runId, s => ({
       ...s,
       steps: {
         ...s.steps,
@@ -1024,32 +1145,36 @@ export class RunOrchestrator {
   }
 
   /**
-   * Return the skills list for this run, loading from disk only on the first call per run.
-   * Parallel headless steps all share one read; clearing `_skillsCache` in
-   * `_resetBookkeepingIfNewRun` ensures a new run always sees fresh skills.
+   * Return the skills list for a run, loading from disk only on the first call per run and caching
+   * on its RunCtx. Parallel steps of the same run share one read; a fresh RunCtx (new/reset run)
+   * always sees fresh skills.
    */
-  private async _getSkillsForRun(): Promise<Skill[]> {
-    if (!this._skillsCache) {
-      this._skillsCache = await this.configManager.loadSkills();
+  private async _getSkillsForRun(runId: string): Promise<Skill[]> {
+    const rc = this._runs.get(runId);
+    if (!rc) return this.configManager.loadSkills();
+    if (!rc.skillsCache) {
+      rc.skillsCache = await this.configManager.loadSkills();
     }
-    return this._skillsCache;
+    return rc.skillsCache;
   }
 
   /**
-   * Accumulate a streamed output chunk for `stepId` and schedule a flush. The 50 ms
+   * Accumulate a streamed output chunk for a run's `stepId` and schedule a flush. The 50 ms
    * batch window prevents React from re-rendering on every token the LLM emits while
    * keeping perceived latency well within acceptable limits for a developer tool.
    */
-  private _bufferOutput(stepId: string, chunk: string): void {
-    this._outputChunkBuffer.set(stepId, (this._outputChunkBuffer.get(stepId) ?? '') + chunk);
+  private _bufferOutput(runId: string, stepId: string, chunk: string): void {
+    const rc = this._runs.get(runId);
+    if (!rc) return;
+    rc.outputChunkBuffer.set(stepId, (rc.outputChunkBuffer.get(stepId) ?? '') + chunk);
     if (!this._outputFlushTimer) {
       this._outputFlushTimer = setTimeout(() => this._flushOutputBuffer(), 50);
     }
   }
 
   /**
-   * Flush all buffered output chunks to the webview in one postMessage per step, then
-   * clear the buffer. Called by the 50 ms timer and also immediately at the end of each
+   * Flush every run's buffered output chunks to the webview in one postMessage per step, then
+   * clear the buffers. Called by the shared 50 ms timer and also immediately at the end of each
    * run so the final tail of output is never left in the buffer.
    */
   private _flushOutputBuffer(): void {
@@ -1057,22 +1182,11 @@ export class RunOrchestrator {
       clearTimeout(this._outputFlushTimer);
       this._outputFlushTimer = undefined;
     }
-    for (const [stepId, text] of this._outputChunkBuffer) {
-      if (text) this.post({ type: 'stepUpdate', stepId, append: true, output: text });
+    for (const rc of this._runs.values()) {
+      for (const [stepId, text] of rc.outputChunkBuffer) {
+        if (text) this.post({ type: 'stepUpdate', stepId, append: true, output: text });
+      }
+      rc.outputChunkBuffer.clear();
     }
-    this._outputChunkBuffer.clear();
-  }
-
-  private _resetBookkeepingIfNewRun(): void {
-    const runId = this._runState?.runId;
-    if (runId === this._bookkeepingRunId) return;
-    this._bookkeepingRunId = runId;
-    this._startedStepIds = this._runState ? machine.seedStartedSteps(this._runState.steps) : new Set<string>();
-    this._parkedStepIds = new Set<string>();
-    this._autoRetryStepIds = new Set<string>();
-    this._stepStartTimes = new Map<string, Date>();
-    // Clear per-run caches so a new run always sees fresh data.
-    this._skillsCache = undefined;
-    this._flushOutputBuffer();
   }
 }
