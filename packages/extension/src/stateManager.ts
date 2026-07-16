@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { promises as fs } from 'fs';
-import { FlowRunState } from '@ai-stepflow/core';
+import { FlowRunState, shortRunId } from '@ai-stepflow/core';
 
 /** Lightweight per-run summary with aggregated metrics, listed for the run picker and Overview stats. */
 export interface RunSummary {
@@ -76,11 +76,25 @@ export class StateManager {
     return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   }
 
-  /** Readable run filename base: <flowName-slug>-<runName-slug>, falling back to ids when names are missing. */
+  /**
+   * Readable run filename base: `<flowName-slug>-<runName-slug>-<runId-fingerprint>`. The runId
+   * fingerprint makes the name unique so two runs of the same flow with the same run name never
+   * share a file — matching the per-run output slug ({@link runOutputSlug}). A nameless run already
+   * has a unique runId slug, so it gets no extra suffix.
+   */
   private runFileBase(run: FlowRunState): string {
     const flow = this.slugify(run.flowName || run.flowId) || this.slugify(run.flowId);
-    const name = this.slugify(run.runName || '') || this.slugify(run.runId);
+    const named = this.slugify(run.runName || '');
+    const name = named ? `${named}-${shortRunId(run.runId)}` : this.slugify(run.runId);
     return `${flow}-${name}`;
+  }
+
+  /** Pre-fingerprint filename base, used only as a READ/delete fallback for runs written before the runId suffix. '' when it equals {@link runFileBase}. */
+  private legacyRunFileBase(run: FlowRunState): string {
+    const flow = this.slugify(run.flowName || run.flowId) || this.slugify(run.flowId);
+    const name = this.slugify(run.runName || '') || this.slugify(run.runId);
+    const legacy = `${flow}-${name}`;
+    return legacy === this.runFileBase(run) ? '' : legacy;
   }
 
   public async saveRun(run: FlowRunState): Promise<void> {
@@ -122,15 +136,21 @@ export class StateManager {
   /** Delete the persisted run JSON. Reconstructs the slug filename from the run itself. */
   public async deleteRunFile(run: FlowRunState): Promise<void> {
     if (!this.projectPath) return;
-    const filePath = path.join(this.projectPath, '.ai-stepflow', 'runs', `${this.runFileBase(run)}.json`);
-    try { await fs.unlink(filePath); } catch { /* ignore if not found */ }
+    const dir = path.join(this.projectPath, '.ai-stepflow', 'runs');
+    for (const base of [this.runFileBase(run), this.legacyRunFileBase(run)]) {
+      if (!base) continue;
+      try { await fs.unlink(path.join(dir, `${base}.json`)); } catch { /* ignore if not found */ }
+    }
   }
 
   /** Delete the generated markdown report. Reconstructs the slug filename from the run itself. */
   public async deleteReportFile(run: FlowRunState): Promise<void> {
     if (!this.projectPath) return;
-    const filePath = path.join(this.projectPath, '.ai-stepflow', 'reports', `${this.runFileBase(run)}.md`);
-    try { await fs.unlink(filePath); } catch { /* ignore if not found */ }
+    const dir = path.join(this.projectPath, '.ai-stepflow', 'reports');
+    for (const base of [this.runFileBase(run), this.legacyRunFileBase(run)]) {
+      if (!base) continue;
+      try { await fs.unlink(path.join(dir, `${base}.md`)); } catch { /* ignore if not found */ }
+    }
   }
 
   /**
@@ -141,10 +161,11 @@ export class StateManager {
   public async deleteReviewReports(run: FlowRunState, stepIds: string[]): Promise<void> {
     if (!this.projectPath) return;
     const dir = path.join(this.projectPath, '.ai-stepflow', 'reports', 'reviews');
-    await Promise.all(stepIds.map(async stepId => {
-      const filePath = path.join(dir, `${this.runFileBase(run)}-${this.slugify(stepId)}.md`);
+    const bases = [this.runFileBase(run), this.legacyRunFileBase(run)].filter(Boolean);
+    await Promise.all(stepIds.flatMap(stepId => bases.map(async base => {
+      const filePath = path.join(dir, `${base}-${this.slugify(stepId)}.md`);
       try { await fs.unlink(filePath); } catch { /* ignore if not found */ }
-    }));
+    })));
   }
 
   /** Saves an event to a local audit log that is never committed to the repo. */

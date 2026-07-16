@@ -73,7 +73,8 @@ async function saveRun(projectPath: string, run: FlowRunState): Promise<string> 
 
 function runFileBase(run: FlowRunState): string {
   const flow = slugify(run.flowName || run.flowId) || slugify(run.flowId);
-  const name = slugify(run.runName || '') || slugify(run.runId);
+  const named = slugify(run.runName || '');
+  const name = named ? `${named}-${machine.shortRunId(run.runId)}` : slugify(run.runId);
   return `${flow}-${name}`;
 }
 

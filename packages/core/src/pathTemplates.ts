@@ -26,12 +26,34 @@ export function sanitizeFlowName(name: string): string {
   return slugify(name) || 'unnamed';
 }
 
+/** Short, stable, filesystem-safe fingerprint of a runId (deterministic djb2 → base36). */
+export function shortRunId(runId?: string): string {
+  const s = runId || '';
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return h.toString(36).slice(0, 7);
+}
+
 /**
- * Per-run output subfolder slug: from the run name, else the run id, else `run`.
- * Lets multiple runs of the same flow keep separate artifact folders.
+ * Per-run output subfolder slug. When a run has a human name, the runId fingerprint is appended
+ * (`myrun-a1b2c3d`) so two runs of the SAME flow with the SAME name never share a folder — the
+ * core of run isolation. A nameless run already gets its (unique) runId slug, so no suffix is added.
+ * Falls back to `run` only when both are empty.
  */
 export function runOutputSlug(runName?: string, runId?: string): string {
-  return slugify(runName || '') || slugify(runId || '') || 'run';
+  const named = slugify(runName || '');
+  if (named) return runId ? `${named}-${shortRunId(runId)}` : named;
+  return slugify(runId || '') || 'run';
+}
+
+/**
+ * The pre-isolation slug (run name OR run id, no fingerprint). Used only as a READ fallback so
+ * artifacts written by runs created before {@link runOutputSlug} gained the runId suffix are still
+ * found. Never used for new writes. Returns '' when it would equal the current slug (nothing to fall back to).
+ */
+export function legacyRunOutputSlug(runName?: string, runId?: string): string {
+  const legacy = slugify(runName || '') || slugify(runId || '') || 'run';
+  return legacy === runOutputSlug(runName, runId) ? '' : legacy;
 }
 
 /** Join the flow (+ optional run) output folder onto a plain filename. */

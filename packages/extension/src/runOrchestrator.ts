@@ -16,7 +16,7 @@ import {
   runValidator,
   renderVerifyReportMarkdown, verifyRun,
   resolveMaxTurns, resolveTimeoutMs, buildHeadlessMcpConfig,
-  runOutputSlug,
+  runOutputSlug, legacyRunOutputSlug,
   StepRunState
 } from '@ai-stepflow/core';
 import * as machine from '@ai-stepflow/core';
@@ -108,8 +108,8 @@ export class RunOrchestrator {
       if (!hasArtifactSpec) return undefined;
       const projectPath = this.configManager.getProjectPath() || '';
       const inputs = runState.inputs || {};
-      const stale = machine.findStaleProducedFile(step, projectPath, inputs, runState.steps[stepId]?.startedAt, flow.name, this._runSlug());
-      const artifactSig = stale ? null : machine.producedArtifactsSignature(step, projectPath, inputs, flow.name, this._runSlug());
+      const stale = machine.findStaleProducedFile(step, projectPath, inputs, runState.steps[stepId]?.startedAt, flow.name, this._runSlug(), this._legacyRunSlug());
+      const artifactSig = stale ? null : machine.producedArtifactsSignature(step, projectPath, inputs, flow.name, this._runSlug(), this._legacyRunSlug());
       if (!artifactSig) { this._readinessSnapshots.delete(stepId); return false; } // missing or stale → keep waiting
       // Fold the session transcript's change-signature into the quiescence check. The declared
       // artifact can go quiet early (written up front) while the agent keeps working — writing
@@ -577,7 +577,7 @@ export class RunOrchestrator {
     if (!flow || !this._runState) return undefined;
     const projectPath = this.configManager.getProjectPath() || '';
     const [resolved] = machine.resolveTemplates([declared], this._runState.inputs || {});
-    return machine.locateProducedFile(resolved, flow.name, projectPath, this._runSlug());
+    return machine.locateProducedFile(resolved, flow.name, projectPath, this._runSlug(), this._legacyRunSlug());
   }
 
   /** Terminate every in-flight headless run. The cockpit owns terminal/panel cleanup. */
@@ -597,6 +597,7 @@ export class RunOrchestrator {
     const projectPath = this.configManager.getProjectPath() || '';
     const inputs = this._runState.inputs || {};
     const slug = this._runSlug();
+    const legacySlug = this._legacyRunSlug();
     const paths = new Set<string>();
     for (const id of stepIds) {
       const step = flow.steps.find(s => s.id === id);
@@ -604,7 +605,7 @@ export class RunOrchestrator {
       for (const p of machine.resolveTemplates(step.produces, inputs)) {
         // Locate where the artifact actually is (an agent may have nested it), so a per-step
         // reset deletes the real file, not just the exact declared path.
-        paths.add(machine.locateProducedFile(p, flow.name, projectPath, slug));
+        paths.add(machine.locateProducedFile(p, flow.name, projectPath, slug, legacySlug));
       }
     }
     return [...paths];
@@ -731,7 +732,7 @@ export class RunOrchestrator {
       ? (step.review.reviewKit || (await this.configManager.loadUiPrefs().catch(() => ({} as Record<string, string>)))['review:activeKit'])
       : '';
     const reviewKit = deep ? machine.loadReviewKit(projectPath, activeKit || undefined) : '';
-    const artifacts = deep ? machine.readProducedArtifacts(step, projectPath, this._runState.inputs || {}, flow.name, this._runSlug()) : { text: '', count: 0 };
+    const artifacts = deep ? machine.readProducedArtifacts(step, projectPath, this._runState.inputs || {}, flow.name, this._runSlug(), this._legacyRunSlug()) : { text: '', count: 0 };
     if (deep && reviewKit && artifacts.count > 0) {
       await this._setRunState(s => machine.applyAiReview(s, flow, stepId, 'ai_review_running', ''));
     }
@@ -888,6 +889,12 @@ export class RunOrchestrator {
     return runOutputSlug(this._runState?.runName, this._runState?.runId);
   }
 
+  /** Legacy (pre-fingerprint) slug, passed as a READ fallback so runs created before the runId
+   * suffix existed still resolve their artifacts. '' when it equals the current slug. */
+  private _legacyRunSlug(): string {
+    return legacyRunOutputSlug(this._runState?.runName, this._runState?.runId);
+  }
+
   /**
    * Change-signature (mtime + size) of a step's pinned Claude session transcript
    * `~/.claude/projects/<hash>/<sessionId>.jsonl`, or '' when there is no session id or file yet.
@@ -910,12 +917,12 @@ export class RunOrchestrator {
   }
 
   private _validateRequires(step: FlowStep): { ok: boolean; message?: string } {
-    return validateRequires(step, this.configManager.getProjectPath() || '', this._runState?.inputs || {}, this._currentFlow?.name || '', this._runSlug());
+    return validateRequires(step, this.configManager.getProjectPath() || '', this._runState?.inputs || {}, this._currentFlow?.name || '', this._runSlug(), this._legacyRunSlug());
   }
 
   /** Deterministic gate: the step's declared `produces`/review files must exist on disk. */
   private _validateProduces(step: FlowStep): { ok: boolean; message?: string } {
-    return validateProducesFiles(step, this.configManager.getProjectPath() || '', this._runState?.inputs || {}, this._currentFlow?.name || '', this._runSlug());
+    return validateProducesFiles(step, this.configManager.getProjectPath() || '', this._runState?.inputs || {}, this._currentFlow?.name || '', this._runSlug(), this._legacyRunSlug());
   }
 
   /**
@@ -931,7 +938,8 @@ export class RunOrchestrator {
       this._currentFlow?.name || '',
       opts => this._spawnClaudeStreaming({ ...opts, maxTurns: 1 }),
       undefined,
-      this._runSlug()
+      this._runSlug(),
+      this._legacyRunSlug()
     );
   }
 
