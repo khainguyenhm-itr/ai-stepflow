@@ -1,5 +1,5 @@
 import React from 'react';
-import { FlowStep, } from '@ai-stepflow/core/types';
+import { Flow, FlowStep, } from '@ai-stepflow/core/types';
 import './App.css';
 import { isVSCodeWebview, sendToVSCode } from './vscode';
 import { getStepSkills } from './flowUtils';
@@ -197,6 +197,18 @@ const App: React.FC = () => {
             setNewInputName('');
             setFlowAiPrompt('');
             setFlowAiMessages(flow.aiConversation || []);
+          }}
+          onClone={flow => {
+            const clone: Flow = JSON.parse(JSON.stringify(flow));
+            clone.id = `flow-${Date.now()}`;
+            clone.name = `${flow.name} (copy)`;
+            clone.sourcePath = '';
+            setEditingFlow(clone);
+            setEditingFlowScope(getFlowScope(flow));
+            setBuilderError(null);
+            setNewInputName('');
+            setFlowAiPrompt('');
+            setFlowAiMessages(clone.aiConversation || []);
           }}
           onDetail={flow => setDetailItem({
             type: 'Flow',

@@ -30,6 +30,7 @@ interface FlowBoardProps {
   onRun: (flow: Flow) => void;
   onEditRun: () => void;
   onEdit: (flow: Flow) => void;
+  onClone: (flow: Flow) => void;
   onDetail: (flow: Flow) => void;
   onBoardStepEditor: (flow: Flow, index: number) => void;
   onBoardStepAdder: (flow: Flow) => void;
@@ -76,6 +77,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
   onRun,
   onEditRun,
   onEdit,
+  onClone,
   onDetail,
   onBoardStepEditor,
   onBoardStepAdder,
@@ -311,6 +313,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
             <button className={`icon-btn ${graphOpen ? 'active' : ''}`} title="Flow graph" onClick={() => setGraphOpen(o => !o)}>{graphOpen ? <Icon.GitBranchMinus size={14} /> : <Icon.GitBranch size={14} />}</button>
 
             <button className="icon-btn pencil" title="Edit flow" onClick={() => onEdit(flow)}><Icon.Pencil size={14} /></button>
+            <button className="icon-btn" title="Clone flow" onClick={() => onClone(flow)}><Icon.Copy size={14} /></button>
             <button className="icon-btn" title="Details" onClick={() => onDetail(flow)}><Icon.Info size={14} /></button>
             {flow.sourcePath && (
               <button className="icon-btn danger" title="Delete flow" onClick={() => sendToVSCode('deleteFlow', { flow })}><Icon.Trash2 size={14} /></button>

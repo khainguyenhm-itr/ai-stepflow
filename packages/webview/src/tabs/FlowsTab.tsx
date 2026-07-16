@@ -39,6 +39,7 @@ interface FlowsTabProps {
   onRun: (flow: Flow) => void;
   onEditRun: () => void;
   onEdit: (flow: Flow) => void;
+  onClone: (flow: Flow) => void;
   onDetail: (flow: Flow) => void;
   onNew: (flow: Flow, scope: SaveScope) => void;
   onBoardStepEditor: (flow: Flow, index: number) => void;
@@ -74,6 +75,7 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
   onRun,
   onEditRun,
   onEdit,
+  onClone,
   onDetail,
   onNew,
   onBoardStepEditor,
@@ -295,6 +297,7 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
               onRun={onRun}
               onEditRun={onEditRun}
               onEdit={onEdit}
+              onClone={onClone}
               onDetail={onDetail}
               onBoardStepEditor={onBoardStepEditor}
               onBoardStepAdder={onBoardStepAdder}
