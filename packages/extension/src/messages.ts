@@ -48,8 +48,8 @@ export type HostMessage =
     }
   | { type: 'mcpServers'; connectedMcpServers: string[] }
   | { type: 'restoreRun'; flow: Flow; runState: FlowRunState; previousRunId?: string }
-  | { type: 'stepUpdate'; stepId: string; output: string; append?: boolean }
-  | { type: 'aiReviewUpdate'; stepId: string; output: string; append?: boolean }
+  | { type: 'stepUpdate'; stepId: string; output: string; append?: boolean; runId?: string }
+  | { type: 'aiReviewUpdate'; stepId: string; output: string; append?: boolean; runId?: string }
   | { type: 'runStateChanged'; runState: FlowRunState; historyEvent?: HistoryEvent }
   | { type: 'resetAuditLog'; flowId: string; runId?: string; stepIds?: string[] }
   | { type: 'runDeleted'; flowId: string; runId: string }
@@ -80,17 +80,17 @@ export type WebviewMessage =
   | { type: 'deleteReviewKit'; review: ReviewKit }
   | { type: 'updateRunState'; runState: FlowRunState; historyEvent?: { timestamp: string; status: string; message?: string; stepId: string } }
   | { type: 'switchRun'; flowId: string; runId: string }
-  | { type: 'runStep'; stepId: string; flow?: Flow; runState?: FlowRunState; description?: string; historyEvent?: { timestamp: string; status: string; message?: string } }
-  | { type: 'cancelStep'; stepId: string }
+  | { type: 'runStep'; stepId: string; flow?: Flow; runState?: FlowRunState; description?: string; runId?: string; historyEvent?: { timestamp: string; status: string; message?: string } }
+  | { type: 'cancelStep'; stepId: string; runId?: string }
   | { type: 'runAgent'; agent: Agent; description?: string }
   | { type: 'runSkill'; skill: Skill; description?: string }
-  | { type: 'reviewStep'; stepId: string; decision: 'approved' | 'rejected' }
-  | { type: 'setAutoReview'; enabled: boolean }
-  | { type: 'editRun'; runName?: string; inputs: Record<string, string> }
-  | { type: 'resetRun' }
-  | { type: 'resetStep'; stepId: string }
-  | { type: 'closeRun', finalize?: boolean }
-  | { type: 'deleteRun' }
+  | { type: 'reviewStep'; stepId: string; decision: 'approved' | 'rejected'; runId?: string }
+  | { type: 'setAutoReview'; enabled: boolean; runId?: string }
+  | { type: 'editRun'; runName?: string; inputs: Record<string, string>; runId?: string }
+  | { type: 'resetRun'; runId?: string }
+  | { type: 'resetStep'; stepId: string; runId?: string }
+  | { type: 'closeRun', finalize?: boolean; runId?: string }
+  | { type: 'deleteRun'; runId?: string }
   | { type: 'verifyRun' }
   | { type: 'exportRunReport' }
   | { type: 'importAgentFile' }
@@ -141,10 +141,10 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   importSkillFile: () => true,
   importReviewFile: () => true,
   installReviewDefault: () => true,
-  resetRun: () => true,
-  resetStep: m => isString(m.stepId),
-  closeRun: m => m.finalize === undefined || typeof m.finalize === 'boolean',
-  deleteRun: () => true,
+  resetRun: m => m.runId === undefined || isString(m.runId),
+  resetStep: m => isString(m.stepId) && (m.runId === undefined || isString(m.runId)),
+  closeRun: m => (m.finalize === undefined || typeof m.finalize === 'boolean') && (m.runId === undefined || isString(m.runId)),
+  deleteRun: m => m.runId === undefined || isString(m.runId),
   verifyRun: () => true,
   exportRunReport: () => true,
   loadFlow: m => isFlowLike(m.flow) && (m.runState === undefined || isFlowRunStateShape(m.runState)),
@@ -164,15 +164,17 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   switchRun: m => isString(m.flowId) && isString(m.runId),
   runStep: m => isString(m.stepId)
     && (m.flow === undefined || isFlowLike(m.flow))
-    && (m.runState === undefined || isFlowRunStateShape(m.runState)),
-  cancelStep: m => isString(m.stepId),
+    && (m.runState === undefined || isFlowRunStateShape(m.runState))
+    && (m.runId === undefined || isString(m.runId)),
+  cancelStep: m => isString(m.stepId) && (m.runId === undefined || isString(m.runId)),
   runAgent: m => isAgentLike(m.agent),
   runSkill: m => isSkillLike(m.skill),
   reviewStep: m =>
     isString(m.stepId) &&
-    (m.decision === 'approved' || m.decision === 'rejected'),
-  setAutoReview: m => typeof m.enabled === 'boolean',
-  editRun: m => (m.runName === undefined || isString(m.runName)) && isObject(m.inputs),
+    (m.decision === 'approved' || m.decision === 'rejected') &&
+    (m.runId === undefined || isString(m.runId)),
+  setAutoReview: m => typeof m.enabled === 'boolean' && (m.runId === undefined || isString(m.runId)),
+  editRun: m => (m.runName === undefined || isString(m.runName)) && isObject(m.inputs) && (m.runId === undefined || isString(m.runId)),
   generateDraft: m => (m.kind === 'agent' || m.kind === 'skill') && isString(m.prompt),
   generateFlow: m => isString(m.description) && (m.flow === undefined || isFlowLike(m.flow)),
   cancelGenerate: () => true,

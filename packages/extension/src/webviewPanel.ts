@@ -239,10 +239,10 @@ export class CockpitPanel {
         return;
       }
       case 'runStep':
-        await this._runner.runStep(message.stepId, { flow: message.flow, runState: message.runState, description: message.description });
+        await this._runner.runStep(message.stepId, { flow: message.flow, runState: message.runState, description: message.description, runId: message.runId });
         return;
       case 'cancelStep':
-        this._runner.cancelStep(message.stepId);
+        this._runner.cancelStep(message.stepId, message.runId);
         return;
       case 'runAgent':
         await this._handleRunAgent(message.agent, message.description);
@@ -251,14 +251,14 @@ export class CockpitPanel {
         await this._handleRunSkill(message.skill, message.description);
         return;
       case 'reviewStep':
-        this._runner.reviewStep(message.stepId, message.decision);
+        this._runner.reviewStep(message.stepId, message.decision, message.runId);
         break;
 
       case 'setAutoReview':
-        await this._runner.setAutoReview(message.enabled);
+        await this._runner.setAutoReview(message.enabled, message.runId);
         return;
       case 'editRun':
-        await this._runner.editRunMeta(message.runName, message.inputs);
+        await this._runner.editRunMeta(message.runName, message.inputs, message.runId);
         return;
       case 'resetRun': {
         const choice = await vscode.window.showWarningMessage(
@@ -267,7 +267,7 @@ export class CockpitPanel {
           'Reset All'
         );
         if (choice !== 'Reset All') return;
-        await this._runner.resetRun();
+        await this._runner.resetRun(message.runId);
         return;
       }
       case 'resetStep': {
@@ -279,11 +279,11 @@ export class CockpitPanel {
           'Reset Step'
         );
         if (choice !== 'Reset Step') return;
-        await this._runner.resetStep(message.stepId);
+        await this._runner.resetStep(message.stepId, message.runId);
         return;
       }
       case 'closeRun':
-        await this._runner.closeRun(message.finalize);
+        await this._runner.closeRun(message.finalize, message.runId);
         await this._sendAllData();
         return;
       case 'deleteRun': {
@@ -296,7 +296,7 @@ export class CockpitPanel {
           'Delete'
         );
         if (choice !== 'Delete') return;
-        await this._runner.deleteRun();
+        await this._runner.deleteRun(message.runId);
         await this._sendAllData();
         void vscode.commands.executeCommand('ai-stepflow.refreshAll');
         return;

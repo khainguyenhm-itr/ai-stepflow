@@ -92,6 +92,14 @@ export class RunOrchestrator {
   /** Composite key so process-global maps never confuse two runs that share a stepId (e.g. "step-1"). */
   private _rk(runId: string, stepId: string): string { return `${runId}::${stepId}`; }
 
+  /** Tag a step/review output message with its owning runId so the webview can route it per run. */
+  private _withRun(runId: string | undefined, msg: HostMessage): HostMessage {
+    if (runId && (msg.type === 'stepUpdate' || msg.type === 'aiReviewUpdate') && msg.runId === undefined) {
+      return { ...msg, runId };
+    }
+    return msg;
+  }
+
   /** The focused run's context, or undefined when no run is open. */
   private _focused(): RunCtx | undefined {
     return this._focusedRunId ? this._runs.get(this._focusedRunId) : undefined;
@@ -125,7 +133,7 @@ export class RunOrchestrator {
       const rc = runId ? this._runs.get(runId) : undefined;
       if (rc && rc.runState.steps[stepId]?.executionStatus === 'running') {
         await this._setRunState(runId!, machine.markCancelled(rc.runState, rc.flow, stepId), { stepId, status: 'cancelled', message: 'Terminal closed by user' });
-        this.post({ type: 'stepUpdate', stepId, append: true, output: '\n[terminal closed — run cancelled]\n' });
+        this.post(this._withRun(runId!, { type: 'stepUpdate', stepId, append: true, output: '\n[terminal closed — run cancelled]\n' }));
       }
       this._activeInteractiveRunId = undefined;
     });
@@ -245,7 +253,7 @@ export class RunOrchestrator {
    * of every transition from here on so a stale webview copy can never roll back a transition.
    * Mid-run, the backend's own RunCtx state wins (the webview's copy is not adopted).
    */
-  async runStep(stepId: string, opts: { flow?: Flow; runState?: FlowRunState; description?: string } = {}): Promise<void> {
+  async runStep(stepId: string, opts: { flow?: Flow; runState?: FlowRunState; description?: string; runId?: string } = {}): Promise<void> {
     if (opts.flow) this._focusedFlow = opts.flow;
     const rs = opts.runState;
     if (rs) {
@@ -262,11 +270,12 @@ export class RunOrchestrator {
       await this._run(rs.runId, stepId, opts.description);
       return;
     }
-    // Mid-run re-run without a resent runState: act on the focused run.
-    if (this._focusedRunId) {
-      const rc = this._focused();
-      if (rc && opts.flow) rc.flow = opts.flow;
-      await this._run(this._focusedRunId, stepId, opts.description);
+    // Mid-run re-run without a resent runState: act on the explicitly targeted run, else the focused one.
+    const runId = opts.runId ?? this._focusedRunId;
+    if (runId && this._runs.has(runId)) {
+      const rc = this._runs.get(runId)!;
+      if (opts.flow) rc.flow = opts.flow;
+      await this._run(runId, stepId, opts.description);
     }
   }
 
@@ -291,7 +300,7 @@ export class RunOrchestrator {
     // A skill is optional (the UI no longer forces one, and composeInteractiveMessage falls back to
     // the plain description when there is none). Only a valid agent is required to run the step.
     if (!agent) {
-      this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[cannot run — agent '${step.agent || '(none)'}' not found]\n` });
+      this.post(this._withRun(runId, { type: 'stepUpdate', stepId, append: true, output: `\n[cannot run — agent '${step.agent || '(none)'}' not found]\n` }));
       vscode.window.showErrorMessage(`Step '${step.title || step.id}' cannot run: agent '${step.agent || '(none)'}' not found.`);
       return;
     }
@@ -318,7 +327,7 @@ export class RunOrchestrator {
       setRunState: (next, audit) => this._setRunState(runId, next, audit),
       patchStepState: (sid, patch) => this._patchStepState(runId, sid, patch),
       consumeCancelledStep: sid => this._cancelledStepIds.delete(this._rk(runId, sid)),
-      post: msg => this.post(msg),
+      post: msg => this.post(this._withRun(runId, msg)),
       advanceReadySteps: () => this._advanceReadySteps(runId),
       runAiReview: (s, sid, pp) => this._runAiReview(runId, s, sid, pp),
       validateProduces: s => this._validateProduces(runId, s),
@@ -335,10 +344,10 @@ export class RunOrchestrator {
     await runInteractiveStep(ctx, this.terminals, true);
   }
 
-  /** Approve/reject a step from the webview's human-review buttons (acts on the focused run). */
-  async reviewStep(stepId: string, decision: 'approved' | 'rejected'): Promise<void> {
-    const runId = this._focusedRunId;
-    const rc = this._focused();
+  /** Approve/reject a step from the webview's human-review buttons (targets `explicitRunId`, else the focused run). */
+  async reviewStep(stepId: string, decision: 'approved' | 'rejected', explicitRunId?: string): Promise<void> {
+    const runId = explicitRunId ?? this._focusedRunId;
+    const rc = runId ? this._runs.get(runId) : undefined;
     if (!runId || !rc) return;
     const flow = rc.flow;
     const step = flow.steps.find(s => s.id === stepId);
@@ -349,13 +358,13 @@ export class RunOrchestrator {
         const prod = this._validateProduces(runId, step);
         if (!prod.ok) {
           const msg = `produces check failed: ${prod.message}`;
-          this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[cannot approve — ${msg}]\n` });
+          this.post(this._withRun(runId, { type: 'stepUpdate', stepId, append: true, output: `\n[cannot approve — ${msg}]\n` }));
           vscode.window.showErrorMessage(`Cannot approve '${step.title || step.id}': ${prod.message}`);
           return;
         }
         const content = await this._verifyProducesContent(runId, step);
         if (!content.ok) {
-          this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[cannot approve — ${content.message}]\n` });
+          this.post(this._withRun(runId, { type: 'stepUpdate', stepId, append: true, output: `\n[cannot approve — ${content.message}]\n` }));
           vscode.window.showErrorMessage(`Cannot approve '${step.title || step.id}': ${content.message}`);
           return;
         }
@@ -398,9 +407,9 @@ export class RunOrchestrator {
    * begun — a step running under one policy can't have the policy flipped mid-flight — so it can
    * only be changed while every step is still pristine (no history). Reset the run to change it.
    */
-  async setAutoReview(enabled: boolean): Promise<void> {
-    const runId = this._focusedRunId;
-    const rc = this._focused();
+  async setAutoReview(enabled: boolean, explicitRunId?: string): Promise<void> {
+    const runId = explicitRunId ?? this._focusedRunId;
+    const rc = runId ? this._runs.get(runId) : undefined;
     if (!runId || !rc || rc.runState.autoReview === enabled) return;
     const anyStepStarted = Object.values(rc.runState.steps).some(
       s => (s.history?.length ?? 0) > 0 || (s.executionStatus !== 'ready' && s.executionStatus !== 'locked')
@@ -417,9 +426,9 @@ export class RunOrchestrator {
    * or desync them. Same pristine guard as {@link setAutoReview}. Reuses the reset remap path
    * (`previousRunId` = current runId) so the run summary row's displayed name updates in place.
    */
-  async editRunMeta(runName: string | undefined, inputs: Record<string, string>): Promise<void> {
-    const runId = this._focusedRunId;
-    const rc = this._focused();
+  async editRunMeta(runName: string | undefined, inputs: Record<string, string>, explicitRunId?: string): Promise<void> {
+    const runId = explicitRunId ?? this._focusedRunId;
+    const rc = runId ? this._runs.get(runId) : undefined;
     if (!runId || !rc) return;
     const anyStepStarted = Object.values(rc.runState.steps).some(
       s => (s.history?.length ?? 0) > 0 || (s.executionStatus !== 'ready' && s.executionStatus !== 'locked')
@@ -448,10 +457,10 @@ export class RunOrchestrator {
     for (const key of [...this._cancelledStepIds]) if (key.startsWith(prefix)) this._cancelledStepIds.delete(key);
   }
 
-  /** Reset the focused run to a fresh state, terminating its in-flight processes. */
-  async resetRun(): Promise<void> {
-    const oldRunId = this._focusedRunId;
-    const rc = this._focused();
+  /** Reset a run (targets `explicitRunId`, else the focused run) to a fresh state, terminating its in-flight processes. */
+  async resetRun(explicitRunId?: string): Promise<void> {
+    const oldRunId = explicitRunId ?? this._focusedRunId;
+    const rc = oldRunId ? this._runs.get(oldRunId) : undefined;
     if (!oldRunId || !rc) return;
     const flow = rc.flow;
     const oldSteps = rc.runState.steps;
@@ -484,7 +493,7 @@ export class RunOrchestrator {
       this.stateManager.deleteReportFile(oldRunState),
       this.stateManager.deleteReviewReports(oldRunState, flow.steps.map(s => s.id)),
     ]);
-    this.post({ type: 'resetAuditLog', flowId: flow.id });
+    this.post({ type: 'resetAuditLog', flowId: flow.id, runId: oldRunId });
 
     // Move the run to its fresh runId with clean bookkeeping before broadcasting.
     this._runs.delete(oldRunId);
@@ -504,10 +513,10 @@ export class RunOrchestrator {
     }
   }
 
-  /** Clear the focused run from the cockpit view. */
-  async closeRun(finalize?: boolean): Promise<void> {
-    const runId = this._focusedRunId;
-    const rc = this._focused();
+  /** Clear a run (targets `explicitRunId`, else the focused run) from the cockpit view. */
+  async closeRun(finalize?: boolean, explicitRunId?: string): Promise<void> {
+    const runId = explicitRunId ?? this._focusedRunId;
+    const rc = runId ? this._runs.get(runId) : undefined;
     const flowId = rc?.flow.id;
     if (rc && runId) {
       if (finalize) {
@@ -519,15 +528,18 @@ export class RunOrchestrator {
       this._purgeRunKeys(runId);
       if (this._activeInteractiveRunId === runId) this._activeInteractiveRunId = undefined;
     }
-    this._focusedRunId = undefined;
-    this._focusedFlow = undefined;
+    // Only drop focus when the closed run WAS the focused one — closing a background run leaves the view.
+    if (runId && this._focusedRunId === runId) {
+      this._focusedRunId = undefined;
+      this._focusedFlow = undefined;
+    }
     this.post({ type: 'runClosed', flowId, runId, finalized: !!finalize });
   }
 
-  /** Delete the focused run: terminate its in-flight processes, remove the saved file, notify the webview. */
-  async deleteRun(): Promise<void> {
-    const runId = this._focusedRunId;
-    const rc = this._focused();
+  /** Delete a run (targets `explicitRunId`, else the focused run): terminate its processes, remove the file, notify the webview. */
+  async deleteRun(explicitRunId?: string): Promise<void> {
+    const runId = explicitRunId ?? this._focusedRunId;
+    const rc = runId ? this._runs.get(runId) : undefined;
     if (!runId || !rc) return;
     const flow = rc.flow;
 
@@ -543,8 +555,10 @@ export class RunOrchestrator {
     this._runs.delete(runId);
     this._purgeRunKeys(runId);
     if (this._activeInteractiveRunId === runId) this._activeInteractiveRunId = undefined;
-    this._focusedRunId = undefined;
-    this._focusedFlow = undefined;
+    if (this._focusedRunId === runId) {
+      this._focusedRunId = undefined;
+      this._focusedFlow = undefined;
+    }
 
     this.post({ type: 'runDeleted', flowId: flow.id, runId });
   }
@@ -580,17 +594,17 @@ export class RunOrchestrator {
     vscode.window.showInformationMessage(`AI StepFlow: run report exported to ${base}.`);
   }
 
-  /** Terminate a step's running process (headless or terminal) and record it as cancelled (focused run). */
-  async cancelStep(stepId: string): Promise<void> {
-    const runId = this._focusedRunId;
-    const rc = this._focused();
+  /** Terminate a step's running process (headless or terminal) and record it as cancelled (targets `explicitRunId`, else focused). */
+  async cancelStep(stepId: string, explicitRunId?: string): Promise<void> {
+    const runId = explicitRunId ?? this._focusedRunId;
+    const rc = runId ? this._runs.get(runId) : undefined;
     const key = runId ? this._rk(runId, stepId) : '';
     const child = key ? this._runChildrenByStep.get(key) : undefined;
     if (child && runId && rc) {
       // Headless run — kill the tracked child process directly
       this._cancelledStepIds.add(key);
       child.kill();
-      this.post({ type: 'stepUpdate', stepId, append: true, output: '\n[run cancelled by user]\n' });
+      this.post(this._withRun(runId, { type: 'stepUpdate', stepId, append: true, output: '\n[run cancelled by user]\n' }));
       await this._setRunState(runId, machine.markCancelled(rc.runState, rc.flow, stepId), { stepId, status: 'cancelled', message: 'Cancelled by user' });
       return;
     }
@@ -605,7 +619,7 @@ export class RunOrchestrator {
       if (this._activeInteractiveRunId === runId) this._activeInteractiveRunId = undefined;
     }
     this.terminals.cancelStep(stepId);
-    this.post({ type: 'stepUpdate', stepId, append: true, output: '\n[run cancelled by user]\n' });
+    this.post(this._withRun(runId, { type: 'stepUpdate', stepId, append: true, output: '\n[run cancelled by user]\n' }));
   }
 
   /**
@@ -613,9 +627,9 @@ export class RunOrchestrator {
    * re-run. Terminates any in-flight process/terminal for that step, drops its audit-log entries,
    * then broadcasts the fresh state.
    */
-  async resetStep(stepId: string): Promise<void> {
-    const runId = this._focusedRunId;
-    const rc = this._focused();
+  async resetStep(stepId: string, explicitRunId?: string): Promise<void> {
+    const runId = explicitRunId ?? this._focusedRunId;
+    const rc = runId ? this._runs.get(runId) : undefined;
     if (!runId || !rc) return;
     const flow = rc.flow;
     const ids = [stepId, ...machine.dependentStepIds(flow, stepId)];
@@ -645,7 +659,7 @@ export class RunOrchestrator {
     await this._setRunState(runId, s => machine.resetStep(s, flow, stepId));
     this.post({ type: 'restoreRun', flow, runState: rc.runState });
     if (deleted.length) {
-      this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[reset — deleted ${deleted.length} produced file${deleted.length === 1 ? '' : 's'}]\n` });
+      this.post(this._withRun(runId, { type: 'stepUpdate', stepId, append: true, output: `\n[reset — deleted ${deleted.length} produced file${deleted.length === 1 ? '' : 's'}]\n` }));
     }
     // Clear stale cancelled IDs so the re-run is not silently skipped.
     for (const id of ids) this._cancelledStepIds.delete(this._rk(runId, id));
@@ -803,7 +817,7 @@ export class RunOrchestrator {
       if (rc.runState.autoReview) {
         await this._runAiReview(runId, step, stepId, projectPath);
       } else {
-        this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[auto review off — click "Finish Step" to continue]\n` });
+        this.post(this._withRun(runId, { type: 'stepUpdate', stepId, append: true, output: `\n[auto review off — click "Finish Step" to continue]\n` }));
       }
       return;
     }
@@ -812,13 +826,13 @@ export class RunOrchestrator {
       const status: 'approved' | 'rejected' = verdict.decision === 'pass' ? 'approved' : 'rejected';
       const note = `Validator review: ${status} — ${verdict.reason}`;
       await this._setRunState(runId, machine.applyAiReview(rc.runState, flow, stepId, status, note + '\n'), { stepId, status, message: `Validator review ${status}` });
-      this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[${note}]\n` });
+      this.post(this._withRun(runId, { type: 'stepUpdate', stepId, append: true, output: `\n[${note}]\n` }));
       if (status === 'approved') this._advanceReadySteps(runId);
       return;
     }
     // Human-only review: wait for a decision via the approve/reject buttons. markCompleted
     // already set reviewStatus to 'pending', so the approve/reject UI is shown for this step.
-    this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[review required — approve or reject this step to continue]\n` });
+    this.post(this._withRun(runId, { type: 'stepUpdate', stepId, append: true, output: `\n[review required — approve or reject this step to continue]\n` }));
   }
 
   /**
@@ -859,7 +873,7 @@ export class RunOrchestrator {
       artifacts,
       reviewModel: reviewerAgent?.model,
       runner: opts => this._spawnClaudeStreaming({ ...opts, maxTurns: 1 }),
-      onText: chunk => { reviewOut += chunk; this.post({ type: 'aiReviewUpdate', stepId, append: true, output: chunk }); }
+      onText: chunk => { reviewOut += chunk; this.post(this._withRun(runId, { type: 'aiReviewUpdate', stepId, append: true, output: chunk })); }
     });
 
     const detail = (reviewOut ? `${reviewOut}\n` : '') + `Review (${result.source}): ${result.status} — ${result.note}\n`;
@@ -874,13 +888,13 @@ export class RunOrchestrator {
     if (result.status === 'waiting_human') {
       const warn = `Auto review could not verify "${step.title || step.id}": ${result.note} Approve or reject it manually.`;
       await this._setRunState(runId, s => machine.applyAiReview(s, flow, stepId, 'waiting_human', `⚠ ${warn}\n`), { stepId, status: 'waiting_human', message: warn });
-      this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[⚠ ${warn}]\n` });
+      this.post(this._withRun(runId, { type: 'stepUpdate', stepId, append: true, output: `\n[⚠ ${warn}]\n` }));
       vscode.window.showWarningMessage(`AI StepFlow: ${warn}`);
       return;
     }
 
     await this._setRunState(runId, s => machine.applyAiReview(s, flow, stepId, result.status, detail, reviewMetrics), { stepId, status: result.status, message: `Review ${result.status}` });
-    this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[review (${result.source}): ${result.status} — ${result.note}]\n` });
+    this.post(this._withRun(runId, { type: 'stepUpdate', stepId, append: true, output: `\n[review (${result.source}): ${result.status} — ${result.note}]\n` }));
 
     if (result.status === 'approved') {
       // Write an approval report so the step's Files tab shows the review that passed it.
@@ -892,7 +906,7 @@ export class RunOrchestrator {
       // rejection is surfaced to the user instead, so we don't burn a full re-run + re-review on a
       // verdict a retry is unlikely to flip.
       rc.autoRetryStepIds.add(stepId);
-      this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[${result.source} rejected — retrying automatically (1/1)]\n` });
+      this.post(this._withRun(runId, { type: 'stepUpdate', stepId, append: true, output: `\n[${result.source} rejected — retrying automatically (1/1)]\n` }));
       await this._run(runId, stepId);
     } else if (result.status === 'rejected') {
       // Final rejection (LLM verdict, or a second validator rejection): the flow halts here, so
@@ -936,13 +950,13 @@ export class RunOrchestrator {
       if (filePath) {
         const base = filePath.split(/[\\/]/).pop();
         const rel = `.ai-stepflow/reports/reviews/${base}`;
-        this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[AI review report written → ${rel}]\n` });
+        this.post(this._withRun(runId, { type: 'stepUpdate', stepId, append: true, output: `\n[AI review report written → ${rel}]\n` }));
         // Expose the report path to the webview so the step's Files tab can offer to open it.
         await this._setRunState(runId, s => ({ ...s, steps: { ...s.steps, [stepId]: { ...s.steps[stepId], reviewReportPath: rel } } }));
       }
     } catch (err) {
       // A report-write failure must not break the review flow (the rejection is already recorded).
-      this.post({ type: 'stepUpdate', stepId, append: true, output: `\n[could not write AI review report: ${err instanceof Error ? err.message : String(err)}]\n` });
+      this.post(this._withRun(runId, { type: 'stepUpdate', stepId, append: true, output: `\n[could not write AI review report: ${err instanceof Error ? err.message : String(err)}]\n` }));
     }
   }
 
@@ -1086,12 +1100,12 @@ export class RunOrchestrator {
         } else {
           if (rc.parkedStepIds.has(action.stepId)) continue;
           rc.parkedStepIds.add(action.stepId);
-          this.post({ type: 'stepUpdate', stepId: action.stepId, append: true, output: '\n[step ready — click "Run Step" to start]\n' });
+          this.post(this._withRun(runId, { type: 'stepUpdate', stepId: action.stepId, append: true, output: '\n[step ready — click "Run Step" to start]\n' }));
         }
       } else if (action.type === 'park_interactive') {
         if (rc.parkedStepIds.has(action.stepId)) continue;
         rc.parkedStepIds.add(action.stepId);
-        this.post({ type: 'stepUpdate', stepId: action.stepId, append: true, output: '\n[step ready — waiting for terminal slot...]\n' });
+        this.post(this._withRun(runId, { type: 'stepUpdate', stepId: action.stepId, append: true, output: '\n[step ready — waiting for terminal slot...]\n' }));
       }
     }
   }
@@ -1182,9 +1196,9 @@ export class RunOrchestrator {
       clearTimeout(this._outputFlushTimer);
       this._outputFlushTimer = undefined;
     }
-    for (const rc of this._runs.values()) {
+    for (const [runId, rc] of this._runs) {
       for (const [stepId, text] of rc.outputChunkBuffer) {
-        if (text) this.post({ type: 'stepUpdate', stepId, append: true, output: text });
+        if (text) this.post({ type: 'stepUpdate', runId, stepId, append: true, output: text });
       }
       rc.outputChunkBuffer.clear();
     }
