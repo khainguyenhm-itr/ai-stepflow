@@ -59,6 +59,9 @@ export const useAppLogic = () => {
       steps: applyDependencyLocks(flow, initialSteps)
     };
     runState.setRunState(newRunState);
+    // Set the focus ref eagerly (the effect only syncs after render) so the first runStateChanged
+    // for this new run is recognized as focused and not gated out.
+    runState.activeRunIdRef.current = newRunState.runId;
     runState.setActiveStepId(flow.steps[0]?.id || null);
     libState.setRunSummaries(prev => [{
       flowId: newRunState.flowId,
@@ -189,6 +192,8 @@ export const useAppLogic = () => {
         }
         runState.setActiveFlow(message.flow);
         runState.setRunState(message.runState);
+        // Eagerly focus this run (see initRunState) so its stream isn't gated out before the effect syncs.
+        runState.activeRunIdRef.current = message.runState.runId;
         runState.setRunnerVisible(true);
         runState.setActiveStepId(getDefaultActiveStepId(message.flow, message.runState));
         break;
@@ -200,10 +205,13 @@ export const useAppLogic = () => {
           const filtered = prev[flowId].filter((e: any) => e.runId !== runId);
           return { ...prev, [flowId]: filtered };
         });
-        runState.setRunState(null);
-        runState.setActiveFlow(null);
-        runState.setActiveStepId(null);
-        runState.setRunnerVisible(false);
+        // Only clear the open runner if the deleted run was the focused one.
+        if (!runId || runState.activeRunIdRef.current === runId) {
+          runState.setRunState(null);
+          runState.setActiveFlow(null);
+          runState.setActiveStepId(null);
+          runState.setRunnerVisible(false);
+        }
         break;
       }
       case 'runClosed':
@@ -214,10 +222,13 @@ export const useAppLogic = () => {
               : s
           ));
         }
-        runState.setRunState(null);
-        runState.setActiveFlow(null);
-        runState.setActiveStepId(null);
-        runState.setRunnerVisible(false);
+        // Only clear the open runner if the closed run was the focused one (or legacy: no runId).
+        if (!message.runId || runState.activeRunIdRef.current === message.runId) {
+          runState.setRunState(null);
+          runState.setActiveFlow(null);
+          runState.setActiveStepId(null);
+          runState.setRunnerVisible(false);
+        }
         break;
       case 'resetAuditLog':
         runState.setRunState(currentRun => {
@@ -243,6 +254,9 @@ export const useAppLogic = () => {
       case 'stepUpdate':
         runState.setRunState(prev => {
           if (!prev) return prev;
+          // Ignore output for a background (non-focused) run so its stream never lands on the
+          // focused run's step. runId is absent only on legacy messages, which target the focused run.
+          if (message.runId && message.runId !== prev.runId) return prev;
           const ps = prev.steps[message.stepId];
           const output = message.append ? `${ps?.output || ''}${message.output || ''}` : (message.output || '');
           return { ...prev, steps: { ...prev.steps, [message.stepId]: { ...ps, output } } };
@@ -251,16 +265,22 @@ export const useAppLogic = () => {
       case 'aiReviewUpdate':
         runState.setRunState(prev => {
           if (!prev) return prev;
+          if (message.runId && message.runId !== prev.runId) return prev;
           const ps = prev.steps[message.stepId];
           const aiReviewOutput = message.append ? `${ps?.aiReviewOutput || ''}${message.output || ''}` : (message.output || '');
           return { ...prev, steps: { ...prev.steps, [message.stepId]: { ...ps, aiReviewOutput } } };
         });
         break;
       case 'runStateChanged': {
-        runState.setRunState(message.runState);
+        const changed = message.runState;
+        // Only the focused run drives the open runner view; a background (concurrent) run's state is
+        // persisted server-side and loaded fresh when the user switches to it. The summary-row and
+        // audit updates below still run for ANY run (matched by id), so background runs stay live in
+        // the runs table without corrupting the focused view.
+        const isFocused = runState.activeRunIdRef.current === changed.runId;
+        if (isFocused) runState.setRunState(changed);
         // Keep the outer run table row in sync with the live run — otherwise steps/cost/tokens
         // only refresh on a full reload, so the detail drawer updates but the table lags behind.
-        const changed = message.runState;
         const steps = Object.values(changed.steps || {}) as any[];
         const span = (from?: string, to?: string) => {
           if (!from || !to) return 0;
@@ -287,12 +307,13 @@ export const useAppLogic = () => {
             ? { ...s, ...agg, runName: changed.runName, isClosed: !!changed.isClosed, mtimeMs: Date.now() }
             : s
         ));
-        if (message.historyEvent && runState.activeFlowRef.current) {
-          const flowId = runState.activeFlowRef.current.id;
-          const newEvent = { ...message.historyEvent, runId: message.runState.runId };
+        if (message.historyEvent) {
+          // The event belongs to the CHANGED run's flow, which may differ from the focused flow.
+          const flowId = changed.flowId;
+          const newEvent = { ...message.historyEvent, runId: changed.runId };
           libState.setAuditLogs(prev => ({ ...prev, [flowId]: [...(prev[flowId] || []), newEvent] }));
         }
-        if (runState.activeFlowRef.current) {
+        if (isFocused && runState.activeFlowRef.current) {
           const flow = runState.activeFlowRef.current;
           runState.setActiveStepId(curr => {
             // No step selected yet → pick the default.

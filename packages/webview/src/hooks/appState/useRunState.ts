@@ -21,11 +21,18 @@ export const useRunState = () => {
 
   const outputEndRef = useRef<HTMLDivElement>(null);
   const activeFlowRef = useRef<Flow | null>(null);
+  /** Always-current runId of the focused run, so message handlers can gate per-run updates without
+   *  relying on the (closure-stale) runState value. Mirrors runState.runId. */
+  const activeRunIdRef = useRef<string | null>(null);
   const shouldPersistRun = useRef(false);
 
   useEffect(() => {
     activeFlowRef.current = activeFlow;
   }, [activeFlow]);
+
+  useEffect(() => {
+    activeRunIdRef.current = runState?.runId ?? null;
+  }, [runState]);
 
   return {
     activeFlow, setActiveFlow,
@@ -43,6 +50,7 @@ export const useRunState = () => {
     runInputsError, setRunInputsError,
     outputEndRef,
     activeFlowRef,
+    activeRunIdRef,
     shouldPersistRun
   };
 };
