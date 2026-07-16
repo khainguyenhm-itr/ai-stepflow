@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Flow, FlowRunState, StepRunState } from '@ai-stepflow/core/types';
 import { Icon, metaValue } from '../components/primitives';
 import { formatRunTime, getStepSkills } from '../flowUtils';
@@ -70,33 +70,32 @@ function renderFileGroup(
 }
 
 interface InlineRunnerProps {
+  runId: string;
   flow: Flow;
   runState: FlowRunState;
   auditLogs: Record<string, any[]>;
   activeStepId: string | null;
-  completedSteps: number;
-  activeProgress: number;
   commandCopied: boolean;
   onSetActiveStep: (id: string) => void;
   onRunStep: (stepId: string, description: string) => void;
   onOpenFile: (path: string) => void;
   onCopyCommand: () => void;
-  outputEndRef: React.RefObject<HTMLDivElement | null>;
 }
 
 export const InlineRunner: React.FC<InlineRunnerProps> = ({
+  runId,
   flow,
   runState,
   auditLogs,
   activeStepId,
-  completedSteps,
   commandCopied,
   onSetActiveStep,
   onRunStep,
   onOpenFile,
   onCopyCommand,
-  outputEndRef,
 }) => {
+  // Each open drawer owns its own autoscroll anchor so concurrent runners don't fight over one ref.
+  const outputEndRef = useRef<HTMLDivElement>(null);
   const activeStep = flow.steps.find(step => step.id === activeStepId);
   const activeStepState = activeStepId ? runState.steps[activeStepId] : null;
   // An "auto" step is AI-reviewed; a "human" step waits for approve/reject. When the run's
@@ -361,7 +360,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
               role="switch"
               checked={!!runState.autoReview}
               disabled={autoReviewLocked}
-              onChange={e => sendToVSCode('setAutoReview', { enabled: e.target.checked })}
+              onChange={e => sendToVSCode('setAutoReview', { enabled: e.target.checked, runId })}
             />
             <span className="switch-track" aria-hidden="true" />
             <span>Auto review</span>
@@ -390,7 +389,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
                 )}
 
                 {stepActions.showCancel && (
-                  <button className="btn error" title="Stop the running step" onClick={() => sendToVSCode('cancelStep', { stepId: activeStepId! })}>
+                  <button className="btn error" title="Stop the running step" onClick={() => sendToVSCode('cancelStep', { stepId: activeStepId!, runId })}>
                     <span className="btn-glyph"><Icon.X size={14} /></span>Stop
                   </button>
                 )}
@@ -402,7 +401,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
                 {stepActions.showFinish && (
                   <button className="btn primary" title="Finish this step and continue to the next" disabled={pendingAction !== null} onClick={() => {
                     setPendingAction('approve');
-                    sendToVSCode('reviewStep', { stepId: activeStepId!, decision: 'approved' });
+                    sendToVSCode('reviewStep', { stepId: activeStepId!, decision: 'approved', runId });
                   }}>
                     {pendingAction === 'approve' ? <span className="btn-glyph"><Icon.RotateCw size={14} className="spin" /></span> : <span className="btn-glyph"><Icon.Check size={14} /></span>}Finish Step
                   </button>
@@ -414,13 +413,13 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
                     )}
                     <button className="btn success" title="Approve this step" disabled={pendingAction !== null} onClick={() => {
                       setPendingAction('approve');
-                      sendToVSCode('reviewStep', { stepId: activeStepId!, decision: 'approved' });
+                      sendToVSCode('reviewStep', { stepId: activeStepId!, decision: 'approved', runId });
                     }}>
                       {pendingAction === 'approve' && <span className="btn-glyph"><Icon.RotateCw size={14} className="spin" /></span>}Approve
                     </button>
                     <button className="btn error" title="Reject this step" disabled={pendingAction !== null} onClick={() => {
                       setPendingAction('reject');
-                      sendToVSCode('reviewStep', { stepId: activeStepId!, decision: 'rejected' });
+                      sendToVSCode('reviewStep', { stepId: activeStepId!, decision: 'rejected', runId });
                     }}>
                       {pendingAction === 'reject' && <span className="btn-glyph"><Icon.RotateCw size={14} className="spin" /></span>}Reject
                     </button>
@@ -433,7 +432,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
                 )}
                 {stepActions.isLocked && <button className="btn" disabled title="Complete the steps this one depends on first">Locked</button>}
                 {canResetStep && (
-                  <button className="btn" title="Reset this step to its initial state so it can be run again" onClick={() => sendToVSCode('resetStep', { stepId: activeStepId! })}>
+                  <button className="btn" title="Reset this step to its initial state so it can be run again" onClick={() => sendToVSCode('resetStep', { stepId: activeStepId!, runId })}>
                     <span className="btn-glyph"><Icon.RotateCw size={14} /></span>Reset Step
                   </button>
                 )}

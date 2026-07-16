@@ -26,18 +26,14 @@ interface FlowsTabProps {
   skills: Skill[];
   auditLogs: Record<string, any[]>;
   runSummaries: { flowId: string; runId: string; runName?: string; completedSteps: number; totalSteps: number; mtimeMs: number; isClosed: boolean; costUsd?: number; tokensUsed?: number; taskTimeMs?: number; reviewTimeMs?: number }[];
-  activeFlow: Flow | null;
-  runState: FlowRunState | null;
-  runnerVisible: boolean;
   revealRun: { flowId: string; runId: string; nonce: number } | null;
-  activeStepId: string | null;
-  completedSteps: number;
-  activeProgress: number;
+  openRuns: Record<string, FlowRunState>;
+  openStepIds: Record<string, string | null>;
   commandCopied: boolean;
   globalPath: string;
   projectPath: string;
   onRun: (flow: Flow) => void;
-  onEditRun: () => void;
+  onEditRun: (runId: string) => void;
   onEdit: (flow: Flow) => void;
   onClone: (flow: Flow) => void;
   onDetail: (flow: Flow) => void;
@@ -45,11 +41,11 @@ interface FlowsTabProps {
   onBoardStepEditor: (flow: Flow, index: number) => void;
   onBoardStepAdder: (flow: Flow) => void;
   onRemoveStep: (flow: Flow, index: number) => void;
-  onSetActiveStep: (id: string) => void;
-  onRunStep: (stepId: string, description: string) => void;
+  onSetActiveStep: (runId: string, id: string) => void;
+  onRunStep: (runId: string, stepId: string, description: string) => void;
+  onCollapseRun: (runId: string) => void;
   onOpenFile: (path: string) => void;
   onCopyCommand: () => void;
-  outputEndRef: React.RefObject<HTMLDivElement | null>;
   initialFilter: ScopeFilter;
   onScopeFilterChange: (v: ScopeFilter) => void;
   initialViewFilter: ViewFilter;
@@ -62,13 +58,9 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
   flows,
   auditLogs,
   runSummaries,
-  activeFlow,
-  runState,
-  runnerVisible,
   revealRun,
-  activeStepId,
-  completedSteps,
-  activeProgress,
+  openRuns,
+  openStepIds,
   commandCopied,
   globalPath,
   projectPath,
@@ -83,9 +75,9 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
   onRemoveStep,
   onSetActiveStep,
   onRunStep,
+  onCollapseRun,
   onOpenFile,
   onCopyCommand,
-  outputEndRef,
   initialFilter,
   onScopeFilterChange,
   initialViewFilter,
@@ -282,15 +274,11 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
               key={flow.id}
               flow={flow}
               scopeBadge={<span className="badge scope">{getItemScope(flow.sourcePath) === 'global' ? 'global' : 'repo'}</span>}
-              activeFlow={activeFlow}
-              runState={runState}
               auditLogs={auditLogs}
               runSummaries={runSummaries.filter(s => s.flowId === flow.id)}
-              runnerVisible={runnerVisible}
               revealRun={revealRun}
-              activeStepId={activeStepId}
-              completedSteps={completedSteps}
-              activeProgress={activeProgress}
+              openRuns={openRuns}
+              openStepIds={openStepIds}
               commandCopied={commandCopied}
               globalPath={globalPath}
               projectPath={projectPath}
@@ -304,9 +292,9 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
               onRemoveStep={onRemoveStep}
               onSetActiveStep={onSetActiveStep}
               onRunStep={onRunStep}
+              onCollapseRun={onCollapseRun}
               onOpenFile={onOpenFile}
               onCopyCommand={onCopyCommand}
-              outputEndRef={outputEndRef}
             />
           ))}
           </table>

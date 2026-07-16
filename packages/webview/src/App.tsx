@@ -34,6 +34,7 @@ const App: React.FC = () => {
     activeStepId, setActiveStepId,
     runnerVisible,
     revealRun,
+    openRuns, openStepIds, setOpenStepId,
     commandCopied, setCommandCopied,
     standaloneRun, setStandaloneRun,
     standaloneRunDescription, setStandaloneRunDescription,
@@ -84,7 +85,7 @@ const App: React.FC = () => {
     submitAgentModal, openAgentEditor, submitSkillModal, openSkillEditor,
     submitReviewModal, openReviewEditor,
     submitConnectMcp,
-    submitRunInputs, openRunEditor, runActiveStep, saveEditingFlow, saveStepEdit
+    submitRunInputs, openRunEditor, runActiveStep, collapseRun, saveEditingFlow, saveStepEdit
   } = logic;
 
   useVsCodeBridge(handleHostMessage, seedPreview);
@@ -178,13 +179,9 @@ const App: React.FC = () => {
           skills={skills}
           auditLogs={auditLogs}
           runSummaries={runSummaries}
-          activeFlow={activeFlow}
-          runState={runState}
-          runnerVisible={runnerVisible}
           revealRun={revealRun}
-          activeStepId={activeStepId}
-          completedSteps={completedSteps}
-          activeProgress={activeProgress}
+          openRuns={openRuns}
+          openStepIds={openStepIds}
           commandCopied={commandCopied}
           globalPath={globalPath}
           projectPath={projectPath}
@@ -264,11 +261,12 @@ const App: React.FC = () => {
             };
             sendToVSCode('saveFlow', { flow: newFlow, isGlobal: getFlowScope(flow) === 'global' });
           }}
-          onSetActiveStep={setActiveStepId}
+          onSetActiveStep={setOpenStepId}
           onRunStep={runActiveStep}
+          onCollapseRun={collapseRun}
           onOpenFile={path => sendToVSCode('openFile', { path })}
           onCopyCommand={() => {
-            const step = activeFlow?.steps.find(s => s.id === activeStepId);
+            const step = activeFlow?.steps.find((s: FlowStep) => s.id === activeStepId);
             if (!step) return;
             const skills = getStepSkills(step);
             const cmd = skills.map(s => `/${s}`).join(' ');
@@ -276,7 +274,6 @@ const App: React.FC = () => {
             setCommandCopied(true);
             window.setTimeout(() => setCommandCopied(false), 1200);
           }}
-          outputEndRef={outputEndRef}
           initialFilter={scopeFilters.flows}
           onScopeFilterChange={v => sendToVSCode('savePref', { key: 'scopeFilter:flows', value: v })}
           initialViewFilter={viewFilters.flows}

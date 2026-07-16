@@ -63,6 +63,9 @@ export const useAppLogic = () => {
     // for this new run is recognized as focused and not gated out.
     runState.activeRunIdRef.current = newRunState.runId;
     runState.setActiveStepId(flow.steps[0]?.id || null);
+    // Open this run's drawer (multi-drawer store).
+    runState.setOpenRuns(prev => ({ ...prev, [newRunState.runId]: newRunState }));
+    runState.setOpenStepIds(prev => ({ ...prev, [newRunState.runId]: flow.steps[0]?.id || null }));
     libState.setRunSummaries(prev => [{
       flowId: newRunState.flowId,
       runId: newRunState.runId,
@@ -90,15 +93,16 @@ export const useAppLogic = () => {
    * inputs. Only meaningful while the run is pristine (the backend re-checks and no-ops otherwise);
    * the FlowBoard menu only surfaces the entry point when no step has started.
    */
-  const openRunEditor = () => {
-    const flow = runState.activeFlow;
-    const rs = runState.runState;
+  const openRunEditor = (runId: string) => {
+    const rs = runState.openRuns[runId];
+    const flow = rs ? libState.flows.find((f: Flow) => f.id === rs.flowId) : null;
     if (!flow || !rs) return;
     const inputNames = Object.keys(flow.inputs || {});
     runState.setRunInputValues(Object.fromEntries(inputNames.map(name => [name, (rs.inputs || {})[name] || ''])));
     runState.setRunName(rs.runName || '');
     runState.setRunInputsError(null);
     runState.setRunInputsEditing(true);
+    runState.setRunEditRunId(runId);
     runState.setRunInputsTarget(flow);
   };
 
@@ -189,6 +193,9 @@ export const useAppLogic = () => {
               ? { flowId: s.flowId, runId: next.runId, runName: next.runName, completedSteps: 0, totalSteps: s.totalSteps, mtimeMs: Date.now(), isClosed: false }
               : s
           ));
+          // Reset mints a new runId — move the open drawer from the old runId to the new one.
+          runState.setOpenRuns(prev => { const { [prevRunId]: _drop, ...rest } = prev; return rest; });
+          runState.setOpenStepIds(prev => { const { [prevRunId]: _drop, ...rest } = prev; return rest; });
         }
         runState.setActiveFlow(message.flow);
         runState.setRunState(message.runState);
@@ -196,6 +203,9 @@ export const useAppLogic = () => {
         runState.activeRunIdRef.current = message.runState.runId;
         runState.setRunnerVisible(true);
         runState.setActiveStepId(getDefaultActiveStepId(message.flow, message.runState));
+        // Open (or refresh) this run's drawer.
+        runState.setOpenRuns(prev => ({ ...prev, [message.runState.runId]: message.runState }));
+        runState.setOpenStepIds(prev => ({ ...prev, [message.runState.runId]: prev[message.runState.runId] ?? getDefaultActiveStepId(message.flow, message.runState) }));
         break;
       case 'runDeleted': {
         const { flowId, runId } = message;
@@ -205,7 +215,10 @@ export const useAppLogic = () => {
           const filtered = prev[flowId].filter((e: any) => e.runId !== runId);
           return { ...prev, [flowId]: filtered };
         });
-        // Only clear the open runner if the deleted run was the focused one.
+        // Close this run's drawer.
+        runState.setOpenRuns(prev => { const { [runId]: _drop, ...rest } = prev; return rest; });
+        runState.setOpenStepIds(prev => { const { [runId]: _drop, ...rest } = prev; return rest; });
+        // Only clear the focused facade if the deleted run was the focused one.
         if (!runId || runState.activeRunIdRef.current === runId) {
           runState.setRunState(null);
           runState.setActiveFlow(null);
@@ -222,7 +235,13 @@ export const useAppLogic = () => {
               : s
           ));
         }
-        // Only clear the open runner if the closed run was the focused one (or legacy: no runId).
+        // Close this run's drawer (if the message carried a runId).
+        if (message.runId) {
+          const cid = message.runId;
+          runState.setOpenRuns(prev => { const { [cid]: _drop, ...rest } = prev; return rest; });
+          runState.setOpenStepIds(prev => { const { [cid]: _drop, ...rest } = prev; return rest; });
+        }
+        // Only clear the focused facade if the closed run was the focused one (or legacy: no runId).
         if (!message.runId || runState.activeRunIdRef.current === message.runId) {
           runState.setRunState(null);
           runState.setActiveFlow(null);
@@ -251,26 +270,32 @@ export const useAppLogic = () => {
           return currentRun;
         });
         break;
-      case 'stepUpdate':
-        runState.setRunState(prev => {
-          if (!prev) return prev;
-          // Ignore output for a background (non-focused) run so its stream never lands on the
-          // focused run's step. runId is absent only on legacy messages, which target the focused run.
-          if (message.runId && message.runId !== prev.runId) return prev;
-          const ps = prev.steps[message.stepId];
+      case 'stepUpdate': {
+        // Route to the drawer that owns this run. Each open drawer renders from its own openRuns
+        // entry, so a background run's stream lands on ITS drawer, never the focused one.
+        const rid = message.runId ?? runState.activeRunIdRef.current;
+        if (!rid) break;
+        runState.setOpenRuns(prev => {
+          const rs = prev[rid];
+          if (!rs) return prev; // drawer not open — output is shown from persisted state on open
+          const ps = rs.steps[message.stepId];
           const output = message.append ? `${ps?.output || ''}${message.output || ''}` : (message.output || '');
-          return { ...prev, steps: { ...prev.steps, [message.stepId]: { ...ps, output } } };
+          return { ...prev, [rid]: { ...rs, steps: { ...rs.steps, [message.stepId]: { ...ps, output } } } };
         });
         break;
-      case 'aiReviewUpdate':
-        runState.setRunState(prev => {
-          if (!prev) return prev;
-          if (message.runId && message.runId !== prev.runId) return prev;
-          const ps = prev.steps[message.stepId];
+      }
+      case 'aiReviewUpdate': {
+        const rid = message.runId ?? runState.activeRunIdRef.current;
+        if (!rid) break;
+        runState.setOpenRuns(prev => {
+          const rs = prev[rid];
+          if (!rs) return prev;
+          const ps = rs.steps[message.stepId];
           const aiReviewOutput = message.append ? `${ps?.aiReviewOutput || ''}${message.output || ''}` : (message.output || '');
-          return { ...prev, steps: { ...prev.steps, [message.stepId]: { ...ps, aiReviewOutput } } };
+          return { ...prev, [rid]: { ...rs, steps: { ...rs.steps, [message.stepId]: { ...ps, aiReviewOutput } } } };
         });
         break;
+      }
       case 'runStateChanged': {
         const changed = message.runState;
         // Only the focused run drives the open runner view; a background (concurrent) run's state is
@@ -279,6 +304,20 @@ export const useAppLogic = () => {
         // the runs table without corrupting the focused view.
         const isFocused = runState.activeRunIdRef.current === changed.runId;
         if (isFocused) runState.setRunState(changed);
+        // Refresh the changed run's OPEN drawer (works for any open run, not only the focused one).
+        runState.setOpenRuns(prev => prev[changed.runId] ? { ...prev, [changed.runId]: changed } : prev);
+        // Advance that drawer's selected step when its current step just finished.
+        const changedFlow = libState.flows.find((f: Flow) => f.id === changed.flowId) ?? runState.activeFlowRef.current;
+        if (changedFlow) {
+          runState.setOpenStepIds(prev => {
+            if (!(changed.runId in prev)) return prev;
+            const curr = prev[changed.runId];
+            if (!curr || changed.steps[curr]?.completionStatus === 'done') {
+              return { ...prev, [changed.runId]: getDefaultActiveStepId(changedFlow, changed) };
+            }
+            return prev;
+          });
+        }
         // Keep the outer run table row in sync with the live run — otherwise steps/cost/tokens
         // only refresh on a full reload, so the detail drawer updates but the table lags behind.
         const steps = Object.values(changed.steps || {}) as any[];
@@ -581,10 +620,11 @@ export const useAppLogic = () => {
   const submitRunInputs = () => {
     if (!runState.runInputsTarget) return;
     if (runState.runInputsEditing) {
-      // Edit mode: patch the active run's name + inputs in place (backend enforces the pristine gate).
-      sendToVSCode('editRun', { runName: runState.runName.trim() || undefined, inputs: runState.runInputValues });
+      // Edit mode: patch the targeted run's name + inputs in place (backend enforces the pristine gate).
+      sendToVSCode('editRun', { runName: runState.runName.trim() || undefined, inputs: runState.runInputValues, runId: runState.runEditRunId ?? undefined });
       runState.setRunInputsTarget(null);
       runState.setRunInputsEditing(false);
+      runState.setRunEditRunId(null);
       return;
     }
     initRunState(runState.runInputsTarget, runState.runName.trim() || undefined, runState.runInputValues);
@@ -592,14 +632,37 @@ export const useAppLogic = () => {
     runState.setRunnerVisible(true);
   };
 
-  const runActiveStep = (stepId: string, description?: string) => {
-    if (!runState.activeFlow) return;
+  /** Run a step for a specific open run (multi-drawer): resolves the run + its flow by runId. */
+  const runActiveStep = (runId: string, stepId: string, description?: string) => {
+    const rs = runState.openRuns[runId];
+    const flow = rs ? libState.flows.find((f: Flow) => f.id === rs.flowId) ?? runState.activeFlow : runState.activeFlow;
+    if (!flow || !rs) return;
     const historyEvent = { timestamp: new Date().toISOString(), status: 'running', message: 'Started run' };
     if (!isVSCodeWebview()) {
       seedPreviewRun(stepId, description);
       return;
     }
-    sendToVSCode('runStep', { flow: runState.activeFlow, runState: runState.runState, stepId, description, historyEvent });
+    sendToVSCode('runStep', { flow, runState: rs, stepId, description, runId, historyEvent });
+  };
+
+  /** Select a step within one open run's drawer. */
+  const setOpenStepId = (runId: string, id: string) => {
+    runState.setOpenStepIds(prev => ({ ...prev, [runId]: id }));
+  };
+
+  /**
+   * Collapse a run's drawer — a LOCAL UI action only. It must NOT tell the backend to close/forget
+   * the run (the run may still be executing in its own terminal); the backend RunCtx stays alive and
+   * the run can be reopened later via switchRun.
+   */
+  const collapseRun = (runId: string) => {
+    runState.setOpenRuns(prev => { const { [runId]: _drop, ...rest } = prev; return rest; });
+    runState.setOpenStepIds(prev => { const { [runId]: _drop, ...rest } = prev; return rest; });
+    if (runState.activeRunIdRef.current === runId) {
+      runState.activeRunIdRef.current = null;
+      runState.setRunState(null);
+      runState.setRunnerVisible(false);
+    }
   };
 
   const seedPreview = () => {
@@ -725,6 +788,6 @@ export const useAppLogic = () => {
     submitAgentModal, openAgentEditor, submitSkillModal, openSkillEditor,
     submitReviewModal, openReviewEditor,
     submitConnectMcp,
-    submitRunInputs, openRunEditor, runActiveStep, saveEditingFlow, saveStepEdit
+    submitRunInputs, openRunEditor, runActiveStep, setOpenStepId, collapseRun, saveEditingFlow, saveStepEdit
   };
 };

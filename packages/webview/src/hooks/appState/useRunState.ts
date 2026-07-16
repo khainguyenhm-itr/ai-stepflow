@@ -7,6 +7,12 @@ export const useRunState = () => {
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
   const [runnerVisible, setRunnerVisible] = useState(false);
   const [commandCopied, setCommandCopied] = useState(false);
+  // Multi-drawer: live state for EVERY run currently expanded in a detail drawer, keyed by runId.
+  // Each open InlineRunner renders from its own entry, so multiple concurrent runs show at once
+  // without sharing the single focused `runState` (which now backs only the new-run/edit modal).
+  const [openRuns, setOpenRuns] = useState<Record<string, FlowRunState>>({});
+  // Per-open-run selected step id.
+  const [openStepIds, setOpenStepIds] = useState<Record<string, string | null>>({});
   // Sidebar "Open runs" signal: expand + scroll to a run detail. nonce re-triggers on repeat opens.
   const [revealRun, setRevealRun] = useState<{ flowId: string; runId: string; nonce: number } | null>(null);
 
@@ -15,6 +21,8 @@ export const useRunState = () => {
 
   const [runInputsTarget, setRunInputsTarget] = useState<Flow | null>(null);
   const [runInputsEditing, setRunInputsEditing] = useState(false);
+  // When editing an existing run's name/inputs, the runId being edited (so the edit targets it).
+  const [runEditRunId, setRunEditRunId] = useState<string | null>(null);
   const [runName, setRunName] = useState('');
   const [runInputValues, setRunInputValues] = useState<Record<string, string>>({});
   const [runInputsError, setRunInputsError] = useState<string | null>(null);
@@ -39,12 +47,15 @@ export const useRunState = () => {
     runState, setRunState,
     activeStepId, setActiveStepId,
     runnerVisible, setRunnerVisible,
+    openRuns, setOpenRuns,
+    openStepIds, setOpenStepIds,
     commandCopied, setCommandCopied,
     revealRun, setRevealRun,
     standaloneRun, setStandaloneRun,
     standaloneRunDescription, setStandaloneRunDescription,
     runInputsTarget, setRunInputsTarget,
     runInputsEditing, setRunInputsEditing,
+    runEditRunId, setRunEditRunId,
     runName, setRunName,
     runInputValues, setRunInputValues,
     runInputsError, setRunInputsError,
