@@ -106,7 +106,7 @@ export async function runInteractiveStep(
       : '\n[opened in the Claude terminal — review the pre-filled message, press Enter to run]\n',
   });
 
-  await terminals.runInTerminal(message, projectPath, agent, autoEnter, stepId, sessionId);
+  await terminals.runInTerminal(message, projectPath, agent, autoEnter, stepId, sessionId, ctx.runState.runId);
 }
 
 // ---------------------------------------------------------------------------

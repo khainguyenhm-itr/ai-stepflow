@@ -75,9 +75,6 @@ export class RunOrchestrator {
   private _focusedRunId: string | undefined;
   /** The flow selected in the webview, even when no run is open yet (loadFlow with no runState). */
   private _focusedFlow: Flow | undefined;
-  /** The run that currently owns the single interactive terminal. The terminal callbacks carry only
-   *  a stepId, so this attributes their events to the right run even after focus moves elsewhere. */
-  private _activeInteractiveRunId: string | undefined;
   /** Headless `claude -p` runs (AI-step execution + AI review) in flight, killed on dispose. */
   private _activeRuns = new Set<ChildProcess>();
   /** In-flight headless child per `${runId}::${stepId}`, so a "Cancel" can kill exactly that run. */
@@ -127,15 +124,14 @@ export class RunOrchestrator {
     private readonly terminals: TerminalManager,
     private readonly post: (message: HostMessage) => void
   ) {
-    this.terminals.onDidCloseRunningStep(async stepId => {
-      // Attribute the terminal event to the run that OWNS the terminal, not whatever run is focused.
-      const runId = this._activeInteractiveRunId;
-      const rc = runId ? this._runs.get(runId) : undefined;
+    this.terminals.onDidCloseRunningStep(async (runId, stepId) => {
+      // The terminal carries its owning runId, so the event resolves against the correct run even
+      // when several runs hold live terminals concurrently.
+      const rc = this._runs.get(runId);
       if (rc && rc.runState.steps[stepId]?.executionStatus === 'running') {
-        await this._setRunState(runId!, machine.markCancelled(rc.runState, rc.flow, stepId), { stepId, status: 'cancelled', message: 'Terminal closed by user' });
-        this.post(this._withRun(runId!, { type: 'stepUpdate', stepId, append: true, output: '\n[terminal closed — run cancelled]\n' }));
+        await this._setRunState(runId, machine.markCancelled(rc.runState, rc.flow, stepId), { stepId, status: 'cancelled', message: 'Terminal closed by user' });
+        this.post(this._withRun(runId, { type: 'stepUpdate', stepId, append: true, output: '\n[terminal closed — run cancelled]\n' }));
       }
-      this._activeInteractiveRunId = undefined;
     });
     // Fallback readiness probe (shell integration unavailable): report whether the step's declared
     // artifacts are done being written, so the fallback reviews the real output instead of firing
@@ -143,9 +139,8 @@ export class RunOrchestrator {
     // freshness is not enough — a file created early and appended to for minutes stays "fresh" the
     // whole time — so we require the change-signature (newest mtime + total size) to hold steady for
     // ARTIFACT_QUIET_MS, i.e. the agent has stopped writing.
-    this.terminals.onCheckStepReady(stepId => {
-      const runId = this._activeInteractiveRunId;
-      const rc = runId ? this._runs.get(runId) : undefined;
+    this.terminals.onCheckStepReady((runId, stepId) => {
+      const rc = this._runs.get(runId);
       if (!rc) return undefined;
       const { flow, runState } = rc;
       const step = flow.steps.find(s => s.id === stepId);
@@ -154,8 +149,8 @@ export class RunOrchestrator {
       if (!hasArtifactSpec) return undefined;
       const projectPath = this.configManager.getProjectPath() || '';
       const inputs = runState.inputs || {};
-      const stale = machine.findStaleProducedFile(step, projectPath, inputs, runState.steps[stepId]?.startedAt, flow.name, this._runSlug(runId!), this._legacyRunSlug(runId!));
-      const artifactSig = stale ? null : machine.producedArtifactsSignature(step, projectPath, inputs, flow.name, this._runSlug(runId!), this._legacyRunSlug(runId!));
+      const stale = machine.findStaleProducedFile(step, projectPath, inputs, runState.steps[stepId]?.startedAt, flow.name, this._runSlug(runId), this._legacyRunSlug(runId));
+      const artifactSig = stale ? null : machine.producedArtifactsSignature(step, projectPath, inputs, flow.name, this._runSlug(runId), this._legacyRunSlug(runId));
       if (!artifactSig) { rc.readinessSnapshots.delete(stepId); return false; } // missing or stale → keep waiting
       // Fold the session transcript's change-signature into the quiescence check. The declared
       // artifact can go quiet early (written up front) while the agent keeps working — writing
@@ -163,25 +158,23 @@ export class RunOrchestrator {
       // before the terminal has actually finished. The `<sessionId>.jsonl` transcript is appended
       // on every message/tool-call, so it reflects ALL the agent's activity: the step is done only
       // once BOTH the artifact and the transcript have held steady for ARTIFACT_QUIET_MS.
-      const sig = `${artifactSig}|${this._sessionTranscriptSignature(runId!, stepId)}`;
+      const sig = `${artifactSig}|${this._sessionTranscriptSignature(runId, stepId)}`;
       const prev = rc.readinessSnapshots.get(stepId);
       const now = Date.now();
       if (!prev || prev.sig !== sig) { rc.readinessSnapshots.set(stepId, { sig, since: now }); return false; }
       return now - prev.since >= ARTIFACT_QUIET_MS;
     });
-    this.terminals.onDidEndRunningStep(async stepId => {
-      const runId = this._activeInteractiveRunId;
-      const rc = runId ? this._runs.get(runId) : undefined;
+    this.terminals.onDidEndRunningStep(async (runId, stepId) => {
+      const rc = this._runs.get(runId);
       if (!rc) return;
       if (rc.runState.steps[stepId]?.executionStatus !== 'running') return;
       const step = rc.flow.steps.find(s => s.id === stepId);
       if (!step) return;
-      const metrics = await this._readInteractiveMetrics(runId!, stepId);
+      const metrics = await this._readInteractiveMetrics(runId, stepId);
       // Every step is reviewed: mark completed then run the review (AI reviews auto-decide,
       // human reviews wait for approval).
-      await this._setRunState(runId!, s => machine.markCompleted(s, rc.flow, stepId, metrics), { stepId, status: 'completed', message: 'Terminal session ended — reviewing' });
-      this._activeInteractiveRunId = undefined; // terminal freed for the next interactive step
-      await this._reviewStep(runId!, step, stepId);
+      await this._setRunState(runId, s => machine.markCompleted(s, rc.flow, stepId, metrics), { stepId, status: 'completed', message: 'Terminal session ended — reviewing' });
+      await this._reviewStep(runId, step, stepId);
     });
   }
 
@@ -335,9 +328,6 @@ export class RunOrchestrator {
       setStepStartTime: (sid, t) => rc.stepStartTimes.set(sid, t),
     };
 
-    // This run now owns the single interactive terminal (used by the terminal callbacks to
-    // attribute their stepId-only events back to this run).
-    this._activeInteractiveRunId = runId;
     // All steps run in the interactive terminal and auto-submit (like an agent/skill run) so
     // pressing "Run Step" actually executes; AI-reviewed steps are auto-verified in
     // onDidEndRunningStep.
@@ -374,7 +364,7 @@ export class RunOrchestrator {
         // Terminal still running: mark done first (so close-terminal handler is a no-op), then close.
         const metrics = await this._readInteractiveMetrics(runId, stepId);
         await this._setRunState(runId, s => machine.markDone(machine.applyHumanReview(machine.markCompleted(s, flow, stepId, metrics), flow, stepId, { decision: 'approved' }), flow, stepId), { stepId, status: 'completed', message: 'Approved by user' });
-        this.terminals.cancelStep(stepId);
+        this.terminals.cancelStep(runId, stepId);
         // Human review does not produce a report file (only AI review does).
         this._advanceReadySteps(runId);
         return;
@@ -386,7 +376,7 @@ export class RunOrchestrator {
       // closing terminal (prevents onDidCloseRunningStep from overwriting with 'cancelled').
       const metrics = await this._readInteractiveMetrics(runId, stepId);
       await this._setRunState(runId, s => machine.applyHumanReview(machine.markCompleted(s, flow, stepId, metrics), flow, stepId, { decision: 'rejected' }), { stepId, status: 'rejected', message: 'Rejected by user' });
-      this.terminals.cancelStep(stepId);
+      this.terminals.cancelStep(runId, stepId);
       // Human review does not produce a report file (only AI review does).
       return;
     }
@@ -498,7 +488,6 @@ export class RunOrchestrator {
     // Move the run to its fresh runId with clean bookkeeping before broadcasting.
     this._runs.delete(oldRunId);
     this._purgeRunKeys(oldRunId);
-    if (this._activeInteractiveRunId === oldRunId) this._activeInteractiveRunId = undefined;
     this._runs.set(freshState.runId, this._newRunCtx(flow, freshState));
     if (this._focusedRunId === oldRunId) this._focusedRunId = freshState.runId;
     await this._setRunState(freshState.runId, freshState);
@@ -509,7 +498,7 @@ export class RunOrchestrator {
 
     // Dispose any running terminal only after freshState is in place.
     for (const [stepId, state] of Object.entries(oldSteps)) {
-      if (state.executionStatus === 'running') this.terminals.cancelStep(stepId);
+      if (state.executionStatus === 'running') this.terminals.cancelStep(oldRunId, stepId);
     }
   }
 
@@ -526,7 +515,6 @@ export class RunOrchestrator {
       await this.stateManager.saveRun(rc.runState);
       this._runs.delete(runId);
       this._purgeRunKeys(runId);
-      if (this._activeInteractiveRunId === runId) this._activeInteractiveRunId = undefined;
     }
     // Only drop focus when the closed run WAS the focused one — closing a background run leaves the view.
     if (runId && this._focusedRunId === runId) {
@@ -554,7 +542,6 @@ export class RunOrchestrator {
 
     this._runs.delete(runId);
     this._purgeRunKeys(runId);
-    if (this._activeInteractiveRunId === runId) this._activeInteractiveRunId = undefined;
     if (this._focusedRunId === runId) {
       this._focusedRunId = undefined;
       this._focusedFlow = undefined;
@@ -616,9 +603,8 @@ export class RunOrchestrator {
     if (key) this._cancelledStepIds.add(key);
     if (rc && runId && rc.runState.steps[stepId]?.executionStatus === 'running') {
       await this._setRunState(runId, machine.markCancelled(rc.runState, rc.flow, stepId), { stepId, status: 'cancelled', message: 'Cancelled by user' });
-      if (this._activeInteractiveRunId === runId) this._activeInteractiveRunId = undefined;
     }
-    this.terminals.cancelStep(stepId);
+    this.terminals.cancelStep(runId, stepId);
     this.post(this._withRun(runId, { type: 'stepUpdate', stepId, append: true, output: '\n[run cancelled by user]\n' }));
   }
 
@@ -641,10 +627,8 @@ export class RunOrchestrator {
       this._cancelledStepIds.add(key);
       const child = this._runChildrenByStep.get(key);
       if (child) child.kill();
-      this.terminals.cancelStep(id);
+      this.terminals.cancelStep(runId, id);
     }
-    // The terminal was just cancelled for one of this run's steps — release ownership.
-    if (this._activeInteractiveRunId === runId) this._activeInteractiveRunId = undefined;
 
     // Delete the artifacts this step (and its now-reset dependents) produced, so the re-run
     // regenerates them instead of an AI review reading a stale file from the previous attempt.
