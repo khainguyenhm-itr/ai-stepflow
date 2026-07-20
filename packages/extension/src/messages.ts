@@ -91,8 +91,8 @@ export type WebviewMessage =
   | { type: 'resetStep'; stepId: string; runId?: string }
   | { type: 'closeRun', finalize?: boolean; runId?: string }
   | { type: 'deleteRun'; runId?: string }
-  | { type: 'verifyRun' }
-  | { type: 'exportRunReport' }
+  | { type: 'verifyRun'; runId?: string }
+  | { type: 'exportRunReport'; runId?: string }
   | { type: 'importAgentFile' }
   | { type: 'importSkillFile' }
   | { type: 'importReviewFile' }
@@ -145,8 +145,8 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   resetStep: m => isString(m.stepId) && (m.runId === undefined || isString(m.runId)),
   closeRun: m => (m.finalize === undefined || typeof m.finalize === 'boolean') && (m.runId === undefined || isString(m.runId)),
   deleteRun: m => m.runId === undefined || isString(m.runId),
-  verifyRun: () => true,
-  exportRunReport: () => true,
+  verifyRun: m => m.runId === undefined || isString(m.runId),
+  exportRunReport: m => m.runId === undefined || isString(m.runId),
   loadFlow: m => isFlowLike(m.flow) && (m.runState === undefined || isFlowRunStateShape(m.runState)),
   openFile: m => isString(m.path),
   saveFlow: m => isFlowLike(m.flow),

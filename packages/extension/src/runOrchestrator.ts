@@ -53,6 +53,9 @@ interface RunCtx {
   outputChunkBuffer: Map<string, string>;
   /** Serializes THIS run's own state transitions (independent of other runs' queues). */
   stateUpdateQueue: Promise<void>;
+  /** True once the "run completed" notice has fired, so it isn't repeated on every later transition.
+   *  Reset to false whenever the run drops back to having unfinished steps (e.g. resetStep). */
+  completedNotified: boolean;
 }
 
 /**
@@ -115,6 +118,7 @@ export class RunOrchestrator {
       skillsCache: undefined,
       outputChunkBuffer: new Map<string, string>(),
       stateUpdateQueue: Promise.resolve(),
+      completedNotified: false,
     };
   }
 
@@ -294,7 +298,7 @@ export class RunOrchestrator {
     // the plain description when there is none). Only a valid agent is required to run the step.
     if (!agent) {
       this.post(this._withRun(runId, { type: 'stepUpdate', stepId, append: true, output: `\n[cannot run — agent '${step.agent || '(none)'}' not found]\n` }));
-      vscode.window.showErrorMessage(`Step '${step.title || step.id}' cannot run: agent '${step.agent || '(none)'}' not found.`);
+      this._notify('error', `Step '${step.title || step.id}' cannot run: agent '${step.agent || '(none)'}' not found.`);
       return;
     }
 
@@ -349,13 +353,13 @@ export class RunOrchestrator {
         if (!prod.ok) {
           const msg = `produces check failed: ${prod.message}`;
           this.post(this._withRun(runId, { type: 'stepUpdate', stepId, append: true, output: `\n[cannot approve — ${msg}]\n` }));
-          vscode.window.showErrorMessage(`Cannot approve '${step.title || step.id}': ${prod.message}`);
+          this._notify('error', `Cannot approve '${step.title || step.id}': ${prod.message}`);
           return;
         }
         const content = await this._verifyProducesContent(runId, step);
         if (!content.ok) {
           this.post(this._withRun(runId, { type: 'stepUpdate', stepId, append: true, output: `\n[cannot approve — ${content.message}]\n` }));
-          vscode.window.showErrorMessage(`Cannot approve '${step.title || step.id}': ${content.message}`);
+          this._notify('error', `Cannot approve '${step.title || step.id}': ${content.message}`);
           return;
         }
       }
@@ -467,7 +471,7 @@ export class RunOrchestrator {
     // Each run owns its artifacts; reset discards them so a re-run starts from a clean slate.
     const deleted = this._deleteFiles(runArtifacts);
     this._deleteRunOutputDir(runOutputDir);
-    vscode.window.showInformationMessage(`AI StepFlow: run reset — cleared this run's artifacts${deleted.length ? ` (${deleted.length} file${deleted.length === 1 ? '' : 's'})` : ''}.`);
+    this._notify('info', `run reset — cleared this run's artifacts${deleted.length ? ` (${deleted.length} file${deleted.length === 1 ? '' : 's'})` : ''}.`);
 
     const freshState = machine.initRunState(flow, {
       runId: new Date().toISOString(),
@@ -550,26 +554,28 @@ export class RunOrchestrator {
     this.post({ type: 'runDeleted', flowId: flow.id, runId });
   }
 
-  async verify(): Promise<void> {
-    const rc = this._focused();
+  async verify(explicitRunId?: string): Promise<void> {
+    const runId = explicitRunId ?? this._focusedRunId;
+    const rc = runId ? this._runs.get(runId) : undefined;
     if (!rc) return;
     const projectPath = this.configManager.getProjectPath();
     if (!projectPath) return;
 
     const report = verifyRun(rc.flow, rc.runState, projectPath);
     if (report.ok) {
-      vscode.window.showInformationMessage(`AI StepFlow: verify passed for run '${rc.runState.runId}'.`);
+      this._notify('info', `verify passed for run '${rc.runState.runId}'.`);
       return;
     }
 
     const markdown = renderVerifyReportMarkdown(rc.flow, rc.runState, report);
     const doc = await vscode.workspace.openTextDocument({ language: 'markdown', content: markdown });
     await vscode.window.showTextDocument(doc, { preview: false });
-    vscode.window.showWarningMessage(`AI StepFlow: verify found drift in ${report.drift.length} step(s).`);
+    this._notify('warn', `verify found drift in ${report.drift.length} step(s).`);
   }
 
-  async exportReport(): Promise<void> {
-    const rc = this._focused();
+  async exportReport(explicitRunId?: string): Promise<void> {
+    const runId = explicitRunId ?? this._focusedRunId;
+    const rc = runId ? this._runs.get(runId) : undefined;
     if (!rc) return;
     const auditLog = await this.stateManager.loadAuditLog(rc.flow.id);
     const markdown = renderRunReport(rc.flow, rc.runState, auditLog);
@@ -578,7 +584,7 @@ export class RunOrchestrator {
     const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
     await vscode.window.showTextDocument(doc, { preview: false });
     const base = filePath.split(/[\\/]/).pop();
-    vscode.window.showInformationMessage(`AI StepFlow: run report exported to ${base}.`);
+    this._notify('info', `run report exported to ${base}.`);
   }
 
   /** Terminate a step's running process (headless or terminal) and record it as cancelled (targets `explicitRunId`, else focused). */
@@ -765,9 +771,37 @@ export class RunOrchestrator {
         });
       }
       this.post({ type: 'runStateChanged', runState: resolvedNext, historyEvent });
+      this._notifyIfRunCompleted(live);
     });
     rc.stateUpdateQueue = promise;
     return promise;
+  }
+
+  /**
+   * Single channel for every user-facing run notification, so they all share one style (the
+   * `AI StepFlow:` prefix) and can be managed/muted/logged in one place. Callers pass the bare
+   * message without the prefix.
+   */
+  private _notify(level: 'info' | 'warn' | 'error', message: string): void {
+    const text = `AI StepFlow: ${message}`;
+    if (level === 'error') vscode.window.showErrorMessage(text);
+    else if (level === 'warn') vscode.window.showWarningMessage(text);
+    else vscode.window.showInformationMessage(text);
+  }
+
+  /**
+   * Fire a one-time "run completed" notice when a run first reaches the all-steps-done edge, and
+   * re-arm it if the run later drops back to unfinished (e.g. resetStep). Keyed per-run so concurrent
+   * runs each notify independently.
+   */
+  private _notifyIfRunCompleted(rc: RunCtx): void {
+    const steps = Object.values(rc.runState.steps);
+    const allDone = steps.length > 0 && steps.every(s => s.completionStatus === 'done');
+    if (!allDone) { rc.completedNotified = false; return; }
+    if (rc.completedNotified) return;
+    rc.completedNotified = true;
+    const name = rc.runState.runName || rc.runState.runId;
+    this._notify('info', `run '${name}' completed — all ${steps.length} step${steps.length === 1 ? '' : 's'} done.`);
   }
 
   /**
@@ -856,7 +890,9 @@ export class RunOrchestrator {
       reviewKit,
       artifacts,
       reviewModel: reviewerAgent?.model,
-      runner: opts => this._spawnClaudeStreaming({ ...opts, maxTurns: 1 }),
+      // Track under a run-scoped key so reset/delete of THIS run kills the in-flight review child
+      // (via _killRunChildren's `${runId}::` prefix). A concurrent run's review is left untouched.
+      runner: opts => this._spawnClaudeStreaming({ ...opts, maxTurns: 1 }, `${this._rk(runId, stepId)}::review`),
       onText: chunk => { reviewOut += chunk; this.post(this._withRun(runId, { type: 'aiReviewUpdate', stepId, append: true, output: chunk })); }
     });
 
@@ -873,7 +909,7 @@ export class RunOrchestrator {
       const warn = `Auto review could not verify "${step.title || step.id}": ${result.note} Approve or reject it manually.`;
       await this._setRunState(runId, s => machine.applyAiReview(s, flow, stepId, 'waiting_human', `⚠ ${warn}\n`), { stepId, status: 'waiting_human', message: warn });
       this.post(this._withRun(runId, { type: 'stepUpdate', stepId, append: true, output: `\n[⚠ ${warn}]\n` }));
-      vscode.window.showWarningMessage(`AI StepFlow: ${warn}`);
+      this._notify('warn', warn);
       return;
     }
 
@@ -1052,7 +1088,8 @@ export class RunOrchestrator {
       this.configManager.getProjectPath() || '',
       rc?.runState.inputs || {},
       rc?.flow.name || '',
-      opts => this._spawnClaudeStreaming({ ...opts, maxTurns: 1 }),
+      // Run-scoped key so reset/delete of THIS run kills the in-flight content-verify child too.
+      opts => this._spawnClaudeStreaming({ ...opts, maxTurns: 1 }, `${this._rk(runId, step.id)}::verify`),
       undefined,
       this._runSlug(runId),
       this._legacyRunSlug(runId)

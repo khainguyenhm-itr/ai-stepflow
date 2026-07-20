@@ -194,6 +194,7 @@ test('renderReviewReport builds a Markdown report with tables and metadata', () 
     flowName: 'Design Flow',
     runName: 'run-1',
     runId: 'r1',
+    verdict: 'rejected',
     source: 'llm',
     reason: 'missing acceptance criteria',
     correct: ['title is clear'],
@@ -218,7 +219,7 @@ test('renderReviewReport builds a Markdown report with tables and metadata', () 
 });
 
 test('renderReviewReport renders placeholders when findings are empty', () => {
-  const md = renderReviewReport({ step: step(), runId: 'r1', source: 'validator', reason: 'file missing' });
+  const md = renderReviewReport({ step: step(), runId: 'r1', verdict: 'rejected', source: 'validator', reason: 'file missing' });
   assert.match(md, /## What's correct\n\n_None reported\._/);
   assert.match(md, /## Issues found\n\n_None reported\._/);
   assert.match(md, /\| Model \| — \|/);

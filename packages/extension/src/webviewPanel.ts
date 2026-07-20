@@ -302,10 +302,10 @@ export class CockpitPanel {
         return;
       }
       case 'verifyRun':
-        await this._runner.verify();
+        await this._runner.verify(message.runId);
         return;
       case 'exportRunReport':
-        await this._runner.exportReport();
+        await this._runner.exportReport(message.runId);
         return;
       case 'importAgentFile':
         await this._handleImportFile('agent');
