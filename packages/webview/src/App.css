@@ -2256,15 +2256,14 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 /* Awaiting review: yellow accent so a run paused on a review reads differently from one running. */
 .run-row.reviewing { background: color-mix(in srgb, var(--warn) 8%, transparent); box-shadow: inset 3px 0 0 var(--warn); }
 
-/* Expanded run: the open row + its drawer read as ONE "focus card" bracketed off from the flat
-   list — a tinted band, a left accent that runs the full height, and an accent hairline across
-   the top. The open row fuses with the drawer below (no divider between them). */
+/* Expanded run: the open row sits in a recessed "well" (the darkest surface) with a top hairline,
+   so the elevated detail card below reads as floating above it. */
 .run-row.open > td {
-  background: color-mix(in srgb, var(--running) 9%, var(--panel-2));
-  border-top: 2px solid var(--running);
+  background: var(--bg);
+  border-top: 1px solid var(--border);
 }
 .run-row.open,
-.run-row.open:hover { background: transparent; box-shadow: inset 3px 0 0 var(--running); border-bottom: 0; }
+.run-row.open:hover { background: transparent; border-bottom: 0; }
 
 /* When one run is expanded, fade the rest so the active one is the clear focus. */
 .runs-table tbody.has-open .run-row:not(.open) { opacity: .5; transition: opacity .12s ease-out; }
@@ -2311,23 +2310,28 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 .run-row-actions .icon-btn[aria-expanded="true"] { background: transparent; color: var(--fg); }
 .run-row.open .run-row-actions .icon-btn:hover { background: color-mix(in srgb, var(--fg) 12%, transparent); }
 
-/* Detail drawer — closes the focus card: same tinted band + left accent as the open row, an
-   accent hairline across the bottom, and bottom padding so the next collapsed row is clearly
-   separated. The runner content floats inside as an inset, rounded, elevated card so the detail
-   reads as its own surface instead of being flush against the table rows. */
+/* Detail drawer — a bordered panel card in the same visual language as the .flow-stat cards
+   (1px border, small radius, --panel surface, no shadow). It sits in a recessed --bg gutter so it
+   reads as a distinct card, not another flat table row, and carries an accent strip on its left
+   edge. A neutral hairline closes the well at the bottom. */
 .run-detail > td {
-  padding: 0 14px 16px;
-  background: color-mix(in srgb, var(--running) 9%, var(--panel-2));
-  box-shadow: inset 3px 0 0 var(--running);
-  border-bottom: 2px solid var(--running);
+  padding: 6px 14px 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
 }
 .run-drawer {
-  border: 1px solid color-mix(in srgb, var(--running) 30%, var(--border));
-  border-radius: 10px;
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 6px;
   background: var(--panel);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, .3);
   overflow: hidden;
   animation: runsDrawer .2s ease-out;
+}
+/* Accent strip down the card's left edge (clipped to the rounded corners by overflow:hidden). */
+.run-drawer::before {
+  content: '';
+  position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--running);
 }
 .run-drawer .runner { border-top: 0; background: transparent; }
 
