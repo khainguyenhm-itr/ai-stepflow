@@ -63,9 +63,9 @@ export const useAppLogic = () => {
     // for this new run is recognized as focused and not gated out.
     runState.activeRunIdRef.current = newRunState.runId;
     runState.setActiveStepId(flow.steps[0]?.id || null);
-    // Open this run's drawer (multi-drawer store).
-    runState.setOpenRuns(prev => ({ ...prev, [newRunState.runId]: newRunState }));
-    runState.setOpenStepIds(prev => ({ ...prev, [newRunState.runId]: flow.steps[0]?.id || null }));
+    // Open this run's drawer (single-expand: only one drawer shows at a time).
+    runState.setOpenRuns({ [newRunState.runId]: newRunState });
+    runState.setOpenStepIds({ [newRunState.runId]: flow.steps[0]?.id || null });
     libState.setRunSummaries(prev => [{
       flowId: newRunState.flowId,
       runId: newRunState.runId,
@@ -203,9 +203,9 @@ export const useAppLogic = () => {
         runState.activeRunIdRef.current = message.runState.runId;
         runState.setRunnerVisible(true);
         runState.setActiveStepId(getDefaultActiveStepId(message.flow, message.runState));
-        // Open (or refresh) this run's drawer.
-        runState.setOpenRuns(prev => ({ ...prev, [message.runState.runId]: message.runState }));
-        runState.setOpenStepIds(prev => ({ ...prev, [message.runState.runId]: prev[message.runState.runId] ?? getDefaultActiveStepId(message.flow, message.runState) }));
+        // Open this run's drawer (single-expand: replace any other open drawer, keep this run's step).
+        runState.setOpenRuns({ [message.runState.runId]: message.runState });
+        runState.setOpenStepIds(prev => ({ [message.runState.runId]: prev[message.runState.runId] ?? getDefaultActiveStepId(message.flow, message.runState) }));
         break;
       case 'runDeleted': {
         const { flowId, runId } = message;
