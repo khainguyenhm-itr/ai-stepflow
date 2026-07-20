@@ -2256,10 +2256,15 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 /* Awaiting review: yellow accent so a run paused on a review reads differently from one running. */
 .run-row.reviewing { background: color-mix(in srgb, var(--warn) 8%, transparent); box-shadow: inset 3px 0 0 var(--warn); }
 
-/* Expanded run: brighter than the other rows + strongest accent — this is the one the user
-   is focused on, so lift the surface toward the foreground so it clearly reads as "open". */
+/* Expanded run: the open row + its drawer read as ONE "focus card" bracketed off from the flat
+   list — a tinted band, a left accent that runs the full height, and an accent hairline across
+   the top. The open row fuses with the drawer below (no divider between them). */
+.run-row.open > td {
+  background: color-mix(in srgb, var(--running) 9%, var(--panel-2));
+  border-top: 2px solid var(--running);
+}
 .run-row.open,
-.run-row.open:hover { background: color-mix(in srgb, var(--fg) 7%, var(--panel-2)); box-shadow: inset 3px 0 0 var(--running); }
+.run-row.open:hover { background: transparent; box-shadow: inset 3px 0 0 var(--running); border-bottom: 0; }
 
 /* When one run is expanded, fade the rest so the active one is the clear focus. */
 .runs-table tbody.has-open .run-row:not(.open) { opacity: .5; transition: opacity .12s ease-out; }
@@ -2306,9 +2311,24 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 .run-row-actions .icon-btn[aria-expanded="true"] { background: transparent; color: var(--fg); }
 .run-row.open .run-row-actions .icon-btn:hover { background: color-mix(in srgb, var(--fg) 12%, transparent); }
 
-/* Detail drawer that slides open under the selected run */
-.run-detail > td { padding: 0; background: var(--panel-2); }
-.run-drawer { border-top: 1px solid var(--border); animation: runsDrawer .2s ease-out; }
+/* Detail drawer — closes the focus card: same tinted band + left accent as the open row, an
+   accent hairline across the bottom, and bottom padding so the next collapsed row is clearly
+   separated. The runner content floats inside as an inset, rounded, elevated card so the detail
+   reads as its own surface instead of being flush against the table rows. */
+.run-detail > td {
+  padding: 0 14px 16px;
+  background: color-mix(in srgb, var(--running) 9%, var(--panel-2));
+  box-shadow: inset 3px 0 0 var(--running);
+  border-bottom: 2px solid var(--running);
+}
+.run-drawer {
+  border: 1px solid color-mix(in srgb, var(--running) 30%, var(--border));
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .3);
+  overflow: hidden;
+  animation: runsDrawer .2s ease-out;
+}
 .run-drawer .runner { border-top: 0; background: transparent; }
 
 @keyframes runsDrawer {
