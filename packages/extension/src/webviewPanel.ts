@@ -726,7 +726,7 @@ export class CockpitPanel {
   }
 
   private async _handleRunSkill(skill: Skill | undefined, description?: string) {
-    if (skill) await this._terminals.runInTerminal(this._buildCommandPrompt(skill.name, description), this.configManager.getProjectPath() || '');
+    if (skill) await this._terminals.runInTerminal(this._buildCommandPrompt(skill.name, description), this.configManager.getProjectPath() || '', undefined, true, undefined, undefined, undefined, skill.name);
   }
 
   private _buildCommandPrompt(commandName: string, description?: string): string {

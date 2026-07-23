@@ -5,7 +5,8 @@ import { existsSync, rmSync } from 'fs';
 import { Agent, shortRunId } from '@ai-stepflow/core';
 import { ConfigManager } from './configManager.js';
 
-/** Key for ad-hoc agent/skill runs (no flow step). One shared ad-hoc terminal, as before. */
+/** Key prefix for ad-hoc agent/skill runs (no flow step). Each run gets its own
+ *  `#adhoc-<fingerprint>` terminal so repeated agent/skill runs are independent, not one session. */
 const ADHOC_KEY = '#adhoc';
 
 /** Per-terminal state: one live interactive `claude` session and its lifecycle bookkeeping. */
@@ -28,11 +29,13 @@ interface TermState {
  * Owns the interactive `claude` terminals and their lifecycle, extracted from the cockpit panel so
  * the tricky shell-integration timing lives in one place. Each flow-step run gets its OWN terminal,
  * keyed by `${runId}::${stepId}`, so multiple runs can hold live interactive sessions concurrently.
- * Ad-hoc agent/skill runs (no step) share one terminal under {@link ADHOC_KEY}. Headless `claude -p`
- * runs are unrelated and stay in the panel.
+ * Ad-hoc agent/skill runs (no step) each get their OWN terminal too, keyed `#adhoc-<fingerprint>`,
+ * so repeated runs are independent. Headless `claude -p` runs are unrelated and stay in the panel.
  */
 export class TerminalManager {
   private _terms = new Map<string, TermState>();
+  /** Monotonic salt so two ad-hoc runs in the same millisecond get distinct runId fingerprints. */
+  private _adhocSeq = 0;
   private _disposables: vscode.Disposable[] = [];
   /** Callback when a terminal is closed while its step is running. */
   private _onDidCloseRunningStep: ((runId: string, stepId: string) => void) | undefined;
@@ -112,16 +115,22 @@ export class TerminalManager {
    *
    * Each flow step (a call carrying `stepId`) gets its own terminal keyed by `${runId}::${stepId}`,
    * except a Re-run whose step is still live, which continues in place. Ad-hoc agent/skill runs
-   * (no `stepId`) keep the shared session and only relaunch when the agent changes.
+   * (no `stepId`) each get a fresh independent terminal keyed `#adhoc-<fingerprint>`, so every run is isolated.
    */
-  public async runInTerminal(prompt: string, projectPath: string, agent?: Agent | string, submit = true, stepId?: string, sessionId?: string, runId?: string): Promise<void> {
+  public async runInTerminal(prompt: string, projectPath: string, agent?: Agent | string, submit = true, stepId?: string, sessionId?: string, runId?: string, label?: string): Promise<void> {
     const agentName = typeof agent === 'string' ? agent : agent?.name;
-    const key = stepId ? this._key(runId, stepId) : ADHOC_KEY;
+    // Terminal display label: the agent name for agent runs, or a caller-supplied label (e.g. the
+    // skill name) for agent-less runs. Does not affect launch args, only the terminal name.
+    const displayLabel = agentName ?? label;
+    // Ad-hoc runs get a unique runId fingerprint (like a flow run's shortRunId), salted with a
+    // monotonic seq so two clicks in the same millisecond can't collide on the same terminal.
+    const key = stepId
+      ? this._key(runId, stepId)
+      : `${ADHOC_KEY}-${shortRunId(`${new Date().toISOString()}-${++this._adhocSeq}`)}`;
     let state = this._terms.get(key);
 
     const continueLiveStep = !!stepId && !!state?.running;
-    const adHocSwitch = !stepId && !!state?.running && agentName !== state?.agentName;
-    const needFreshTerminal = (!!stepId && !continueLiveStep) || adHocSwitch;
+    const needFreshTerminal = !!stepId && !continueLiveStep;
 
     if (needFreshTerminal && state?.terminal) {
       state.terminal.dispose();
@@ -129,12 +138,13 @@ export class TerminalManager {
       state = undefined;
     }
 
-    const terminal = this._getTerminal(key, projectPath, runId, stepId);
+    const terminal = this._getTerminal(key, projectPath, runId, stepId, displayLabel);
     terminal.show();
     state = this._terms.get(key)!;
 
     if (state.running) {
-      // Continue in the live terminal: a Re-run of the running step, or an ad-hoc follow-up prompt.
+      // Continue in the live terminal: a Re-run of the still-running step. (Ad-hoc runs always get a
+      // fresh key above, so they never land here.)
       if (prompt) terminal.sendText(prompt, submit);
       return;
     }
@@ -286,11 +296,15 @@ export class TerminalManager {
     state.fallbackTimer = setTimeout(poll, POLL_MS);
   }
 
-  private _getTerminal(key: string, projectPath: string, runId?: string, stepId?: string): vscode.Terminal {
+  private _getTerminal(key: string, projectPath: string, runId?: string, stepId?: string, label?: string): vscode.Terminal {
     const existing = this._terms.get(key);
     if (existing && existing.terminal && !existing.terminal.exitStatus) return existing.terminal;
     // Distinct, human-readable name so concurrent runs are distinguishable in the terminal picker.
-    const name = stepId ? `Claude ${stepId}·${shortRunId(runId)}` : 'AI StepFlow Claude';
+    // Ad-hoc runs append their `#adhoc-<fingerprint>` id so repeated same-label runs don't collide.
+    const fingerprint = key.startsWith(`${ADHOC_KEY}-`) ? key.slice(ADHOC_KEY.length + 1) : '';
+    const name = stepId
+      ? `Claude ${stepId}·${shortRunId(runId)}`
+      : `${label ? `Claude · ${label}` : 'AI StepFlow Claude'} · ${fingerprint}`;
     const terminal = vscode.window.createTerminal({ name, cwd: projectPath || undefined });
     this._terms.set(key, { terminal, running: false, runId, stepId });
     return terminal;
