@@ -20,6 +20,7 @@ import { RunInputsModal } from './modals/RunInputsModal';
 import { FlowBuilderModal } from './modals/FlowBuilderModal';
 import { StepModal } from './modals/StepModal';
 import { StandaloneRunModal } from './modals/StandaloneRunModal';
+import { HistoryModal } from './modals/HistoryModal';
 import { ConfirmDialog } from './components/primitives';
 
 const App: React.FC = () => {
@@ -38,6 +39,7 @@ const App: React.FC = () => {
     commandCopied, setCommandCopied,
     standaloneRun, setStandaloneRun,
     standaloneRunDescription, setStandaloneRunDescription,
+    historyTarget, adhocRuns, openHistory, closeHistory,
     editingFlow, setEditingFlow,
     editingFlowScope, setEditingFlowScope,
     editingStep, setEditingStep,
@@ -301,6 +303,7 @@ const App: React.FC = () => {
             setStandaloneRun({ type: 'agent', agent });
             setStandaloneRunDescription('');
           }}
+          onHistory={agent => openHistory('agent', agent.name)}
           onDetail={agent => setDetailItem({
             type: 'Agent',
             title: agent.name,
@@ -331,6 +334,7 @@ const App: React.FC = () => {
             setStandaloneRun({ type: 'skill', skill });
             setStandaloneRunDescription('');
           }}
+          onHistory={skill => openHistory('skill', skill.name)}
           onDetail={skill => setDetailItem({
             type: 'Skill',
             title: skill.name,
@@ -463,6 +467,13 @@ const App: React.FC = () => {
             setStandaloneRun(null);
           }
         }}
+      />
+
+      <HistoryModal
+        target={historyTarget}
+        runs={adhocRuns}
+        onResume={run => sendToVSCode('resumeSession', { sessionId: run.sessionId, projectPath: run.projectPath, name: run.name, kind: run.kind })}
+        onClose={closeHistory}
       />
 
       <RunInputsModal

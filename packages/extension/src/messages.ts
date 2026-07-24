@@ -1,4 +1,4 @@
-import { Agent, AgentInput, Flow, FlowRunState, Skill, SkillInput, ReviewKit, ReviewKitInput, isFlowShape, isFlowRunStateShape, isAgentInputShape, isSkillInputShape } from '@ai-stepflow/core';
+import { Agent, AgentInput, AdhocRun, Flow, FlowRunState, Skill, SkillInput, ReviewKit, ReviewKitInput, isFlowShape, isFlowRunStateShape, isAgentInputShape, isSkillInputShape } from '@ai-stepflow/core';
 
 export interface HumanReview {
   decision: 'approved' | 'rejected';
@@ -60,6 +60,7 @@ export type HostMessage =
   | { type: 'flowGenerated'; flow?: Flow; reply?: string; error?: string }
   | { type: 'navigateToTab'; tab: 'flows' | 'agents' | 'skills' | 'reviews' | 'overview' }
   | { type: 'revealRun'; flowId: string; runId: string }
+  | { type: 'adhocRuns'; kind: 'agent' | 'skill'; name: string; runs: AdhocRun[] }
   | { type: 'runClosed'; flowId?: string; runId?: string; finalized?: boolean };
 
 /** Every message the webview is allowed to send to the extension host. */
@@ -84,6 +85,8 @@ export type WebviewMessage =
   | { type: 'cancelStep'; stepId: string; runId?: string }
   | { type: 'runAgent'; agent: Agent; description?: string }
   | { type: 'runSkill'; skill: Skill; description?: string }
+  | { type: 'getAdhocRuns'; kind: 'agent' | 'skill'; name: string }
+  | { type: 'resumeSession'; sessionId: string; projectPath: string; name?: string; kind?: 'agent' | 'skill' }
   | { type: 'reviewStep'; stepId: string; decision: 'approved' | 'rejected'; runId?: string }
   | { type: 'setAutoReview'; enabled: boolean; runId?: string }
   | { type: 'editRun'; runName?: string; inputs: Record<string, string>; runId?: string }
@@ -169,6 +172,8 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   cancelStep: m => isString(m.stepId) && (m.runId === undefined || isString(m.runId)),
   runAgent: m => isAgentLike(m.agent),
   runSkill: m => isSkillLike(m.skill),
+  getAdhocRuns: m => (m.kind === 'agent' || m.kind === 'skill') && isString(m.name),
+  resumeSession: m => isString(m.sessionId) && isString(m.projectPath),
   reviewStep: m =>
     isString(m.stepId) &&
     (m.decision === 'approved' || m.decision === 'rejected') &&

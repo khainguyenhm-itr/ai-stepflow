@@ -1,4 +1,5 @@
-import { Flow, FlowRunState, StepRunState, Agent, Skill, ReviewKit } from '@ai-stepflow/core/types';
+import { useState } from 'react';
+import { Flow, FlowRunState, StepRunState, Agent, Skill, ReviewKit, AdhocRun } from '@ai-stepflow/core/types';
 import { isVSCodeWebview, sendToVSCode } from '../vscode';
 import {
   getStepSkills,
@@ -23,6 +24,16 @@ export const useAppLogic = () => {
   const runState = useRunState();
   const buildState = useBuilderState();
   const chatState = useChatState();
+
+  // Per-agent/skill ad-hoc run history (loaded on demand from the host).
+  const [historyTarget, setHistoryTarget] = useState<{ kind: 'agent' | 'skill'; name: string } | null>(null);
+  const [adhocRuns, setAdhocRuns] = useState<AdhocRun[] | null>(null);
+  const openHistory = (kind: 'agent' | 'skill', name: string) => {
+    setHistoryTarget({ kind, name });
+    setAdhocRuns(null); // null = loading; the host replies with an 'adhocRuns' message.
+    sendToVSCode('getAdhocRuns', { kind, name });
+  };
+  const closeHistory = () => setHistoryTarget(null);
 
   const updateRunState = (stepId: string, updates: Partial<StepRunState> | ((prev: StepRunState | undefined) => Partial<StepRunState>)) => {
     runState.shouldPersistRun.current = true;
@@ -429,6 +440,9 @@ export const useAppLogic = () => {
           chatState.setFlowAiMessages(prev => [...prev, { role: 'assistant', content: message.reply }]);
         }
         break;
+      case 'adhocRuns':
+        setAdhocRuns(message.runs || []);
+        break;
     }
   };
 
@@ -782,6 +796,7 @@ export const useAppLogic = () => {
     ...buildState,
     ...chatState,
     completedSteps, activeProgress,
+    historyTarget, adhocRuns, openHistory, closeHistory,
     handleHostMessage, seedPreview,
     startOrResumeRun,
     startFreshRun,

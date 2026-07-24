@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { promises as fs } from 'fs';
-import { FlowRunState, shortRunId } from '@ai-stepflow/core';
+import { FlowRunState, AdhocRun, shortRunId } from '@ai-stepflow/core';
+import { readInteractiveSessionStats } from './sessionStats.js';
 
 /** Lightweight per-run summary with aggregated metrics, listed for the run picker and Overview stats. */
 export interface RunSummary {
@@ -69,6 +70,49 @@ export class StateManager {
     const dir = this.context.storageUri.fsPath;
     await fs.mkdir(dir, { recursive: true });
     return dir;
+  }
+
+  /** Absolute path of the ad-hoc run history file in the extension's machine-global storage. */
+  private async adhocRunsFile(): Promise<string | undefined> {
+    if (!this.context?.globalStorageUri) return undefined;
+    const dir = this.context.globalStorageUri.fsPath;
+    await fs.mkdir(dir, { recursive: true });
+    return path.join(dir, 'adhoc-runs.json');
+  }
+
+  /** Read the raw ad-hoc run records (newest first). Returns [] on any failure. */
+  private async readAdhocRuns(): Promise<AdhocRun[]> {
+    const file = await this.adhocRunsFile();
+    if (!file) return [];
+    try {
+      const arr = JSON.parse(await fs.readFile(file, 'utf8'));
+      return Array.isArray(arr) ? arr as AdhocRun[] : [];
+    } catch { return []; }
+  }
+
+  /** Cap on stored ad-hoc records so the history file can't grow without bound. */
+  private static readonly ADHOC_CAP = 500;
+
+  /** Persist one ad-hoc run, newest first, capped at {@link ADHOC_CAP}. Metrics are NOT stored. */
+  public async saveAdhocRun(run: AdhocRun): Promise<void> {
+    const file = await this.adhocRunsFile();
+    if (!file) return;
+    const runs = [run, ...(await this.readAdhocRuns())].slice(0, StateManager.ADHOC_CAP);
+    const tmp = `${file}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify(runs, null, 2), 'utf8');
+    await fs.rename(tmp, file);
+  }
+
+  /**
+   * List ad-hoc runs for one agent/skill (newest first), each enriched with token/cost/model read
+   * lazily from its pinned session `.jsonl`. Missing/rotated session files just leave metrics blank.
+   */
+  public async listAdhocRuns(kind: 'agent' | 'skill', name: string): Promise<AdhocRun[]> {
+    const matches = (await this.readAdhocRuns()).filter(r => r.kind === kind && r.name === name);
+    return Promise.all(matches.map(async run => {
+      const metrics = await readInteractiveSessionStats(run.projectPath, new Date(run.startedAt), run.sessionId);
+      return { ...run, tokensUsed: metrics.tokensUsed, costUsd: metrics.costUsd, modelUsed: metrics.modelUsed };
+    }));
   }
 
   /** Lowercase slug: spaces/punctuation → '-', collapsed, trimmed. Empty input → ''. */

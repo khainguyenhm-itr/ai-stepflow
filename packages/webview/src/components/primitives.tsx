@@ -34,6 +34,7 @@ import {
   FileText,
   List,
   SlidersHorizontal,
+  History,
 } from 'lucide-react';
 
 /* Small native UI primitives styled after VS Code. */
@@ -172,4 +173,5 @@ export const Icon = {
   FileText,
   List,
   Sliders: SlidersHorizontal,
+  History,
 };

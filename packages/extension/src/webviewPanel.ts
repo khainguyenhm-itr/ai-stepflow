@@ -8,7 +8,7 @@ import { TerminalManager } from './terminalManager.js';
 import { RunOrchestrator } from './runOrchestrator.js';
 import { validateMessage, WebviewMessage, HostMessage } from './messages.js';
 import { listConnectedMcpServers, addMcpServer, connectGitnexusMcp } from './mcp.js';
-import { Agent, ClaudeStreamingRunResult, Flow, FlowStep, Skill, extractJsonObject } from '@ai-stepflow/core';
+import { Agent, AdhocRun, ClaudeStreamingRunResult, Flow, FlowStep, Skill, extractJsonObject } from '@ai-stepflow/core';
 
 export class CockpitPanel {
   public static currentPanel: CockpitPanel | undefined;
@@ -249,6 +249,15 @@ export class CockpitPanel {
         return;
       case 'runSkill':
         await this._handleRunSkill(message.skill, message.description);
+        return;
+      case 'getAdhocRuns': {
+        const runs = await this.stateManager.listAdhocRuns(message.kind, message.name)
+          .catch(e => { console.error('AI StepFlow: listAdhocRuns failed', e); return [] as AdhocRun[]; });
+        this.postMessage({ type: 'adhocRuns', kind: message.kind, name: message.name, runs });
+        return;
+      }
+      case 'resumeSession':
+        await this._terminals.resumeSession(message.sessionId, message.projectPath, message.name, message.kind ?? 'agent');
         return;
       case 'reviewStep':
         this._runner.reviewStep(message.stepId, message.decision, message.runId);
@@ -722,11 +731,37 @@ export class CockpitPanel {
   }
 
   private async _handleRunAgent(agent: Agent | undefined, description?: string) {
-    if (agent) await this._terminals.runInTerminal(description?.trim() || '', this.configManager.getProjectPath() || '', agent);
+    if (!agent) return;
+    const projectPath = this.configManager.getProjectPath() || '';
+    // Pin a session id so this ad-hoc run's metrics are readable and the run is resumable later.
+    const sessionId = crypto.randomUUID();
+    await this._terminals.runInTerminal(description?.trim() || '', projectPath, agent, true, undefined, sessionId);
+    await this._recordAdhocRun('agent', agent.name, sessionId, projectPath, description);
   }
 
   private async _handleRunSkill(skill: Skill | undefined, description?: string) {
-    if (skill) await this._terminals.runInTerminal(this._buildCommandPrompt(skill.name, description), this.configManager.getProjectPath() || '', undefined, true, undefined, undefined, undefined, skill.name);
+    if (!skill) return;
+    const projectPath = this.configManager.getProjectPath() || '';
+    const sessionId = crypto.randomUUID();
+    await this._terminals.runInTerminal(this._buildCommandPrompt(skill.name, description), projectPath, undefined, true, undefined, sessionId, undefined, skill.name);
+    await this._recordAdhocRun('skill', skill.name, sessionId, projectPath, description);
+  }
+
+  /** Best-effort: persist an ad-hoc run to the global history. Never blocks the launch on failure. */
+  private async _recordAdhocRun(kind: 'agent' | 'skill', name: string, sessionId: string, projectPath: string, prompt?: string) {
+    try {
+      await this.stateManager.saveAdhocRun({
+        id: crypto.randomUUID(),
+        kind,
+        name,
+        sessionId,
+        projectPath,
+        prompt: prompt?.trim() || undefined,
+        startedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error('AI StepFlow: saveAdhocRun failed', e);
+    }
   }
 
   private _buildCommandPrompt(commandName: string, description?: string): string {

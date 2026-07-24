@@ -52,6 +52,32 @@ export interface Skill {
   aiConversation?: FlowAiMessage[];
 }
 
+/**
+ * One recorded ad-hoc run of an agent or skill (launched from the library's Run button, not a flow
+ * step). Persisted globally so the per-agent/skill history is visible across workspaces. Token/cost/
+ * model are NOT stored — they are read lazily from the pinned session's `.jsonl` when the history is
+ * opened (see `readInteractiveSessionStats`).
+ */
+export interface AdhocRun {
+  /** Unique id for this run record. */
+  id: string;
+  kind: 'agent' | 'skill';
+  /** Agent or skill name this run was launched for. */
+  name: string;
+  /** Pinned `claude --session-id`, used both to read metrics and to `--resume` the session. */
+  sessionId: string;
+  /** Working directory the run was launched in (needed to locate the session file and to resume). */
+  projectPath: string;
+  /** The prompt/description supplied at launch, if any. */
+  prompt?: string;
+  /** ISO timestamp when the run was launched. */
+  startedAt: string;
+  /** Lazily enriched at list time — not persisted. */
+  tokensUsed?: number;
+  costUsd?: number;
+  modelUsed?: string;
+}
+
 /** Fields the create/update forms send for a skill (a subset of Skill). */
 export interface SkillInput {
   name: string;

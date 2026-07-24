@@ -38,13 +38,14 @@
   /* Outlined buttons/segmented/idle-badge share the one border color used by
      inputs, cards and the sidebar so every outline reads at the same weight. */
   --btn-outline: var(--border);
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  /* Match VS Code's UI / editor fonts so the cockpit blends with the editor. */
+  --font: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif);
+  --mono: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace);
   /* Follow VS Code's UI font size so text matches the editor; 13px fallback. */
   --font-size: var(--vscode-font-size, 13px);
   /* Global UI scale. <1 shrinks the whole cockpit uniformly (fonts, padding,
      gaps) for more content density. Change here to re-scale everything. */
-  --ui-zoom: 0.85;
+  --ui-zoom: 0.95;
 }
 
 * {
@@ -2162,6 +2163,23 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 .dtools { display: flex; gap: 4px; flex-wrap: wrap; }
 .dtool { font-family: var(--mono); font-size: 0.8462rem; background: var(--badge-bg); color: var(--badge-fg); border-radius: 3px; padding: 0 6px; line-height: 17px; }
 .dmodel { font-family: var(--mono); color: var(--muted); }
+
+/* run history modal */
+.hist-summary { display: flex; gap: 8px; margin-bottom: 12px; }
+.hist-stat {
+  flex: 1; display: flex; flex-direction: column; gap: 2px;
+  padding: 9px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel);
+}
+.hist-stat-val { font-family: var(--mono); font-size: 1.15rem; font-weight: 600; line-height: 1.2; }
+.hist-stat-lbl { font-size: 0.8462rem; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.dtable th.hist-num, .dtable td.hist-num { text-align: right; font-family: var(--mono); }
+.hist-model {
+  display: inline-block; max-width: 100%; font-family: var(--mono); font-size: 0.8462rem;
+  background: var(--badge-bg); color: var(--badge-fg); border-radius: 3px; padding: 1px 7px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;
+}
+.hist-empty { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 28px 12px; color: var(--muted); text-align: center; }
+.hist-empty p { margin: 0; }
 
 /* status dot + label */
 .dstatus { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }

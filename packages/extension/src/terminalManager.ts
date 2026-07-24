@@ -12,11 +12,12 @@ const ADHOC_KEY = '#adhoc';
 /** Terminal run kinds: flow step, ad-hoc skill, or ad-hoc agent. */
 type TermKind = 'flow' | 'skill' | 'agent';
 
-/** One fixed icon + tab color per kind so the terminal's kind is obvious at a glance. */
-const KIND_STYLE: Record<TermKind, { icon: string; color: string }> = {
-  flow: { icon: 'git-branch', color: 'terminal.ansiBlue' },
-  skill: { icon: 'beaker', color: 'terminal.ansiGreen' },
-  agent: { icon: 'hubot', color: 'terminal.ansiMagenta' },
+/** One fixed tab color per kind so the terminal's kind is obvious at a glance.
+ *  The icon is left at VS Code's default; only the color varies. */
+const KIND_COLOR: Record<TermKind, string> = {
+  flow: 'terminal.ansiBlue',
+  skill: 'terminal.ansiGreen',
+  agent: 'terminal.ansiMagenta',
 };
 
 /** Per-terminal state: one live interactive `claude` session and its lifecycle bookkeeping. */
@@ -211,6 +212,26 @@ export class TerminalManager {
     }
   }
 
+  /**
+   * Reopen a past ad-hoc run's conversation in a fresh terminal via `claude --resume <sessionId>`.
+   * Runs in the same `projectPath` the session was launched from (resume is scoped to that project).
+   * Gets its own `#adhoc-resume-<fingerprint>` terminal so it never collides with a live run.
+   */
+  public async resumeSession(sessionId: string, projectPath: string, label?: string, kind: TermKind = 'agent'): Promise<void> {
+    const key = `${ADHOC_KEY}-resume-${shortRunId(`${sessionId}-${++this._adhocSeq}`)}`;
+    const terminal = this._getTerminal(key, projectPath, undefined, undefined, label, kind);
+    terminal.show();
+    const state = this._terms.get(key)!;
+    const args = ['claude', '--resume', sessionId];
+    const shellIntegration = await this._waitForShellIntegration(terminal);
+    const cur = this._terms.get(key);
+    if (!cur || cur.terminal !== terminal) return; // disposed during the await
+    cur.running = true;
+    const cmd = this._shellQuoteArgs(args);
+    if (shellIntegration) cur.execution = shellIntegration.executeCommand(cmd);
+    else terminal.sendText(cmd, true);
+  }
+
   private _constructClaudeArgs(agent?: Agent, sessionId?: string): string[] {
     const args = ['claude'];
     // Pin the session id so we can read exactly this run's .jsonl for metrics/output,
@@ -319,11 +340,9 @@ export class TerminalManager {
     const name = stepId
       ? `Claude ${stepId}·#${seq}`
       : `${label ? `Claude · ${label}` : 'AI StepFlow Claude'} · #${seq}`;
-    // Fixed icon + color per kind so flow/skill/agent are obvious at a glance.
-    const style = KIND_STYLE[kind];
-    const color = new vscode.ThemeColor(style.color);
-    const iconPath = new vscode.ThemeIcon(style.icon);
-    const terminal = vscode.window.createTerminal({ name, cwd: projectPath || undefined, color, iconPath });
+    // Fixed color per kind so flow/skill/agent are obvious at a glance; icon stays the default.
+    const color = new vscode.ThemeColor(KIND_COLOR[kind]);
+    const terminal = vscode.window.createTerminal({ name, cwd: projectPath || undefined, color });
     this._terms.set(key, { terminal, running: false, runId, stepId });
     return terminal;
   }
