@@ -1,4 +1,4 @@
-// ai-stepflow built-in — default review validator.
+// claudesteps built-in — default review validator.
 // Passes when every file the step declares in `produces` exists, is non-empty, and meets
 // a minimum size threshold (guards against skeleton files that only contain whitespace/headings).
 import { existsSync, statSync, readFileSync } from 'node:fs';

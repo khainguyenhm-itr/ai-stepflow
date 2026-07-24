@@ -12,8 +12,8 @@ import {
   resolveStepRunner,
   renderVerifyReportMarkdown, verifyRun,
   resolveTemplates, resolveMaxTurns
-} from '@ai-stepflow/core';
-import * as machine from '@ai-stepflow/core';
+} from '@claudesteps/core';
+import * as machine from '@claudesteps/core';
 
 const COMMANDS = ['run', 'verify', 'report', 'approve', 'reject', 'mark-done', 'lint'] as const;
 type Command = typeof COMMANDS[number];
@@ -31,7 +31,7 @@ interface CliOptions {
 function parseArgs(argv: string[]): { command: Command; options: CliOptions } {
   const [commandRaw, ...rest] = argv;
   if (!COMMANDS.includes(commandRaw as Command)) {
-    throw new Error('Usage: ai-stepflow <run|verify|report|approve|reject|mark-done|lint> --project <path> [--flow <id-or-path>] [--run <file>] [--step <id>] [--out <file>] [--comment <text>] [--input key=value]');
+    throw new Error('Usage: claudesteps <run|verify|report|approve|reject|mark-done|lint> --project <path> [--flow <id-or-path>] [--run <file>] [--step <id>] [--out <file>] [--comment <text>] [--input key=value]');
   }
   const options: CliOptions = { project: process.cwd(), input: {} };
   for (let i = 0; i < rest.length; i++) {
@@ -64,7 +64,7 @@ function slugify(value: string): string {
 }
 
 async function saveRun(projectPath: string, run: FlowRunState): Promise<string> {
-  const runsDir = path.join(projectPath, '.ai-stepflow', 'runs');
+  const runsDir = path.join(projectPath, '.claudesteps', 'runs');
   await fs.mkdir(runsDir, { recursive: true });
   const filePath = path.join(runsDir, `${runFileBase(run)}.json`);
   await fs.writeFile(filePath, JSON.stringify(run, null, 2), 'utf8');
@@ -79,7 +79,7 @@ function runFileBase(run: FlowRunState): string {
 }
 
 async function saveReport(projectPath: string, run: FlowRunState, content: string, out?: string): Promise<string> {
-  const filePath = out ?? path.join(projectPath, '.ai-stepflow', 'reports', `${runFileBase(run)}.md`);
+  const filePath = out ?? path.join(projectPath, '.claudesteps', 'reports', `${runFileBase(run)}.md`);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, content, 'utf8');
   return filePath;
@@ -87,7 +87,7 @@ async function saveReport(projectPath: string, run: FlowRunState, content: strin
 
 async function readActiveReviewKitPref(projectPath: string): Promise<string> {
   try {
-    const raw = await fs.readFile(path.join(projectPath, '.ai-stepflow', 'ui-prefs.json'), 'utf8');
+    const raw = await fs.readFile(path.join(projectPath, '.claudesteps', 'ui-prefs.json'), 'utf8');
     const prefs = JSON.parse(raw) as Record<string, string>;
     return prefs['review:activeKit'] || '';
   } catch {

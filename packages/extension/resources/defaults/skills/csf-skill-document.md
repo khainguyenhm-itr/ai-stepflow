@@ -1,9 +1,9 @@
 ---
-name: aisf-skill-document
+name: csf-skill-document
 description: Write or update user- and developer-facing documentation (README, usage guides, API docs, changelog).
 tags: [docs]
 ---
-<!-- ai-stepflow built-in -->
+<!-- claudesteps built-in -->
 
 Document the feature or change accurately and only from what the code and inputs actually support.
 

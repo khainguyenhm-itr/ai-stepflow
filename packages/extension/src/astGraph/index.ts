@@ -19,10 +19,10 @@ import { createSourceWatcher, ensureLocalExcludeEntry, runScan, type ScanSummary
 import { reconcileMcpServer } from './mcpRegister.js';
 import { ensureClaudeMdHint } from './claudeMdHint.js';
 
-const SETTING_NAMESPACE = 'ai-stepflow.astGraph';
-const RESCAN_CMD = 'ai-stepflow.astGraph.rescan';
-const REREGISTER_CMD = 'ai-stepflow.astGraph.reregisterMcp';
-const INSTALL_CMD = 'ai-stepflow.astGraph.install';
+const SETTING_NAMESPACE = 'claudesteps.astGraph';
+const RESCAN_CMD = 'claudesteps.astGraph.rescan';
+const REREGISTER_CMD = 'claudesteps.astGraph.reregisterMcp';
+const INSTALL_CMD = 'claudesteps.astGraph.install';
 /** globalState flag: once the user installs AST graph, subsequent activations auto-resume. */
 const INSTALLED_KEY = 'astGraph.installed';
 
@@ -37,7 +37,7 @@ interface FolderState {
 export function registerAstGraph(context: vscode.ExtensionContext, output: vscode.OutputChannel, onMcpReady?: () => void): void {
   const cfg = () => vscode.workspace.getConfiguration(SETTING_NAMESPACE);
   if (!cfg().get<boolean>('enabled', true)) {
-    output.appendLine('AST graph: disabled via ai-stepflow.astGraph.enabled.');
+    output.appendLine('AST graph: disabled via claudesteps.astGraph.enabled.');
     return;
   }
 
@@ -243,7 +243,7 @@ export function registerAstGraph(context: vscode.ExtensionContext, output: vscod
       output.appendLine(`AST graph: binary ready (v${res.version}) at ${res.path}`);
     } catch (err) {
       if (err instanceof UnsupportedPlatformError) {
-        output.appendLine(`AST graph: ${err.message} Set ai-stepflow.astGraph.binaryPath to a locally-installed ast-graph executable to use it anyway.`);
+        output.appendLine(`AST graph: ${err.message} Set claudesteps.astGraph.binaryPath to a locally-installed ast-graph executable to use it anyway.`);
       } else {
         output.appendLine(`AST graph: binary install failed — ${err instanceof Error ? err.message : String(err)}`);
         void vscode.window.showWarningMessage(`AST graph: failed to install the bundled CLI. ${err instanceof Error ? err.message : String(err)}`);
@@ -263,7 +263,7 @@ export function registerAstGraph(context: vscode.ExtensionContext, output: vscod
     updateStatusBar();
     await bootstrap();
     // Repaint the cockpit + sidebar so the "Install" button flips to "Installed" once the MCP is up.
-    await vscode.commands.executeCommand('ai-stepflow.refreshAll');
+    await vscode.commands.executeCommand('claudesteps.refreshAll');
   }
 
   // Resume automatically only once the user has installed. Otherwise wait for the Install button.

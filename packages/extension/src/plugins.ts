@@ -40,7 +40,7 @@ const nameFromId = (id: unknown): string => String(id ?? '').split('@')[0];
  * stdout is a Node pipe. Sending stdout to a file preserves the full JSON.
  */
 async function runClaudeJsonViaFile(args: string[], timeout: number): Promise<any> {
-  const dir = await fs.mkdtemp(join(tmpdir(), 'ai-stepflow-claude-'));
+  const dir = await fs.mkdtemp(join(tmpdir(), 'claudesteps-claude-'));
   const outPath = join(dir, 'stdout.json');
   const out = await fs.open(outPath, 'w');
 
@@ -126,7 +126,7 @@ function listInstalledOnly(): Promise<PluginInfo[]> {
   return new Promise(resolve => {
     execFile('claude', ['plugin', 'list', '--json'], { timeout: 15000 }, (error, stdout) => {
       if (error && !stdout) {
-        console.warn('AI StepFlow: unable to list plugins', error);
+        console.warn('ClaudeSteps: unable to list plugins', error);
         resolve([]);
         return;
       }
@@ -134,7 +134,7 @@ function listInstalledOnly(): Promise<PluginInfo[]> {
         const data = JSON.parse(stdout);
         resolve((Array.isArray(data) ? data : data.installed || []).map(toPluginInfo));
       } catch (e) {
-        console.warn('AI StepFlow: failed to parse plugin list', e);
+        console.warn('ClaudeSteps: failed to parse plugin list', e);
         resolve([]);
       }
     });
@@ -147,7 +147,7 @@ function runPluginAction(args: string[], timeout: number): Promise<{ ok: boolean
     execFile('claude', args, { timeout }, (error, stdout, stderr) => {
       if (error) {
         const detail = (stderr || stdout || error.message || '').trim();
-        console.error(`AI StepFlow: \`claude ${args.join(' ')}\` failed`, detail);
+        console.error(`ClaudeSteps: \`claude ${args.join(' ')}\` failed`, detail);
         resolve({ ok: false, error: detail });
         return;
       }

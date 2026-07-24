@@ -1,9 +1,9 @@
 ---
-name: aisf-skill-test-cases
+name: csf-skill-test-cases
 description: Generate detailed, executable test cases from a PRD or Test Plan.
 tags: [testing, qa]
 ---
-<!-- ai-stepflow built-in -->
+<!-- claudesteps built-in -->
 
 Generate test cases for the feature. Use this format per case:
 

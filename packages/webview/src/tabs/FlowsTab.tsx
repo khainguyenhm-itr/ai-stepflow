@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Flow, FlowRunState, Agent, Skill } from '@ai-stepflow/core/types';
+import { Flow, FlowRunState, Agent, Skill } from '@claudesteps/core/types';
 import { Icon, Sparkline } from '../components/primitives';
 import { EmptyState } from '../components/ResourceCard';
 import { ScopeFilter, SaveScope, ViewFilter, SortOrder, UnifiedFilterPanel } from '../components/ScopeControls';

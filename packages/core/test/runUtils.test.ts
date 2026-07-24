@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeReadySteps, seedStartedSteps, extractJsonObject, parseVerdict, summarizeUsage, missingMarkers } from '@ai-stepflow/core';
+import { computeReadySteps, seedStartedSteps, extractJsonObject, parseVerdict, summarizeUsage, missingMarkers } from '@claudesteps/core';
 
 test('computeReadySteps unlocks a dependent once all its deps are done', () => {
   const steps = [

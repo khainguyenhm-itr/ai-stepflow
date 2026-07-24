@@ -65,10 +65,10 @@ function buildSidebarHtml() {
       type: 'data',
       stats: { flows: 2, agents: 3, skills: 6 },
       defaultItems: [
-        { name: 'aisf-agent-developer', kind: 'agents', description: 'Senior software engineer agent', installed: true,  inUse: true,  filename: 'aisf-agent-developer.md' },
-        { name: 'aisf-agent-qa',        kind: 'agents', description: 'QA engineer agent',              installed: false, inUse: false, filename: 'aisf-agent-qa.md' },
-        { name: 'aisf-skill-implement', kind: 'skills', description: 'Implement features or fixes',    installed: true,  inUse: false, filename: 'aisf-skill-implement.md' },
-        { name: 'aisf-skill-review',    kind: 'skills', description: 'Review code changes',            installed: false, inUse: false, filename: 'aisf-skill-review.md' }
+        { name: 'csf-agent-developer', kind: 'agents', description: 'Senior software engineer agent', installed: true,  inUse: true,  filename: 'csf-agent-developer.md' },
+        { name: 'csf-agent-qa',        kind: 'agents', description: 'QA engineer agent',              installed: false, inUse: false, filename: 'csf-agent-qa.md' },
+        { name: 'csf-skill-implement', kind: 'skills', description: 'Implement features or fixes',    installed: true,  inUse: false, filename: 'csf-skill-implement.md' },
+        { name: 'csf-skill-review',    kind: 'skills', description: 'Review code changes',            installed: false, inUse: false, filename: 'csf-skill-review.md' }
       ],
       mcp: [
         { name: 'ast-graph', status: 'connected',  type: 'local', transport: 'stdio' },
@@ -94,9 +94,9 @@ function buildSidebarHtml() {
         { flowId: 'preview-docs-flow', flowName: 'Preview Docs Flow', runId: '2026-07-13T18:00:00.000Z', runName: 'Release 1.0',          completed: 5, inProgress: 0, reviewing: false, total: 5, filePath: '/preview/run-done.json',      isClosed: false, isActive: false }
       ],
       totalRunFiles: 3,
-      uiPrefs: { 'review:activeKit': 'aisf-review-default.md' },
+      uiPrefs: { 'review:activeKit': 'csf-review-default.md' },
       reviewKits: [
-        { name: 'AISF Review Default', file: 'aisf-review-default.md', scope: 'global' },
+        { name: 'CSF Review Default', file: 'csf-review-default.md', scope: 'global' },
         { name: 'Strict Security Review', file: 'strict-security.md', scope: 'project' }
       ]
     }}));
@@ -115,7 +115,7 @@ function buildFrameHtml() {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>AI StepFlow — Preview</title>
+  <title>ClaudeSteps — Preview</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100vh; overflow: hidden; background: #1e1e1e; }
@@ -225,7 +225,7 @@ function listen(port, remainingAttempts = 10) {
   server.once('listening', () => {
     const address = server.address();
     const activePort = typeof address === 'object' && address ? address.port : port;
-    console.log(`AI StepFlow preview: http://${host}:${activePort}`);
+    console.log(`ClaudeSteps preview: http://${host}:${activePort}`);
     console.log(`  sidebar only:      http://${host}:${activePort}/sidebar`);
     console.log(`  webview only:      http://${host}:${activePort}/app/`);
   });

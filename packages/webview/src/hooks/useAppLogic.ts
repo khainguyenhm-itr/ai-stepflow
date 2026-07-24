@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Flow, FlowRunState, StepRunState, Agent, Skill, ReviewKit, AdhocRun } from '@ai-stepflow/core/types';
+import { Flow, FlowRunState, StepRunState, Agent, Skill, ReviewKit, AdhocRun } from '@claudesteps/core/types';
 import { isVSCodeWebview, sendToVSCode } from '../vscode';
 import {
   getStepSkills,

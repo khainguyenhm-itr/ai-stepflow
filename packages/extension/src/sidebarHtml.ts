@@ -268,7 +268,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
   <!-- header: brand + version + refresh -->
   <div class="hdr">
     <span class="mark">AI</span>
-    <span class="brand-name">AI StepFlow</span>
+    <span class="brand-name">ClaudeSteps</span>
     <span id="refresh-status" aria-live="polite"></span>
     ${version ? `<span class="ver">v${version}</span>` : ''}
     <button class="icon-btn" id="refresh" title="Refresh" aria-label="Refresh">↻</button>
@@ -395,7 +395,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
 
   </div><!-- /.body -->
 </div><!-- /.shell -->
-<footer>AI StepFlow</footer>
+<footer>ClaudeSteps</footer>
 
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
@@ -427,7 +427,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     }
   }
 
-  // ── Per-repo sidebar state persistence (via .ai-stepflow/ui-prefs.json) ──
+  // ── Per-repo sidebar state persistence (via .claudesteps/ui-prefs.json) ──
   function saveSidebarState() {
     vscode.postMessage({ type: 'savePref', key: 'sidebar:state', value: JSON.stringify({
       sectionOpen,
@@ -632,7 +632,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
   }
 
   function fmtDefaultName(name) {
-    return name.replace(/^aisf-(?:agent|skill|review|validator)?-?/, '').replace(/-/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());
+    return name.replace(/^csf-(?:agent|skill|review|validator)?-?/, '').replace(/-/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());
   }
 
   function renderDefaultsPanel() {
@@ -1123,7 +1123,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
         if (m.status) { gitnexusStatus = m.status; updateGitnexusRow(); }
       }
     } catch (err) {
-      console.error('AI StepFlow sidebar render failed', err);
+      console.error('ClaudeSteps sidebar render failed', err);
       renderPanelError('mcp', 'Connections');
       renderPanelError('plugins', 'Plugins');
     }

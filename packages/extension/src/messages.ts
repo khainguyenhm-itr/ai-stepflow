@@ -1,4 +1,4 @@
-import { Agent, AgentInput, AdhocRun, Flow, FlowRunState, Skill, SkillInput, ReviewKit, ReviewKitInput, isFlowShape, isFlowRunStateShape, isAgentInputShape, isSkillInputShape } from '@ai-stepflow/core';
+import { Agent, AgentInput, AdhocRun, Flow, FlowRunState, Skill, SkillInput, ReviewKit, ReviewKitInput, isFlowShape, isFlowRunStateShape, isAgentInputShape, isSkillInputShape } from '@claudesteps/core';
 
 export interface HumanReview {
   decision: 'approved' | 'rejected';
@@ -113,11 +113,11 @@ export type WebviewMessage =
 
 /** VS Code command ids the Overview quick-settings panel is allowed to trigger. Whitelisted to keep the webview from invoking arbitrary commands. */
 export const RUNNABLE_COMMANDS = [
-  'ai-stepflow.installDefaults',
-  'ai-stepflow.refreshAll',
-  'ai-stepflow.astGraph.install',
-  'ai-stepflow.astGraph.rescan',
-  'ai-stepflow.astGraph.reregisterMcp',
+  'claudesteps.installDefaults',
+  'claudesteps.refreshAll',
+  'claudesteps.astGraph.install',
+  'claudesteps.astGraph.rescan',
+  'claudesteps.astGraph.reregisterMcp',
   'workbench.action.openSettings'
 ] as const;
 export type RunnableCommand = (typeof RUNNABLE_COMMANDS)[number];

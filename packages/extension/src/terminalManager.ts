@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as os from 'os';
 import * as path from 'path';
 import { existsSync, rmSync } from 'fs';
-import { Agent, shortRunId } from '@ai-stepflow/core';
+import { Agent, shortRunId } from '@claudesteps/core';
 import { ConfigManager } from './configManager.js';
 
 /** Key prefix for ad-hoc agent/skill runs (no flow step). Each run gets its own
@@ -265,7 +265,7 @@ export class TerminalManager {
   private _prepareSentinel(key: string, runId: string | undefined, stepId: string): string | undefined {
     if (process.platform === 'win32') return undefined;
     const safe = `${shortRunId(runId)}-${stepId}`.replace(/[^A-Za-z0-9._-]/g, '_');
-    const sentinelPath = path.join(os.tmpdir(), `aisf-done-${safe}`);
+    const sentinelPath = path.join(os.tmpdir(), `csf-done-${safe}`);
     try { rmSync(sentinelPath, { force: true }); } catch { /* nothing to clear */ }
     const state = this._terms.get(key);
     if (state) state.sentinelPath = sentinelPath;
@@ -294,7 +294,7 @@ export class TerminalManager {
     if (!state) return;
     if (state.fallbackTimer) clearTimeout(state.fallbackTimer);
 
-    const hardCapMs = (vscode.workspace.getConfiguration('ai-stepflow').get<number>('run.timeoutSeconds', 600)) * 1000;
+    const hardCapMs = (vscode.workspace.getConfiguration('claudesteps').get<number>('run.timeoutSeconds', 600)) * 1000;
     const deadline = Date.now() + hardCapMs;
     const POLL_MS = 2_000;
     const NO_ARTIFACT_DELAY_MS = Math.min(hardCapMs, 30_000);
@@ -339,7 +339,7 @@ export class TerminalManager {
     const seq = ++this._termSeq;
     const name = stepId
       ? `Claude ${stepId}·#${seq}`
-      : `${label ? `Claude · ${label}` : 'AI StepFlow Claude'} · #${seq}`;
+      : `${label ? `Claude · ${label}` : 'ClaudeSteps Claude'} · #${seq}`;
     // Fixed color per kind so flow/skill/agent are obvious at a glance; icon stays the default.
     const color = new vscode.ThemeColor(KIND_COLOR[kind]);
     const terminal = vscode.window.createTerminal({ name, cwd: projectPath || undefined, color });

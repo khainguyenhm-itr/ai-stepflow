@@ -1,5 +1,5 @@
 import React from 'react';
-import { Flow } from '@ai-stepflow/core/types';
+import { Flow } from '@claudesteps/core/types';
 import { Modal, Field } from '../components/primitives';
 
 interface RunInputsModalProps {

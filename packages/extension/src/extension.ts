@@ -13,7 +13,7 @@ export function activate(context: vscode.ExtensionContext) {
     // Use extensionUri for better path handling in modern VSCode
     const configManager = new ConfigManager(context.extensionUri.fsPath);
     const stateManager = new StateManager(context);
-    const output = vscode.window.createOutputChannel('AI StepFlow');
+    const output = vscode.window.createOutputChannel('ClaudeSteps');
     void configManager.ensureProjectClaudeMd();
 
     // Sidebar dashboard: active run, library counts, MCP servers, generated files.
@@ -46,9 +46,9 @@ export function activate(context: vscode.ExtensionContext) {
 
     // The cockpit can also be opened from the status bar.
     const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-    statusBarItem.text = '$(rocket) AI StepFlow';
+    statusBarItem.text = '$(rocket) ClaudeSteps';
     statusBarItem.tooltip = 'Open Overview';
-    statusBarItem.command = 'ai-stepflow.openOverview';
+    statusBarItem.command = 'claudesteps.openOverview';
     statusBarItem.show();
     context.subscriptions.push(statusBarItem);
 
@@ -66,7 +66,7 @@ export function activate(context: vscode.ExtensionContext) {
     watchRoot(vscode.Uri.file(configManager.getGlobalPath()));
     const projectPath = configManager.getProjectPath();
     if (projectPath) {
-      // Ensure .ai-stepflow/ (run state, artifacts) and related dirs are excluded from git
+      // Ensure .claudesteps/ (run state, artifacts) and related dirs are excluded from git
       // locally, without touching the shared .gitignore. Best-effort — never blocks activation.
       const folder = vscode.workspace.workspaceFolders?.find(f => f.uri.fsPath === projectPath)
         ?? vscode.workspace.workspaceFolders?.[0];
@@ -77,7 +77,7 @@ export function activate(context: vscode.ExtensionContext) {
       // Run files are rewritten on every step event, so watching them keeps the
       // sidebar's active-run and generated-files sections live as a run progresses.
       const runsWatcher = vscode.workspace.createFileSystemWatcher(
-        new vscode.RelativePattern(vscode.Uri.joinPath(vscode.Uri.file(projectPath), '.ai-stepflow', 'runs'), '**')
+        new vscode.RelativePattern(vscode.Uri.joinPath(vscode.Uri.file(projectPath), '.claudesteps', 'runs'), '**')
       );
       const refreshSidebar = () => void sidebar.refresh(false);
       runsWatcher.onDidCreate(refreshSidebar);
@@ -100,7 +100,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Re-attach the cockpit after a window reload instead of showing a dead panel.
     context.subscriptions.push(
-      vscode.window.registerWebviewPanelSerializer('aiStepFlowCockpit', {
+      vscode.window.registerWebviewPanelSerializer('claudeStepsCockpit', {
         async deserializeWebviewPanel(panel: vscode.WebviewPanel) {
           CockpitPanel.revive(panel, context.extensionUri, configManager, stateManager);
         }
@@ -109,23 +109,23 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Commands
     context.subscriptions.push(
-      vscode.commands.registerCommand('ai-stepflow.openOverview', () => {
+      vscode.commands.registerCommand('claudesteps.openOverview', () => {
         CockpitPanel.createOrShow(context.extensionUri, configManager, stateManager);
       }),
-      vscode.commands.registerCommand('ai-stepflow.openRun', async (flowId: string, runId: string) => {
+      vscode.commands.registerCommand('claudesteps.openRun', async (flowId: string, runId: string) => {
         CockpitPanel.createOrShow(context.extensionUri, configManager, stateManager);
         await CockpitPanel.currentPanel?.openRun(flowId, runId);
       }),
-      vscode.commands.registerCommand('ai-stepflow.openTab', (tab: string) => {
+      vscode.commands.registerCommand('claudesteps.openTab', (tab: string) => {
         CockpitPanel.createOrShow(context.extensionUri, configManager, stateManager);
         CockpitPanel.currentPanel?.postMessage({ type: 'navigateToTab', tab: tab as 'flows' | 'agents' | 'skills' });
       }),
-      vscode.commands.registerCommand('ai-stepflow.refreshAll', refreshAll),
+      vscode.commands.registerCommand('claudesteps.refreshAll', refreshAll),
       // Re-probe MCP + repaint the sidebar (used after the Overview panel connects GitNexus, so the
       // sidebar's GitNexus row — gated on the connection — appears without a manual reload).
-      vscode.commands.registerCommand('ai-stepflow.refreshSidebarMcp', () => void sidebar.refresh(true)),
+      vscode.commands.registerCommand('claudesteps.refreshSidebarMcp', () => void sidebar.refresh(true)),
       output,
-      vscode.commands.registerCommand('ai-stepflow.installDefaults', async () => {
+      vscode.commands.registerCommand('claudesteps.installDefaults', async () => {
         const items: (vscode.QuickPickItem & { scope: 'global' | 'project' })[] = [
           { label: '$(globe) Global', description: 'Install to ~/.claude (available across all projects)', scope: 'global' },
         ];
@@ -144,7 +144,7 @@ export function activate(context: vscode.ExtensionContext) {
         await configManager.installDefaultLibrary(isGlobal);
 
         vscode.window.showInformationMessage(
-          `AI StepFlow: default agents & skills installed to ${isGlobal ? 'global (~/.claude)' : 'current repo (.claude)'}.`
+          `ClaudeSteps: default agents & skills installed to ${isGlobal ? 'global (~/.claude)' : 'current repo (.claude)'}.`
         );
         refreshAll();
       }),
@@ -157,8 +157,8 @@ export function activate(context: vscode.ExtensionContext) {
     // Refresh sidebar after MCP registration so the "failed" → "connected" transition is visible.
     registerAstGraph(context, output, () => void sidebar.refresh(true));
   } catch (err) {
-    console.error('AI StepFlow: activation failed', err);
-    vscode.window.showErrorMessage(`AI StepFlow: activation failed. ${err instanceof Error ? err.message : String(err)}`);
+    console.error('ClaudeSteps: activation failed', err);
+    vscode.window.showErrorMessage(`ClaudeSteps: activation failed. ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 

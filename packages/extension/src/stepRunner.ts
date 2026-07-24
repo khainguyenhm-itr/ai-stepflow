@@ -10,13 +10,13 @@ import { randomUUID } from 'crypto';
 import type { ConfigManager } from './configManager.js';
 import type { TerminalManager } from './terminalManager.js';
 import type { HostMessage } from './messages.js';
-import type { FlowRunState, Flow, FlowStep, Agent, Skill } from '@ai-stepflow/core';
+import type { FlowRunState, Flow, FlowStep, Agent, Skill } from '@claudesteps/core';
 import {
   resolveTemplate, resolveTemplates, resolveFlowRelativePath, runOutputSlug,
   composeInteractiveMessage,
   ClaudeStreamingRunOptions, ClaudeStreamingRunResult,
-} from '@ai-stepflow/core';
-import * as machine from '@ai-stepflow/core';
+} from '@claudesteps/core';
+import * as machine from '@claudesteps/core';
 
 // ---------------------------------------------------------------------------
 // Shared context passed from RunOrchestrator into each runner function.

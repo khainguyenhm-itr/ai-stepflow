@@ -20,9 +20,9 @@ import { resolveTemplates, runOutputSlug, legacyRunOutputSlug } from './pathTemp
 import { locateProducedFile } from './artifactLocator.js';
 
 /** Layer-1 validator applied to AI reviews that don't name their own `validatorPath`. */
-export const DEFAULT_REVIEW_VALIDATOR = 'aisf-produces-complete.mjs';
+export const DEFAULT_REVIEW_VALIDATOR = 'csf-produces-complete.mjs';
 /** Layer-2 LLM review prompt (adapts to the produced artifact's type). */
-export const DEFAULT_REVIEW_KIT = 'aisf-review-default.md';
+export const DEFAULT_REVIEW_KIT = 'csf-review-default.md';
 /**
  * Default reviewer model. A verdict is only as good as the model that reads the artifact, so the
  * review defaults to Opus — it catches subtle correctness/completeness gaps a small model misses.

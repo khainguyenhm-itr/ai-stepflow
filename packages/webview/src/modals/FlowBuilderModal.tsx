@@ -1,5 +1,5 @@
 import React from 'react';
-import { Flow, FlowStep, Agent, Skill } from '@ai-stepflow/core/types';
+import { Flow, FlowStep, Agent, Skill } from '@claudesteps/core/types';
 import { Modal, Field, CheckRow, Icon } from '../components/primitives';
 import { SaveScope, SaveScopeSelect } from '../components/ScopeControls';
 import { getStepSkills } from '../flowUtils';

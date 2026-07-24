@@ -1,9 +1,9 @@
 ---
-name: aisf-skill-design
+name: csf-skill-design
 description: Draft a Technical Design Document. Focuses on architecture, data models, API specs, and tradeoffs.
 tags: [engineering, design]
 ---
-<!-- ai-stepflow built-in -->
+<!-- claudesteps built-in -->
 
 Write a Technical Design Document (TDD) for the feature described in the input.
 

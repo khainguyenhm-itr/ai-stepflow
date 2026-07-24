@@ -1,4 +1,4 @@
-// ai-stepflow built-in — default review validator.
+// claudesteps built-in — default review validator.
 // Rejects when any produced `.json` or `.jsonc` file does not parse as valid JSON.
 import { existsSync, readFileSync } from 'node:fs';
 

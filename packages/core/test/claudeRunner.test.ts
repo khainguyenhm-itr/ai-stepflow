@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { runClaudeStreaming, TIMEOUT_EXIT_CODE } from '@ai-stepflow/core';
+import { runClaudeStreaming, TIMEOUT_EXIT_CODE } from '@claudesteps/core';
 
 /**
  * A stand-in for a spawned `claude` process: emits stdout/stderr/close like the real

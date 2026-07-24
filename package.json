@@ -1,5 +1,5 @@
 {
-  "name": "ai-stepflow-monorepo",
+  "name": "claudesteps-monorepo",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -13,7 +13,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/khainguyenhm-itr/ai-stepflow"
+    "url": "https://github.com/khainguyenhm-itr/claudesteps"
   },
   "scripts": {
     "clean": "rm -rf packages/*/out packages/*/out-itest packages/*/out-test packages/*/tsconfig.tsbuildinfo",
@@ -21,7 +21,7 @@
     "compile-all": "npm run compile && npm run build-webview",
     "package": "npm run package:vsix",
     "build": "npm run clean && npm run compile-all && node scripts/package-vsix.mjs",
-    "publish:marketplace": "npm run package:vsix && vsce publish --packagePath ai-stepflow.vsix",
+    "publish:marketplace": "npm run package:vsix && vsce publish --packagePath claudesteps.vsix",
     "watch": "npm run watch --workspaces & node scripts/bundle-extension.mjs --watch",
     "build-webview": "node scripts/build-webview.mjs",
     "preview": "npm run build-webview && node scripts/serve-webview.mjs",

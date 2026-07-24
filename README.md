@@ -1,9 +1,9 @@
-# AI StepFlow
+# ClaudeSteps
 
 **Run your Claude agents, skills, and multi-step workflows from inside VS Code** —
 build a flow, run each step through the Claude CLI, and gate it on files or review.
 
-![AI StepFlow cockpit — building, running, streaming, and reviewing a two-step flow](images/cockpit-demo.gif)
+![ClaudeSteps cockpit — building, running, streaming, and reviewing a two-step flow](images/cockpit-demo.gif)
 
 ## The idea
 
@@ -27,8 +27,8 @@ markdown files in `~/.claude` (global) or `.claude` (per project).
 ## Getting started
 
 1. Install the Claude CLI: `npm install -g @anthropic-ai/claude-code`
-2. Open the **AI StepFlow** icon in the activity bar (or run **AI StepFlow: Open Cockpit**).
-3. Run **AI StepFlow: Install Default Agents & Skills**, then press **+ New Flow** → **Run**.
+2. Open the **ClaudeSteps** icon in the activity bar (or run **ClaudeSteps: Open Cockpit**).
+3. Run **ClaudeSteps: Install Default Agents & Skills**, then press **+ New Flow** → **Run**.
 
 ## How a step runs
 
@@ -47,14 +47,14 @@ gate passes.
 
 ## CLI
 
-The packaged extension exposes an `ai-stepflow` command for headless runs:
+The packaged extension exposes an `claudesteps` command for headless runs:
 
 ```sh
-ai-stepflow run       --project . --flow .claude/flows/example.yaml --input feature=login
-ai-stepflow verify    --project . --flow .claude/flows/example.yaml --run .claude-flow/runs/example-run.json
-ai-stepflow report    --project . --flow .claude/flows/example.yaml --run .claude-flow/runs/example-run.json
-ai-stepflow approve   --project . --flow .claude/flows/example.yaml --run .claude-flow/runs/example-run.json --step review
-ai-stepflow mark-done --project . --flow .claude/flows/example.yaml --run .claude-flow/runs/example-run.json --step implement
+claudesteps run       --project . --flow .claude/flows/example.yaml --input feature=login
+claudesteps verify    --project . --flow .claude/flows/example.yaml --run .claude-flow/runs/example-run.json
+claudesteps report    --project . --flow .claude/flows/example.yaml --run .claude-flow/runs/example-run.json
+claudesteps approve   --project . --flow .claude/flows/example.yaml --run .claude-flow/runs/example-run.json --step review
+claudesteps mark-done --project . --flow .claude/flows/example.yaml --run .claude-flow/runs/example-run.json --step implement
 ```
 
 `run` exits `3` at a human gate it cannot complete headlessly. `verify` re-checks
@@ -73,15 +73,15 @@ claude mcp add gitnexus -- gitnexus mcp
 
 ## Commands
 
-All commands live under the **AI StepFlow** category in the Command Palette.
+All commands live under the **ClaudeSteps** category in the Command Palette.
 
 | Command | Description |
 | --- | --- |
-| `AI StepFlow: Open Cockpit` | Open the cockpit |
-| `AI StepFlow: Refresh All` | Reload agents, skills, and flows from disk |
-| `AI StepFlow: Install Default Agents & Skills` | Install the bundled SDLC agents, skills, and rules into `~/.claude` |
-| `AI StepFlow: Rescan AST Graph` | Re-index the workspace with `ast-graph` |
-| `AI StepFlow: Re-register AST Graph MCP Server` | Re-register the `ast-graph` MCP server |
+| `ClaudeSteps: Open Cockpit` | Open the cockpit |
+| `ClaudeSteps: Refresh All` | Reload agents, skills, and flows from disk |
+| `ClaudeSteps: Install Default Agents & Skills` | Install the bundled SDLC agents, skills, and rules into `~/.claude` |
+| `ClaudeSteps: Rescan AST Graph` | Re-index the workspace with `ast-graph` |
+| `ClaudeSteps: Re-register AST Graph MCP Server` | Re-register the `ast-graph` MCP server |
 
 ## License
 

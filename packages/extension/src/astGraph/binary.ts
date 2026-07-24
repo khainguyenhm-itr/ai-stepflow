@@ -170,7 +170,7 @@ function downloadFile(url: string, dst: string, hops = 0): Promise<void> {
       return;
     }
     const tmp = `${dst}.${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.part`;
-    https.get(url, { headers: { 'User-Agent': 'ai-stepflow-vscode' } }, (res) => {
+    https.get(url, { headers: { 'User-Agent': 'claudesteps-vscode' } }, (res) => {
       if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         const next = new URL(res.headers.location, url).toString();
         downloadFile(next, dst, hops + 1).then(resolve, reject);
@@ -208,7 +208,7 @@ function downloadFile(url: string, dst: string, hops = 0): Promise<void> {
 
 async function fetchExpectedSha(url: string): Promise<string> {
   return new Promise((resolve) => {
-    https.get(url, { headers: { 'User-Agent': 'ai-stepflow-vscode' } }, (res) => {
+    https.get(url, { headers: { 'User-Agent': 'claudesteps-vscode' } }, (res) => {
       if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         fetchExpectedSha(new URL(res.headers.location, url).toString()).then(resolve);
         return;

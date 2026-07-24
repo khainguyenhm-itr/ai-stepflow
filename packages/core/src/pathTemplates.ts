@@ -58,7 +58,7 @@ export function legacyRunOutputSlug(runName?: string, runId?: string): string {
 
 /** Join the flow (+ optional run) output folder onto a plain filename. */
 function outputBase(workspaceRoot: string, flowName: string, runSlug: string): string {
-  const base = path.join(workspaceRoot, '.ai-stepflow', 'output', sanitizeFlowName(flowName));
+  const base = path.join(workspaceRoot, '.claudesteps', 'output', sanitizeFlowName(flowName));
   return runSlug ? path.join(base, runSlug) : base;
 }
 
@@ -66,7 +66,7 @@ function outputBase(workspaceRoot: string, flowName: string, runSlug: string): s
  * Resolve a produces/requires path entry to an absolute filesystem path.
  *
  * Convention:
- * - Plain filename (no path separator) → `.ai-stepflow/output/{flowName}/{runSlug}/{filename}`
+ * - Plain filename (no path separator) → `.claudesteps/output/{flowName}/{runSlug}/{filename}`
  * - Path with `/` or `\` → kept as-is (relative to workspaceRoot or absolute)
  *
  * `runSlug` scopes artifacts per run; omit it (legacy callers) for flow-level output.
@@ -86,7 +86,7 @@ export function flowOutputDir(flowName: string, workspaceRoot: string, runSlug =
  * Like resolveFlowPath but returns a workspace-relative path (not absolute).
  * Use this for agent prompts so paths are readable, not full-system paths.
  *
- * - Plain filename → `.ai-stepflow/output/{flowName}/{runSlug}/{filename}` (relative)
+ * - Plain filename → `.claudesteps/output/{flowName}/{runSlug}/{filename}` (relative)
  * - Path with `/` → kept as-is
  * - Absolute path → kept as-is
  */
@@ -94,5 +94,5 @@ export function resolveFlowRelativePath(p: string, flowName: string, runSlug = '
   if (path.isAbsolute(p)) return p;
   if (p.includes('/') || p.includes('\\')) return p;
   const folder = runSlug ? `${sanitizeFlowName(flowName)}/${runSlug}` : sanitizeFlowName(flowName);
-  return `.ai-stepflow/output/${folder}/${p}`;
+  return `.claudesteps/output/${folder}/${p}`;
 }

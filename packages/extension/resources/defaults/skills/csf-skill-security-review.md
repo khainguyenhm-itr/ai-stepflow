@@ -1,9 +1,9 @@
 ---
-name: aisf-skill-security-review
+name: csf-skill-security-review
 description: Threat-model a change and audit it for exploitable vulnerabilities, with prioritized remediation.
 tags: [security, review]
 ---
-<!-- ai-stepflow built-in -->
+<!-- claudesteps built-in -->
 
 Audit the change for real, exploitable security weaknesses. Depth over breadth — a confirmed Critical beats ten speculative notes.
 

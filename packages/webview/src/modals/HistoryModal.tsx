@@ -1,5 +1,5 @@
 import React from 'react';
-import { AdhocRun } from '@ai-stepflow/core/types';
+import { AdhocRun } from '@claudesteps/core/types';
 import { Modal, Icon } from '../components/primitives';
 
 export interface HistoryTarget {

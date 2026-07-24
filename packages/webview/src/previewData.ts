@@ -1,4 +1,4 @@
-import { Flow, Agent, Skill, FlowRunState } from '@ai-stepflow/core/types';
+import { Flow, Agent, Skill, FlowRunState } from '@claudesteps/core/types';
 
 /** Sample data used by the standalone browser preview (no VS Code host). */
 
@@ -76,15 +76,15 @@ export const previewRunState: FlowRunState = {
   flowName: previewFlow.name,
   source: previewFlow.sourcePath,
   projectPath: '/preview/project',
-  inputs: { topic: 'AI StepFlow overview' },
+  inputs: { topic: 'ClaudeSteps overview' },
   autoReview: false,
   steps: {
     'collect-context': {
       executionStatus: 'completed',
       reviewStatus: 'approved',
       completionStatus: 'done',
-      output: 'Collected architecture notes and API surface.\nWrote docs/generated/context.md (42 sections).\n\n[review (llm): approved — context is complete and consistent]\n[AI review report written → .ai-stepflow/reports/reviews/preview-docs-flow-collect-context.md]',
-      reviewReportPath: '.ai-stepflow/reports/reviews/preview-docs-flow-collect-context.md',
+      output: 'Collected architecture notes and API surface.\nWrote docs/generated/context.md (42 sections).\n\n[review (llm): approved — context is complete and consistent]\n[AI review report written → .claudesteps/reports/reviews/preview-docs-flow-collect-context.md]',
+      reviewReportPath: '.claudesteps/reports/reviews/preview-docs-flow-collect-context.md',
       startedAt: '2026-07-15T02:30:05.000Z',
       completedAt: '2026-07-15T02:31:12.000Z',
       reviewCompletedAt: '2026-07-15T02:31:40.000Z',
@@ -152,7 +152,7 @@ export const previewRunSummaries = [
 export const previewAgents: Agent[] = [
   {
     name: 'aidlc-developer',
-    description: 'Implements and checks code changes for AI StepFlow workflows.',
+    description: 'Implements and checks code changes for ClaudeSteps workflows.',
     model: 'sonnet',
     tools: ['files'],
     systemPrompt: 'You are a pragmatic implementation agent.',

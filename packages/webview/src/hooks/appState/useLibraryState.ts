@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Flow, Agent, Skill, ReviewKit } from '@ai-stepflow/core/types';
+import { Flow, Agent, Skill, ReviewKit } from '@claudesteps/core/types';
 import { isVSCodeWebview, sendToVSCode } from '../../vscode';
 import { Tab, SaveScope, ScopeFilter, ViewFilter, SortOrder } from './types';
 import { GroupBy } from '../../tagUtils';

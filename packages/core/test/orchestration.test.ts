@@ -4,7 +4,7 @@ import {
   Flow,
   initRunState, markCompleted, markRunning, applyAiReview,
   FlowOrchestrator
-} from '@ai-stepflow/core';
+} from '@claudesteps/core';
 
 // Every step is reviewed; the default is auto (AI) review.
 function step(id: string, extra: Record<string, any> = {}) {

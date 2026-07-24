@@ -17,7 +17,7 @@ import type { GitnexusStatus } from './sidebarActions.js';
  * counts, connected MCP servers, Claude plugins, and the run files this extension generated.
  */
 export class SidebarProvider implements vscode.WebviewViewProvider {
-  public static readonly viewType = 'ai-stepflow-home';
+  public static readonly viewType = 'claudesteps-home';
   private _view?: vscode.WebviewView;
   /** Last MCP probe result, reused on cheap refreshes so we don't respawn the CLI. */
   private _cachedMcp: McpServer[] = [];
@@ -55,16 +55,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           switch (message?.type) {
             case 'openRun':
               if (message.flowId && message.runId) {
-                await vscode.commands.executeCommand('ai-stepflow.openRun', message.flowId, message.runId);
+                await vscode.commands.executeCommand('claudesteps.openRun', message.flowId, message.runId);
               } else {
-                await vscode.commands.executeCommand('ai-stepflow.openOverview');
+                await vscode.commands.executeCommand('claudesteps.openOverview');
               }
               return;
             case 'openOverview':
               if (message.tab) {
-                await vscode.commands.executeCommand('ai-stepflow.openTab', message.tab);
+                await vscode.commands.executeCommand('claudesteps.openTab', message.tab);
               } else {
-                await vscode.commands.executeCommand('ai-stepflow.openOverview');
+                await vscode.commands.executeCommand('claudesteps.openOverview');
               }
               return;
             case 'refresh':
@@ -81,7 +81,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
               if (message.path) await this._actions.deleteRun(message.path);
               return;
             case 'installDefaults':
-              await vscode.commands.executeCommand('ai-stepflow.installDefaults');
+              await vscode.commands.executeCommand('claudesteps.installDefaults');
               return;
             case 'installDefaultItem':
               if (message.kind && message.filename) {
@@ -113,9 +113,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 const label = message.pluginName || message.pluginId;
                 const res = await togglePlugin(message.pluginId, message.enable);
                 if (res.ok) {
-                  vscode.window.showInformationMessage(`AI StepFlow: plugin '${label}' ${message.enable ? 'enabled' : 'disabled'}.`);
+                  vscode.window.showInformationMessage(`ClaudeSteps: plugin '${label}' ${message.enable ? 'enabled' : 'disabled'}.`);
                 } else {
-                  vscode.window.showErrorMessage(`AI StepFlow: failed to toggle plugin. ${res.error}`);
+                  vscode.window.showErrorMessage(`ClaudeSteps: failed to toggle plugin. ${res.error}`);
                 }
                 await this.refresh(true);
               }
@@ -149,15 +149,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
               if (message.mcpName) await this._actions.showMcpDetails(message.mcpName);
               return;
             case 'astScan':
-              await vscode.commands.executeCommand('ai-stepflow.astGraph.rescan');
+              await vscode.commands.executeCommand('claudesteps.astGraph.rescan');
               await this.refresh(true);
               return;
             case 'astRegister':
-              await vscode.commands.executeCommand('ai-stepflow.astGraph.reregisterMcp');
+              await vscode.commands.executeCommand('claudesteps.astGraph.reregisterMcp');
               await this.refresh(true);
               return;
             case 'openAstSettings':
-              await vscode.commands.executeCommand('workbench.action.openSettings', 'ai-stepflow.astGraph');
+              await vscode.commands.executeCommand('workbench.action.openSettings', 'claudesteps.astGraph');
               return;
             case 'gitnexusAnalyze':
               await this._actions.runGitnexusAnalyze(message.group);
@@ -181,7 +181,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             }
           }
         } catch (e) {
-          vscode.window.showErrorMessage(`AI StepFlow: ${e instanceof Error ? e.message : String(e)}`);
+          vscode.window.showErrorMessage(`ClaudeSteps: ${e instanceof Error ? e.message : String(e)}`);
         }
       });
 
@@ -194,7 +194,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       });
       void this.refresh(true);
     } catch (e) {
-      console.error('AI StepFlow: failed to resolve sidebar view', e);
+      console.error('ClaudeSteps: failed to resolve sidebar view', e);
     }
   }
 
@@ -302,18 +302,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           this._cachedMcp = mcp;
           this._view?.webview.postMessage({ type: 'mcp', mcp });
         }).catch(err => {
-          console.error('AI StepFlow: MCP probe failed', err);
+          console.error('ClaudeSteps: MCP probe failed', err);
         });
         void listPluginCatalog().then(({ installed, available }) => {
           this._cachedPlugins = installed;
           this._cachedAvailable = available;
           this._view?.webview.postMessage({ type: 'plugins', plugins: installed, pluginsAvailable: available });
         }).catch(err => {
-          console.error('AI StepFlow: plugin probe failed', err);
+          console.error('ClaudeSteps: plugin probe failed', err);
         });
       }
     } catch (e) {
-      console.error('AI StepFlow: sidebar refresh failed', e);
+      console.error('ClaudeSteps: sidebar refresh failed', e);
       if (this._view) {
         this._view.webview.postMessage({
           type: 'data',

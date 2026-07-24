@@ -1,9 +1,9 @@
 ---
-name: aisf-skill-refactor
+name: csf-skill-refactor
 description: Restructure existing code to improve quality without changing behavior.
 tags: [engineering, refactoring]
 ---
-<!-- ai-stepflow built-in -->
+<!-- claudesteps built-in -->
 
 Refactor the specified code to improve readability, maintainability, or performance — **one goal per run**. Do not mix multiple refactoring objectives.
 

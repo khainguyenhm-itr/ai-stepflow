@@ -1,5 +1,5 @@
 import React from 'react';
-import { ReviewKitInput } from '@ai-stepflow/core';
+import { ReviewKitInput } from '@claudesteps/core';
 import { Modal, Field } from '../components/primitives';
 import { SaveScope, SaveScopeSelect } from '../components/ScopeControls';
 
@@ -40,7 +40,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
         <SaveScopeSelect value={form.scope} onChange={scope => onChange({ scope })} />
       </Field>
       <Field label="Name">
-        <input className="input" placeholder="aisf-review-default" value={form.name} onChange={e => onChange({ name: e.target.value })} />
+        <input className="input" placeholder="csf-review-default" value={form.name} onChange={e => onChange({ name: e.target.value })} />
       </Field>
       <Field label="Description">
         <input className="input" placeholder="Reviews produced artifacts for correctness" value={form.description} onChange={e => onChange({ description: e.target.value })} />

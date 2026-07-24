@@ -53,9 +53,9 @@ export class SidebarActions {
     }, async () => {
       const res = action === 'install' ? await installPlugin(pluginId) : action === 'update' ? await updatePlugin(pluginId) : await uninstallPlugin(pluginId);
       if (res.ok) {
-        vscode.window.showInformationMessage(`AI StepFlow: plugin '${label}' ${action === 'install' ? 'installed' : action === 'update' ? 'updated' : 'uninstalled'}.`);
+        vscode.window.showInformationMessage(`ClaudeSteps: plugin '${label}' ${action === 'install' ? 'installed' : action === 'update' ? 'updated' : 'uninstalled'}.`);
       } else {
-        vscode.window.showErrorMessage(`AI StepFlow: failed to ${action} plugin. ${res.error}`);
+        vscode.window.showErrorMessage(`ClaudeSteps: failed to ${action} plugin. ${res.error}`);
       }
       await this.refresh(true);
     });
@@ -65,7 +65,7 @@ export class SidebarActions {
     const label = pluginName || pluginId;
     const res = await pluginDetails(pluginId);
     if (!res.ok) {
-      vscode.window.showErrorMessage(`AI StepFlow: unable to load details for '${label}'. ${res.error}`);
+      vscode.window.showErrorMessage(`ClaudeSteps: unable to load details for '${label}'. ${res.error}`);
       return;
     }
     const doc = await vscode.workspace.openTextDocument({
@@ -78,7 +78,7 @@ export class SidebarActions {
   async showMcpDetails(name: string): Promise<void> {
     const server = this.getCachedMcp().find(s => s.name === name);
     if (!server) {
-      vscode.window.showWarningMessage(`AI StepFlow: MCP server '${name}' is no longer in the current list.`);
+      vscode.window.showWarningMessage(`ClaudeSteps: MCP server '${name}' is no longer in the current list.`);
       return;
     }
     const cwd = this.configManager.getProjectPath();
@@ -111,9 +111,9 @@ export class SidebarActions {
     }, async () => {
       const res = await reconnectRemoteMcpServer({ name, target, scope: 'user', cwd: this.configManager.getProjectPath() });
       if (res.ok) {
-        vscode.window.showInformationMessage(`AI StepFlow: MCP server '${name}' reconnected.`);
+        vscode.window.showInformationMessage(`ClaudeSteps: MCP server '${name}' reconnected.`);
       } else {
-        vscode.window.showErrorMessage(`AI StepFlow: failed to reconnect MCP server. ${res.error}`);
+        vscode.window.showErrorMessage(`ClaudeSteps: failed to reconnect MCP server. ${res.error}`);
       }
       await this.refresh(true);
     });
@@ -221,7 +221,7 @@ export class SidebarActions {
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
       await vscode.window.showTextDocument(doc, { preview: true });
     } catch {
-      vscode.window.showWarningMessage(`AI StepFlow: GitNexus ${missingHint}`);
+      vscode.window.showWarningMessage(`ClaudeSteps: GitNexus ${missingHint}`);
     }
   }
 
@@ -265,7 +265,7 @@ export class SidebarActions {
         }
       );
     } catch (e) {
-      vscode.window.showErrorMessage(`AI StepFlow: GitNexus command failed. ${e instanceof Error ? e.message : String(e)}`);
+      vscode.window.showErrorMessage(`ClaudeSteps: GitNexus command failed. ${e instanceof Error ? e.message : String(e)}`);
     }
     await this.refresh(false);
   }
@@ -404,7 +404,7 @@ export class SidebarActions {
       } catch { /* best-effort: continue to delete the run file */ }
       await vscode.workspace.fs.delete(vscode.Uri.file(filePath));
     } catch (e) {
-      vscode.window.showErrorMessage(`AI StepFlow: unable to delete run. ${e instanceof Error ? e.message : String(e)}`);
+      vscode.window.showErrorMessage(`ClaudeSteps: unable to delete run. ${e instanceof Error ? e.message : String(e)}`);
     }
     await this.refresh(false);
   }

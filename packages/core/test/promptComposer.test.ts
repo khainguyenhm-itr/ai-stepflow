@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { composeSystemPrompt, composeSystemPromptParts } from '@ai-stepflow/core';
-import type { Agent, Skill } from '@ai-stepflow/core';
+import { composeSystemPrompt, composeSystemPromptParts } from '@claudesteps/core';
+import type { Agent, Skill } from '@claudesteps/core';
 
 const agent: Agent = {
   name: 'dev', description: '', model: 'sonnet', systemPrompt: 'You are a dev.', sourcePath: '/x/dev.md'

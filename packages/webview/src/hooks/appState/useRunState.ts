@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Flow, FlowRunState, Agent, Skill } from '@ai-stepflow/core/types';
+import { Flow, FlowRunState, Agent, Skill } from '@claudesteps/core/types';
 
 export const useRunState = () => {
   const [activeFlow, setActiveFlow] = useState<Flow | null>(null);

@@ -1,9 +1,9 @@
 ---
-name: aisf-skill-review
+name: csf-skill-review
 description: Perform a technical review of code or designs. Focuses on quality, security, and standards.
 tags: [engineering, review]
 ---
-<!-- ai-stepflow built-in -->
+<!-- claudesteps built-in -->
 
 Review the provided code or design across the dimensions below. For each finding, assign a severity and provide a specific, actionable suggestion.
 

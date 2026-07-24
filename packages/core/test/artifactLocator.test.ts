@@ -3,15 +3,15 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync, utimesSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { locateProducedFile } from '@ai-stepflow/core';
+import { locateProducedFile } from '@claudesteps/core';
 
 // Per-run output base for flow 'F' (slug 'f'), run slug 'r'.
 function outDir(root: string): string {
-  return path.join(root, '.ai-stepflow', 'output', 'f', 'r');
+  return path.join(root, '.claudesteps', 'output', 'f', 'r');
 }
 
 test('locateProducedFile returns the exact resolved path when it exists', () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-locate-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'csf-locate-'));
   try {
     const exact = path.join(outDir(dir), 'srs.md');
     mkdirSync(path.dirname(exact), { recursive: true });
@@ -21,7 +21,7 @@ test('locateProducedFile returns the exact resolved path when it exists', () => 
 });
 
 test('locateProducedFile finds a plain-named artifact the agent nested in a subfolder', () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-locate-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'csf-locate-'));
   try {
     const nested = path.join(outDir(dir), 'artifact', 'srs.md');
     mkdirSync(path.dirname(nested), { recursive: true });
@@ -32,7 +32,7 @@ test('locateProducedFile finds a plain-named artifact the agent nested in a subf
 });
 
 test('locateProducedFile returns the newest match when several nested copies exist', () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-locate-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'csf-locate-'));
   try {
     const older = path.join(outDir(dir), 'a', 'srs.md');
     const newer = path.join(outDir(dir), 'b', 'srs.md');
@@ -47,7 +47,7 @@ test('locateProducedFile returns the newest match when several nested copies exi
 });
 
 test('locateProducedFile returns the exact path (unchanged) when no match is found', () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-locate-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'csf-locate-'));
   try {
     const exact = path.join(outDir(dir), 'nope.md');
     assert.equal(locateProducedFile('nope.md', 'F', dir, 'r'), exact);
@@ -55,7 +55,7 @@ test('locateProducedFile returns the exact path (unchanged) when no match is fou
 });
 
 test('locateProducedFile never fuzzy-matches an explicit (slash) path', () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-locate-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'csf-locate-'));
   try {
     // A same-named file exists under the run dir, but the declared path is explicit → literal.
     const nested = path.join(outDir(dir), 'artifact', 'srs.md');

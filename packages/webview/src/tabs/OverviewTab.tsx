@@ -1,15 +1,15 @@
 import React from 'react';
-import { Flow, Agent, Skill } from '@ai-stepflow/core/types';
+import { Flow, Agent, Skill } from '@claudesteps/core/types';
 import { Icon, Sparkline } from '../components/primitives';
 import { Tab, ScopeFilter } from '../hooks/appState/types';
 
 /** VS Code command ids the quick-settings panel triggers; must stay in sync with RUNNABLE_COMMANDS in extension/messages.ts. */
 export type RunnableCommand =
-  | 'ai-stepflow.installDefaults'
-  | 'ai-stepflow.refreshAll'
-  | 'ai-stepflow.astGraph.install'
-  | 'ai-stepflow.astGraph.rescan'
-  | 'ai-stepflow.astGraph.reregisterMcp'
+  | 'claudesteps.installDefaults'
+  | 'claudesteps.refreshAll'
+  | 'claudesteps.astGraph.install'
+  | 'claudesteps.astGraph.rescan'
+  | 'claudesteps.astGraph.reregisterMcp'
   | 'workbench.action.openSettings';
 
 interface RunSummary {
@@ -247,7 +247,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               >{s.label}</button>
             ))}
           </div>
-          <button className="btn" onClick={() => onRunCommand('ai-stepflow.refreshAll')} title="Reload library and runs">
+          <button className="btn" onClick={() => onRunCommand('claudesteps.refreshAll')} title="Reload library and runs">
             <span className="btn-glyph"><Icon.RotateCw size={14} /></span>Refresh
           </button>
         </div>
@@ -414,7 +414,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               <button className="btn" onClick={() => onRevealPath(globalPath)} disabled={!globalPath} title="Open ~/.claude in file explorer">
                 <span className="btn-glyph"><Icon.FolderOpen size={14} /></span>Open folder
               </button>
-              <button className="btn" onClick={() => onRunCommand('ai-stepflow.installDefaults')}>
+              <button className="btn" onClick={() => onRunCommand('claudesteps.installDefaults')}>
                 <span className="btn-glyph"><Icon.Sparkles size={14} /></span>{defaultLibraryInstalled ? 'Repair' : 'Install'}
               </button>
             </div>
@@ -434,15 +434,15 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             </div>
             <div className="btn-group">
               {!astConnected ? (
-                <button className="btn primary" onClick={() => onRunCommand('ai-stepflow.astGraph.install')} title="Install AST graph (download CLI + index workspace)">
+                <button className="btn primary" onClick={() => onRunCommand('claudesteps.astGraph.install')} title="Install AST graph (download CLI + index workspace)">
                   <span className="btn-glyph"><Icon.Download size={14} /></span>Install
                 </button>
               ) : (
-                <button className="btn" onClick={() => onRunCommand('ai-stepflow.astGraph.rescan')} title="Rescan AST graph">
+                <button className="btn" onClick={() => onRunCommand('claudesteps.astGraph.rescan')} title="Rescan AST graph">
                   <span className="btn-glyph"><Icon.RotateCw size={14} /></span>Rescan
                 </button>
               )}
-              <button className="btn" onClick={() => onRunCommand('workbench.action.openSettings')} title="Open AI StepFlow settings">
+              <button className="btn" onClick={() => onRunCommand('workbench.action.openSettings')} title="Open ClaudeSteps settings">
                 <span className="btn-glyph"><Icon.Settings size={14} /></span>Settings
               </button>
             </div>

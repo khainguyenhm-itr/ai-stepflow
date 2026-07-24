@@ -44,7 +44,7 @@ async function build() {
       cliContext.watch(),
       uninstallContext.watch(),
     ]);
-    console.log('Watching @ai-stepflow/extension...');
+    console.log('Watching @claudesteps/extension...');
   } else {
     await Promise.all([
       extensionContext.rebuild(),

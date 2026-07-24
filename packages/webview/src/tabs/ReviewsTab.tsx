@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ReviewKit } from '@ai-stepflow/core/types';
+import { ReviewKit } from '@claudesteps/core/types';
 import { Icon } from '../components/primitives';
 import { EmptyState } from '../components/ResourceCard';
 import { ScopeFilter, SaveScope, ViewFilter, SortOrder, UnifiedFilterPanel } from '../components/ScopeControls';

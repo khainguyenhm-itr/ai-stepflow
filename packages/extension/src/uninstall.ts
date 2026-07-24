@@ -10,11 +10,11 @@ import * as os from 'os';
 import * as path from 'path';
 import { promises as fs } from 'fs';
 
-const MARKER = 'ai-stepflow built-in';
-const CLAUDE_MD_START = '<!-- ai-stepflow:karpathy:start -->';
-const CLAUDE_MD_END = '<!-- ai-stepflow:karpathy:end -->';
+const MARKER = 'claudesteps built-in';
+const CLAUDE_MD_START = '<!-- claudesteps:karpathy:start -->';
+const CLAUDE_MD_END = '<!-- claudesteps:karpathy:end -->';
 const globalRoot = path.join(os.homedir(), '.claude');
-const trackDir = path.join(globalRoot, '.ai-stepflow');
+const trackDir = path.join(globalRoot, '.claudesteps');
 
 /** The default subfolders we install into, with the extensions we own in each. */
 const KINDS: { dir: string; exts: string[] }[] = [

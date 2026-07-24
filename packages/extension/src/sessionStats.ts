@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { StepMetrics } from '@ai-stepflow/core';
+import { StepMetrics } from '@claudesteps/core';
 
 /** Cost per million tokens by model prefix. Falls back to Sonnet 4.x rates. */
 const PRICING: Record<string, { input: number; output: number; cacheRead: number }> = {

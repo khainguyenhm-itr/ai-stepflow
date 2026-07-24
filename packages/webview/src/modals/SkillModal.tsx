@@ -1,5 +1,5 @@
 import React from 'react';
-import { SkillInput } from '@ai-stepflow/core';
+import { SkillInput } from '@claudesteps/core';
 import { Modal, Field, Icon } from '../components/primitives';
 import { SaveScope, SaveScopeSelect } from '../components/ScopeControls';
 import { parseTagsInput } from '../tagUtils';

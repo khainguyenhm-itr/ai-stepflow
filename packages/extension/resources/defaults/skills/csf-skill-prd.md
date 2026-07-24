@@ -1,9 +1,9 @@
 ---
-name: aisf-skill-prd
+name: csf-skill-prd
 description: Draft or refine a Product Requirements Document (PRD). Focuses on problem/goal, user flows, and testable ACs.
 tags: [planning, docs]
 ---
-<!-- ai-stepflow built-in -->
+<!-- claudesteps built-in -->
 
 Write a PRD scoped strictly to what the input describes — do not invent features, personas, or analytics not mentioned in the source.
 

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the AI StepFlow extension are documented here. The format
+All notable changes to the ClaudeSteps extension are documented here. The format
 is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
@@ -28,7 +28,7 @@ is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `RunOrchestrator`, and host→webview messages are now a typed contract.
 
 ### Added
-- `ai-stepflow.astGraph.binaryPath` setting to point at a locally-installed
+- `claudesteps.astGraph.binaryPath` setting to point at a locally-installed
   `ast-graph` on platforms with no prebuilt binary (skips download + checksum).
 - A spawn failure for `claude` now names the cause (e.g. "claude CLI not found on
   PATH") instead of surfacing as a bare non-zero exit.
@@ -40,7 +40,7 @@ is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   gates, including run-input placeholders such as `{feature}`.
 - The runner can verify saved runs for artifact drift and export markdown reports
   under `.claude-flow/reports`.
-- A packaged `ai-stepflow` CLI can run flows headlessly and operate saved runs
+- A packaged `claudesteps` CLI can run flows headlessly and operate saved runs
   with `verify`, `report`, `approve`, `reject`, and `mark-done`.
 
 ### Fixed

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { promises as fs } from 'fs';
-import { FlowRunState, AdhocRun, shortRunId } from '@ai-stepflow/core';
+import { FlowRunState, AdhocRun, shortRunId } from '@claudesteps/core';
 import { readInteractiveSessionStats } from './sessionStats.js';
 
 /** Lightweight per-run summary with aggregated metrics, listed for the run picker and Overview stats. */
@@ -144,7 +144,7 @@ export class StateManager {
   public async saveRun(run: FlowRunState): Promise<void> {
     if (!this.projectPath) return;
 
-    const runsDir = path.join(this.projectPath, '.ai-stepflow', 'runs');
+    const runsDir = path.join(this.projectPath, '.claudesteps', 'runs');
     await fs.mkdir(runsDir, { recursive: true });
 
     const filePath = path.join(runsDir, `${this.runFileBase(run)}.json`);
@@ -160,7 +160,7 @@ export class StateManager {
   /** Save a generated markdown report inside the repo so it can be shared or committed. */
   public async saveReport(run: FlowRunState, content: string): Promise<string | undefined> {
     if (!this.projectPath) return undefined;
-    const reportsDir = path.join(this.projectPath, '.ai-stepflow', 'reports');
+    const reportsDir = path.join(this.projectPath, '.claudesteps', 'reports');
     await fs.mkdir(reportsDir, { recursive: true });
     const filePath = path.join(reportsDir, `${this.runFileBase(run)}.md`);
     await fs.writeFile(filePath, content, 'utf8');
@@ -170,7 +170,7 @@ export class StateManager {
   /** Save a per-step AI review report inside the repo. Returns the absolute path written. */
   public async saveReviewReport(run: FlowRunState, stepId: string, content: string): Promise<string | undefined> {
     if (!this.projectPath) return undefined;
-    const dir = path.join(this.projectPath, '.ai-stepflow', 'reports', 'reviews');
+    const dir = path.join(this.projectPath, '.claudesteps', 'reports', 'reviews');
     await fs.mkdir(dir, { recursive: true });
     const filePath = path.join(dir, `${this.runFileBase(run)}-${this.slugify(stepId)}.md`);
     await fs.writeFile(filePath, content, 'utf8');
@@ -180,7 +180,7 @@ export class StateManager {
   /** Delete the persisted run JSON. Reconstructs the slug filename from the run itself. */
   public async deleteRunFile(run: FlowRunState): Promise<void> {
     if (!this.projectPath) return;
-    const dir = path.join(this.projectPath, '.ai-stepflow', 'runs');
+    const dir = path.join(this.projectPath, '.claudesteps', 'runs');
     for (const base of [this.runFileBase(run), this.legacyRunFileBase(run)]) {
       if (!base) continue;
       try { await fs.unlink(path.join(dir, `${base}.json`)); } catch { /* ignore if not found */ }
@@ -190,7 +190,7 @@ export class StateManager {
   /** Delete the generated markdown report. Reconstructs the slug filename from the run itself. */
   public async deleteReportFile(run: FlowRunState): Promise<void> {
     if (!this.projectPath) return;
-    const dir = path.join(this.projectPath, '.ai-stepflow', 'reports');
+    const dir = path.join(this.projectPath, '.claudesteps', 'reports');
     for (const base of [this.runFileBase(run), this.legacyRunFileBase(run)]) {
       if (!base) continue;
       try { await fs.unlink(path.join(dir, `${base}.md`)); } catch { /* ignore if not found */ }
@@ -204,7 +204,7 @@ export class StateManager {
    */
   public async deleteReviewReports(run: FlowRunState, stepIds: string[]): Promise<void> {
     if (!this.projectPath) return;
-    const dir = path.join(this.projectPath, '.ai-stepflow', 'reports', 'reviews');
+    const dir = path.join(this.projectPath, '.claudesteps', 'reports', 'reviews');
     const bases = [this.runFileBase(run), this.legacyRunFileBase(run)].filter(Boolean);
     await Promise.all(stepIds.flatMap(stepId => bases.map(async base => {
       const filePath = path.join(dir, `${base}-${this.slugify(stepId)}.md`);
@@ -289,7 +289,7 @@ export class StateManager {
   public async loadLatestRun(): Promise<FlowRunState | undefined> {
     if (!this.projectPath) return undefined;
 
-    const runsDir = path.join(this.projectPath, '.ai-stepflow', 'runs');
+    const runsDir = path.join(this.projectPath, '.claudesteps', 'runs');
     let files: string[];
     try {
       files = (await fs.readdir(runsDir)).filter(f => f.endsWith('.json'));
@@ -331,10 +331,10 @@ export class StateManager {
    */
   public async listRunFiles(): Promise<RunSummary[]> {
     if (!this.projectPath) return [];
-    return this.readRunsFromDir(path.join(this.projectPath, '.ai-stepflow', 'runs'));
+    return this.readRunsFromDir(path.join(this.projectPath, '.claudesteps', 'runs'));
   }
 
-  /** Read every run file under one `.ai-stepflow/runs` dir into summaries with aggregated metrics. Missing/unreadable dir → []. */
+  /** Read every run file under one `.claudesteps/runs` dir into summaries with aggregated metrics. Missing/unreadable dir → []. */
   private async readRunsFromDir(runsDir: string): Promise<RunSummary[]> {
     let files: string[];
     try {
@@ -402,7 +402,7 @@ export class StateManager {
   }
 
   /**
-   * Sum run metrics across many workspace roots (each `<root>/.ai-stepflow/runs`), deduped,
+   * Sum run metrics across many workspace roots (each `<root>/.claudesteps/runs`), deduped,
    * plus a daily trend for the last {@link trendDays} days. Used for the Overview "All" scope.
    */
   public async computeRunStats(workspaceRoots: string[], trendDays = 90): Promise<{ totals: RunTotals; trend: DayPoint[] }> {
@@ -419,7 +419,7 @@ export class StateManager {
 
     const roots = [...new Set(workspaceRoots.filter(Boolean))];
     for (const root of roots) {
-      const runs = await this.readRunsFromDir(path.join(root, '.ai-stepflow', 'runs'));
+      const runs = await this.readRunsFromDir(path.join(root, '.claudesteps', 'runs'));
       for (const r of runs) {
         const completed = r.totalSteps > 0 && r.completedSteps >= r.totalSteps;
         const inProgress = !completed && !r.isClosed;
@@ -449,7 +449,7 @@ export class StateManager {
   public async loadRuns(): Promise<FlowRunState[]> {
     if (!this.projectPath) return [];
 
-    const runsDir = path.join(this.projectPath, '.ai-stepflow', 'runs');
+    const runsDir = path.join(this.projectPath, '.claudesteps', 'runs');
     let files: string[];
     try {
       files = (await fs.readdir(runsDir)).filter(f => f.endsWith('.json'));

@@ -1,9 +1,9 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 
-const EXTENSION_ID = 'khainguyen.ai-stepflow';
+const EXTENSION_ID = 'khainguyen.claudesteps';
 
-describe('AI StepFlow integration (real VS Code host)', () => {
+describe('ClaudeSteps integration (real VS Code host)', () => {
   it('is present, activates, and registers its contributed commands', async () => {
     const ext = vscode.extensions.getExtension(EXTENSION_ID);
     assert.ok(ext, `extension "${EXTENSION_ID}" should be discovered by the host`);
@@ -13,19 +13,19 @@ describe('AI StepFlow integration (real VS Code host)', () => {
 
     const commands = await vscode.commands.getCommands(true);
     for (const id of [
-      'ai-stepflow.openOverview',
-      'ai-stepflow.refreshAll',
-      'ai-stepflow.installDefaults',
-      'ai-stepflow.astGraph.rescan',
-      'ai-stepflow.astGraph.reregisterMcp'
+      'claudesteps.openOverview',
+      'claudesteps.refreshAll',
+      'claudesteps.installDefaults',
+      'claudesteps.astGraph.rescan',
+      'claudesteps.astGraph.reregisterMcp'
     ]) {
       assert.ok(commands.includes(id), `command "${id}" should be registered`);
     }
   });
 
   it('opens the cockpit and refreshes without throwing', async () => {
-    await vscode.commands.executeCommand('ai-stepflow.openOverview');
-    await vscode.commands.executeCommand('ai-stepflow.refreshAll');
+    await vscode.commands.executeCommand('claudesteps.openOverview');
+    await vscode.commands.executeCommand('claudesteps.refreshAll');
   });
 
   it('can create a mock flow and trigger validation safely via E2E orchestration', async () => {
@@ -35,6 +35,6 @@ describe('AI StepFlow integration (real VS Code host)', () => {
     assert.ok(ext, 'Extension should still be active');
     
     // Simulate resolving a flow to test AST or graph connections
-    await vscode.commands.executeCommand('ai-stepflow.astGraph.rescan');
+    await vscode.commands.executeCommand('claudesteps.astGraph.rescan');
   });
 });

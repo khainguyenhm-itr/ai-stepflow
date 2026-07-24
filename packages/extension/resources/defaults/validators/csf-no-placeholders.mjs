@@ -1,4 +1,4 @@
-// ai-stepflow built-in — default review validator.
+// claudesteps built-in — default review validator.
 // Rejects when any produced file still contains leftover placeholder / unfinished-work markers.
 import { existsSync, readFileSync } from 'node:fs';
 

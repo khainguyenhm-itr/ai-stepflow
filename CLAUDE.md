@@ -1,4 +1,4 @@
-# AI StepFlow Project Guidelines
+# ClaudeSteps Project Guidelines
 
 This project follows **Karpathy's Rules** for high-standard engineering and agentic workflows. All AI agents (including the one managing this repo) must adhere to these principles.
 
@@ -22,7 +22,7 @@ This project follows **Karpathy's Rules** for high-standard engineering and agen
 
 ---
 
-*Note: When the default library is installed, the extension (`ConfigManager.ensureProjectClaudeMd` in `packages/extension/src/configManager.ts`) merges these rules into the project's `CLAUDE.md` inside `ai-stepflow:karpathy` markers, so every Claude Code run in the project — including steps launched from AI StepFlow — picks them up.*
+*Note: When the default library is installed, the extension (`ConfigManager.ensureProjectClaudeMd` in `packages/extension/src/configManager.ts`) merges these rules into the project's `CLAUDE.md` inside `claudesteps:karpathy` markers, so every Claude Code run in the project — including steps launched from ClaudeSteps — picks them up.*
 
 ## Engineering Discipline (Karpathy Rules)
 - **Think Before Coding**: State assumptions and tradeoffs explicitly before implementation.
@@ -33,7 +33,7 @@ This project follows **Karpathy's Rules** for high-standard engineering and agen
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **ai-stepflow** (2965 symbols, 5490 relationships, 256 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **claudesteps** (2965 symbols, 5490 relationships, 256 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -56,10 +56,10 @@ This project is indexed by GitNexus as **ai-stepflow** (2965 symbols, 5490 relat
 
 | Resource | Use for |
 |----------|---------|
-| `gitnexus://repo/ai-stepflow/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/ai-stepflow/clusters` | All functional areas |
-| `gitnexus://repo/ai-stepflow/processes` | All execution flows |
-| `gitnexus://repo/ai-stepflow/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/claudesteps/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/claudesteps/clusters` | All functional areas |
+| `gitnexus://repo/claudesteps/processes` | All execution flows |
+| `gitnexus://repo/claudesteps/process/{name}` | Step-by-step execution trace |
 
 ## CLI
 

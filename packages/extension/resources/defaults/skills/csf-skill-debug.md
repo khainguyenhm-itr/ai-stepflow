@@ -1,9 +1,9 @@
 ---
-name: aisf-skill-debug
+name: csf-skill-debug
 description: Diagnose a reported bug to root cause, then apply the smallest correct fix with a regression test.
 tags: [engineering, debugging]
 ---
-<!-- ai-stepflow built-in -->
+<!-- claudesteps built-in -->
 
 Find the root cause of the reported bug before changing any code. Do not patch symptoms.
 

@@ -1,9 +1,9 @@
 ---
-name: aisf-skill-test-plan
+name: csf-skill-test-plan
 description: Create a testing strategy and plan for a feature. Covers functional, integration, and regression testing.
 tags: [testing, qa]
 ---
-<!-- ai-stepflow built-in -->
+<!-- claudesteps built-in -->
 
 Draft a Test Plan based on the PRD and TDD.
 

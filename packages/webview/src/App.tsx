@@ -1,5 +1,5 @@
 import React from 'react';
-import { Flow, FlowStep, } from '@ai-stepflow/core/types';
+import { Flow, FlowStep, } from '@claudesteps/core/types';
 import './App.css';
 import { isVSCodeWebview, sendToVSCode } from './vscode';
 import { getStepSkills } from './flowUtils';

@@ -4,8 +4,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { runValidator } from '@ai-stepflow/core';
-import { FlowRunState, FlowStep } from '@ai-stepflow/core';
+import { runValidator } from '@claudesteps/core';
+import { FlowRunState, FlowStep } from '@claudesteps/core';
 
 // Tests run from the repo root (see package.json test:unit), so resolve the shipped defaults from there.
 const DEFAULTS_DIR = path.resolve(process.cwd(), 'packages/extension/resources/defaults');
@@ -20,14 +20,14 @@ async function loadValidator(name: string) {
   return mod.default as (ctx: ReturnType<typeof ctxWith>) => { decision: string; reason: string };
 }
 
-test('aisf-produces-complete passes for non-empty files and rejects missing/empty ones', async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-pc-'));
+test('csf-produces-complete passes for non-empty files and rejects missing/empty ones', async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'csf-pc-'));
   try {
     const ok = path.join(dir, 'a.md');
     const empty = path.join(dir, 'b.md');
     writeFileSync(ok, '# Real Content\n\nThis file has enough meaningful content to pass the minimum byte threshold required by the validator. It clearly contains substantial information.', 'utf8');
     writeFileSync(empty, '', 'utf8');
-    const review = await loadValidator('aisf-produces-complete.mjs');
+    const review = await loadValidator('csf-produces-complete.mjs');
     assert.equal(review(ctxWith([ok])).decision, 'pass');
     assert.equal(review(ctxWith([empty])).decision, 'reject');
     assert.equal(review(ctxWith([path.join(dir, 'missing.md')])).decision, 'reject');
@@ -37,14 +37,14 @@ test('aisf-produces-complete passes for non-empty files and rejects missing/empt
   }
 });
 
-test('aisf-no-placeholders rejects leftover TODO/placeholder markers', async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-np-'));
+test('csf-no-placeholders rejects leftover TODO/placeholder markers', async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'csf-np-'));
   try {
     const clean = path.join(dir, 'clean.md');
     const dirty = path.join(dir, 'dirty.md');
     writeFileSync(clean, 'all done here', 'utf8');
     writeFileSync(dirty, 'intro\nTODO: finish this', 'utf8');
-    const review = await loadValidator('aisf-no-placeholders.mjs');
+    const review = await loadValidator('csf-no-placeholders.mjs');
     assert.equal(review(ctxWith([clean])).decision, 'pass');
     assert.equal(review(ctxWith([dirty])).decision, 'reject');
   } finally {
@@ -52,14 +52,14 @@ test('aisf-no-placeholders rejects leftover TODO/placeholder markers', async () 
   }
 });
 
-test('aisf-json-valid rejects malformed JSON only', async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-jv-'));
+test('csf-json-valid rejects malformed JSON only', async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'csf-jv-'));
   try {
     const good = path.join(dir, 'good.json');
     const bad = path.join(dir, 'bad.json');
     writeFileSync(good, '{"ok":true}', 'utf8');
     writeFileSync(bad, '{not json', 'utf8');
-    const review = await loadValidator('aisf-json-valid.mjs');
+    const review = await loadValidator('csf-json-valid.mjs');
     assert.equal(review(ctxWith([good])).decision, 'pass');
     assert.equal(review(ctxWith([bad])).decision, 'reject');
   } finally {
@@ -68,13 +68,13 @@ test('aisf-json-valid rejects malformed JSON only', async () => {
 });
 
 test('default review kit ships and states the JSON verdict contract', () => {
-  const kit = readFileSync(path.join(DEFAULTS_DIR, 'reviews', 'aisf-review-default.md'), 'utf8');
-  assert.match(kit, /ai-stepflow built-in/);
+  const kit = readFileSync(path.join(DEFAULTS_DIR, 'reviews', 'csf-review-default.md'), 'utf8');
+  assert.match(kit, /claudesteps built-in/);
   assert.match(kit, /"decision"\s*:\s*"pass"\|"reject"/);
 });
 
 test('runValidator honors an explicit validatorPath override', async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-override-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'csf-override-'));
   try {
     mkdirSync(path.join(dir, 'v'), { recursive: true });
     writeFileSync(path.join(dir, 'v', 'pass.mjs'), "export default () => ({ decision: 'pass', reason: 'override ran' });", 'utf8');

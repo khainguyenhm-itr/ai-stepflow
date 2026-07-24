@@ -64,7 +64,7 @@ export function listMcpServers(cwd?: string): Promise<McpServer[]> {
       { timeout: 15000, cwd: cwd || undefined },
       (error, stdout) => {
         if (error && !stdout) {
-          console.warn('AI StepFlow: unable to inspect MCP servers', error);
+          console.warn('ClaudeSteps: unable to inspect MCP servers', error);
           resolve([]);
           return;
         }
@@ -110,7 +110,7 @@ export function addRemoteMcpServer(opts: {
       (error, stdout, stderr) => {
         if (error) {
           const detail = (stderr || stdout || error.message || '').trim();
-          console.error('AI StepFlow: failed to add remote MCP server', detail);
+          console.error('ClaudeSteps: failed to add remote MCP server', detail);
           resolve({ ok: false, error: detail });
           return;
         }
@@ -139,7 +139,7 @@ export function reconnectRemoteMcpServer(opts: {
       (removeError, removeStdout, removeStderr) => {
         if (removeError) {
           const detail = (removeStderr || removeStdout || removeError.message || '').trim();
-          console.error('AI StepFlow: failed to remove MCP server before reconnect', detail);
+          console.error('ClaudeSteps: failed to remove MCP server before reconnect', detail);
           resolve({ ok: false, error: detail });
           return;
         }
@@ -179,7 +179,7 @@ export function addMcpServer(opts: {
       { timeout: 30000, cwd: opts.cwd || undefined },
       (error, _stdout, stderr) => {
         if (error) {
-          console.error('AI StepFlow: failed to add MCP server', error, stderr);
+          console.error('ClaudeSteps: failed to add MCP server', error, stderr);
           resolve({ ok: false, error: stderr || error.message });
           return;
         }
@@ -206,7 +206,7 @@ export function connectGitnexusMcp(): Promise<{ ok: boolean; error?: string }> {
       r = await run(ADD);
     }
     if (r.error) {
-      console.error('AI StepFlow: failed to connect GitNexus MCP', r.error, r.stderr);
+      console.error('ClaudeSteps: failed to connect GitNexus MCP', r.error, r.stderr);
       return { ok: false, error: r.stderr || r.error.message };
     }
     return { ok: true };

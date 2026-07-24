@@ -1,9 +1,9 @@
 ---
-name: aisf-skill-implement
+name: csf-skill-implement
 description: Implement features or fixes. Writes production-quality code and unit tests.
 tags: [engineering, coding]
 ---
-<!-- ai-stepflow built-in -->
+<!-- claudesteps built-in -->
 
 Implement the feature per the PRD and TDD.
 

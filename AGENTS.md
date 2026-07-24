@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **ai-stepflow** (2965 symbols, 5490 relationships, 256 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **claudesteps** (2965 symbols, 5490 relationships, 256 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -24,10 +24,10 @@ This project is indexed by GitNexus as **ai-stepflow** (2965 symbols, 5490 relat
 
 | Resource | Use for |
 |----------|---------|
-| `gitnexus://repo/ai-stepflow/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/ai-stepflow/clusters` | All functional areas |
-| `gitnexus://repo/ai-stepflow/processes` | All execution flows |
-| `gitnexus://repo/ai-stepflow/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/claudesteps/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/claudesteps/clusters` | All functional areas |
+| `gitnexus://repo/claudesteps/processes` | All execution flows |
+| `gitnexus://repo/claudesteps/process/{name}` | Step-by-step execution trace |
 
 ## CLI
 

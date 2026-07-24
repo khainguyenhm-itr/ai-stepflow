@@ -3,8 +3,8 @@
  * ACTUALLY landed on disk.
  *
  * A step declares a plain filename (e.g. `srs.md`), which resolves under the per-run output dir
- * `.ai-stepflow/output/{flow}/{run}/srs.md`. But an agent often nests its output one level deeper
- * (e.g. `.ai-stepflow/output/{flow}/{run}/artifact/srs.md`). The file is there, just at a different
+ * `.claudesteps/output/{flow}/{run}/srs.md`. But an agent often nests its output one level deeper
+ * (e.g. `.claudesteps/output/{flow}/{run}/artifact/srs.md`). The file is there, just at a different
  * depth than declared — which would break the produces gate, freshness check, and AI review.
  *
  * {@link locateProducedFile} closes that gap: it prefers the exact declared path, and only when

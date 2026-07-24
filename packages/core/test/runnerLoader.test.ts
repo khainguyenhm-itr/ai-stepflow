@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { loadStepRunner, resolveStepRunner, defaultStepRunner } from '@ai-stepflow/core';
+import { loadStepRunner, resolveStepRunner, defaultStepRunner } from '@claudesteps/core';
 
 const opts = { systemPrompt: 'sys', userMessage: 'hi', projectPath: '/tmp', onText: () => {} };
 
@@ -13,7 +13,7 @@ test('resolveStepRunner returns the built-in runner when no path is configured',
 });
 
 test('loadStepRunner loads a module, streams text and normalizes its result', async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'ai-stepflow-runner-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'claudesteps-runner-'));
   try {
     writeFileSync(
       path.join(dir, 'runner.mjs'),
@@ -34,7 +34,7 @@ test('loadStepRunner loads a module, streams text and normalizes its result', as
 });
 
 test('loadStepRunner throws when the module has no default function', async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'ai-stepflow-runner-bad-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'claudesteps-runner-bad-'));
   try {
     writeFileSync(path.join(dir, 'bad.mjs'), 'export const nope = true;', 'utf8');
     await assert.rejects(loadStepRunner('bad.mjs', dir), /default-export a function/);
@@ -44,7 +44,7 @@ test('loadStepRunner throws when the module has no default function', async () =
 });
 
 test('loadStepRunner rejects a malformed runner result at call time', async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'ai-stepflow-runner-malformed-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'claudesteps-runner-malformed-'));
   try {
     writeFileSync(path.join(dir, 'runner.mjs'), 'export default async function () { return { nope: 1 }; }', 'utf8');
     const runner = await loadStepRunner('runner.mjs', dir);

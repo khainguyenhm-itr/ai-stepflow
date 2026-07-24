@@ -18,8 +18,8 @@ import {
   resolveMaxTurns, resolveTimeoutMs, buildHeadlessMcpConfig,
   runOutputSlug, legacyRunOutputSlug,
   StepRunState
-} from '@ai-stepflow/core';
-import * as machine from '@ai-stepflow/core';
+} from '@claudesteps/core';
+import * as machine from '@claudesteps/core';
 import {
   StepRunContext,
   runInteractiveStep,
@@ -675,7 +675,7 @@ export class RunOrchestrator {
    * Resolve a step's declared `requires`/`produces` entry (a plain filename, workspace-relative
    * path, or absolute path) to where the artifact actually lives for the CURRENT run — applying
    * input templating and the same nested-file lookup the runner uses. A plain filename resolves
-   * under `.ai-stepflow/output/{flow}/{run}/`, not the project root. Returns undefined when there
+   * under `.claudesteps/output/{flow}/{run}/`, not the project root. Returns undefined when there
    * is no active run to scope the lookup.
    */
   resolveArtifactPath(declared: string): string | undefined {
@@ -736,10 +736,10 @@ export class RunOrchestrator {
     return deleted;
   }
 
-  /** Remove a run's dedicated output folder (recursive), guarded to stay under `.ai-stepflow/output`. */
+  /** Remove a run's dedicated output folder (recursive), guarded to stay under `.claudesteps/output`. */
   private _deleteRunOutputDir(dir: string): void {
     try {
-      if (fs.existsSync(dir) && dir.includes(path.join('.ai-stepflow', 'output'))) {
+      if (fs.existsSync(dir) && dir.includes(path.join('.claudesteps', 'output'))) {
         fs.rmSync(dir, { recursive: true, force: true });
       }
     } catch { /* ignore */ }
@@ -779,11 +779,11 @@ export class RunOrchestrator {
 
   /**
    * Single channel for every user-facing run notification, so they all share one style (the
-   * `AI StepFlow:` prefix) and can be managed/muted/logged in one place. Callers pass the bare
+   * `ClaudeSteps:` prefix) and can be managed/muted/logged in one place. Callers pass the bare
    * message without the prefix.
    */
   private _notify(level: 'info' | 'warn' | 'error', message: string): void {
-    const text = `AI StepFlow: ${message}`;
+    const text = `ClaudeSteps: ${message}`;
     if (level === 'error') vscode.window.showErrorMessage(text);
     else if (level === 'warn') vscode.window.showWarningMessage(text);
     else vscode.window.showInformationMessage(text);
@@ -969,7 +969,7 @@ export class RunOrchestrator {
       const filePath = await this.stateManager.saveReviewReport(rc.runState, stepId, markdown);
       if (filePath) {
         const base = filePath.split(/[\\/]/).pop();
-        const rel = `.ai-stepflow/reports/reviews/${base}`;
+        const rel = `.claudesteps/reports/reviews/${base}`;
         this.post(this._withRun(runId, { type: 'stepUpdate', stepId, append: true, output: `\n[AI review report written → ${rel}]\n` }));
         // Expose the report path to the webview so the step's Files tab can offer to open it.
         await this._setRunState(runId, s => ({ ...s, steps: { ...s.steps, [stepId]: { ...s.steps[stepId], reviewReportPath: rel } } }));
@@ -982,25 +982,25 @@ export class RunOrchestrator {
 
   /** Configured per-run timeout in ms (0 = no limit). */
   private _runTimeoutMs(): number {
-    const seconds = vscode.workspace.getConfiguration('ai-stepflow').get<number>('run.timeoutSeconds', 600);
+    const seconds = vscode.workspace.getConfiguration('claudesteps').get<number>('run.timeoutSeconds', 600);
     return resolveTimeoutMs(seconds);
   }
 
   /** Max agentic turns for a headless run: agent-level override > global setting > default 6. */
   private _runMaxTurns(agent?: { maxTurns?: number }): number {
-    const globalDefault = vscode.workspace.getConfiguration('ai-stepflow').get<number>('run.maxTurns', 6);
+    const globalDefault = vscode.workspace.getConfiguration('claudesteps').get<number>('run.maxTurns', 6);
     return resolveMaxTurns(agent?.maxTurns, globalDefault);
   }
 
   /**
    * MCP config (a `{"mcpServers":{...}}` JSON string) for headless runs, built from the
-   * `ai-stepflow.run.headlessMcpServers` allowlist. Default is empty — headless runs and AI
+   * `claudesteps.run.headlessMcpServers` allowlist. Default is empty — headless runs and AI
    * reviews carry no MCP servers, so their system context (and token cost) stays minimal.
    * Listed names are resolved against the user's ambient MCP config so an allowlisted server
    * keeps its real definition. Interactive terminal runs are unaffected.
    */
   private _headlessMcpConfig(): string {
-    const allow = vscode.workspace.getConfiguration('ai-stepflow').get<string[]>('run.headlessMcpServers', []);
+    const allow = vscode.workspace.getConfiguration('claudesteps').get<string[]>('run.headlessMcpServers', []);
     if (!allow || allow.length === 0) return '{"mcpServers":{}}';
     return buildHeadlessMcpConfig(allow, this._readAmbientMcpServers());
   }

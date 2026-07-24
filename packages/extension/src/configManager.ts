@@ -4,19 +4,19 @@ import * as os from 'os';
 import { promises as fs } from 'fs';
 import { parse, parseDocument, Document, isMap } from 'yaml';
 import matter from 'gray-matter';
-import { Agent, Skill, Flow, parseFlow, formatFlowError, AgentInput, SkillInput, normalizeTools, ReviewKit, ReviewKitInput } from '@ai-stepflow/core';
+import { Agent, Skill, Flow, parseFlow, formatFlowError, AgentInput, SkillInput, normalizeTools, ReviewKit, ReviewKitInput } from '@claudesteps/core';
 
 export type BundledKind = 'agents' | 'skills' | 'reviews' | 'validators';
 
 export class ConfigManager {
   private readonly globalPath: string;
   /** Marker stamped on every file this extension installs, so updates never clobber user-authored files. */
-  private static readonly BUILT_IN_MARKER = 'ai-stepflow built-in';
+  private static readonly BUILT_IN_MARKER = 'claudesteps built-in';
   /** Markers wrapping the block we merge into a project's CLAUDE.md, so it can be removed cleanly on uninstall. */
-  private static readonly CLAUDE_MD_START = '<!-- ai-stepflow:karpathy:start -->';
-  private static readonly CLAUDE_MD_END = '<!-- ai-stepflow:karpathy:end -->';
-  private static readonly STYLE_MD_START = '<!-- ai-stepflow:style:start -->';
-  private static readonly STYLE_MD_END = '<!-- ai-stepflow:style:end -->';
+  private static readonly CLAUDE_MD_START = '<!-- claudesteps:karpathy:start -->';
+  private static readonly CLAUDE_MD_END = '<!-- claudesteps:karpathy:end -->';
+  private static readonly STYLE_MD_START = '<!-- claudesteps:style:start -->';
+  private static readonly STYLE_MD_END = '<!-- claudesteps:style:end -->';
 
   constructor(private readonly extensionPath?: string) {
     this.globalPath = path.join(os.homedir(), '.claude');
@@ -149,7 +149,7 @@ export class ConfigManager {
       const m = line.match(/^\/\/\s*(.+)/);
       if (!m) continue;
       const text = m[1].trim();
-      if (text.toLowerCase().startsWith('ai-stepflow')) continue;
+      if (text.toLowerCase().startsWith('claudesteps')) continue;
       return text;
     }
     return '';
@@ -280,7 +280,7 @@ export class ConfigManager {
         await fs.appendFile(claudeMdPath, `\n${block}\n`, 'utf8');
       }
     } catch (e) {
-      console.error('AI StepFlow: failed to initialize global CLAUDE.md', e);
+      console.error('ClaudeSteps: failed to initialize global CLAUDE.md', e);
     }
   }
 
@@ -297,7 +297,7 @@ export class ConfigManager {
         .replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
       await fs.writeFile(claudeMdPath, cleaned, 'utf8');
     } catch (e) {
-      console.error('AI StepFlow: failed to clean project CLAUDE.md', e);
+      console.error('ClaudeSteps: failed to clean project CLAUDE.md', e);
     }
   }
 
@@ -362,7 +362,7 @@ export class ConfigManager {
             await fs.mkdir(folderPath, { recursive: true });
             await fs.writeFile(destPath, content, 'utf8');
           } catch (e) {
-            console.error(`AI StepFlow: failed to install bundled skill ${file}`, e);
+            console.error(`ClaudeSteps: failed to install bundled skill ${file}`, e);
           }
         }
         await this.pruneRenamedSkillFolders(destDir, folderNames);
@@ -377,7 +377,7 @@ export class ConfigManager {
             const content = await fs.readFile(path.join(srcDir, file), 'utf8');
             await fs.writeFile(destPath, content, 'utf8');
           } catch (e) {
-            console.error(`AI StepFlow: failed to install bundled ${kind} ${file}`, e);
+            console.error(`ClaudeSteps: failed to install bundled ${kind} ${file}`, e);
           }
         }
         await this.pruneRenamedDefaults(destDir, new Set(files), exts);
@@ -387,7 +387,7 @@ export class ConfigManager {
 
   /** Append a `.claude` root we installed into, to the manifest the uninstall hook reads. */
   private async recordInstallRoot(root: string): Promise<void> {
-    const trackPath = path.join(this.globalPath, '.ai-stepflow', 'installed-roots.json');
+    const trackPath = path.join(this.globalPath, '.claudesteps', 'installed-roots.json');
     try {
       await fs.mkdir(path.dirname(trackPath), { recursive: true });
       let roots: string[] = [];
@@ -398,13 +398,13 @@ export class ConfigManager {
         await fs.writeFile(trackPath, JSON.stringify(roots, null, 2), 'utf8');
       }
     } catch (e) {
-      console.error('AI StepFlow: failed to record install root', e);
+      console.error('ClaudeSteps: failed to record install root', e);
     }
   }
 
   /**
    * Remove our previously-installed defaults whose filenames are no longer in the bundle
-   * (e.g. after the `aisf-` rename) so renaming a default never leaves a stale duplicate.
+   * (e.g. after the `csf-` rename) so renaming a default never leaves a stale duplicate.
    * Only files carrying {@link BUILT_IN_MARKER} are touched — user files are never removed.
    */
   private async pruneRenamedDefaults(destDir: string, currentBundle: Set<string>, exts: string[] = ['.md']): Promise<void> {
@@ -659,7 +659,7 @@ export class ConfigManager {
   // Review kits — markdown prompts read by the deep-LLM-review layer
   // ({@link loadReviewKit} in packages/core/src/review.ts). Unlike agents/skills/
   // flows, review kits live under `.claude/reviews` in BOTH scopes (never
-  // `.ai-stepflow`), so they need their own dir resolution and managed-path guard.
+  // `.claudesteps`), so they need their own dir resolution and managed-path guard.
   // ---------------------------------------------------------------------------
 
   /** Global dir first so a project copy overrides a global one with the same name. */
@@ -727,7 +727,7 @@ export class ConfigManager {
 
   /** Install the bundled default review kit to global or project scope. */
   public async installDefaultReviewKit(isGlobal: boolean = true): Promise<void> {
-    await this.installBundledItem('reviews', 'aisf-review-default.md', isGlobal);
+    await this.installBundledItem('reviews', 'csf-review-default.md', isGlobal);
   }
 
   private async parseReviewFile(filePath: string): Promise<ReviewKit | undefined> {
@@ -754,7 +754,7 @@ export class ConfigManager {
   private isManagedPath(targetPath: string): boolean {
     const normalized = path.normalize(targetPath);
     const roots = [path.join(this.globalPath, '')];
-    if (this.projectPath) roots.push(path.join(this.projectPath, '.ai-stepflow'));
+    if (this.projectPath) roots.push(path.join(this.projectPath, '.claudesteps'));
     return roots.some(root => normalized.startsWith(path.normalize(root) + path.sep));
   }
 
@@ -782,7 +782,7 @@ export class ConfigManager {
   public async loadUiPrefs(): Promise<Record<string, string>> {
     const global = await this.loadGlobalUiPrefs();
     if (!this.projectPath) return global;
-    const prefsPath = path.join(this.projectPath, '.ai-stepflow', 'ui-prefs.json');
+    const prefsPath = path.join(this.projectPath, '.claudesteps', 'ui-prefs.json');
     try {
       const project = JSON.parse(await fs.readFile(prefsPath, 'utf8'));
       return { ...global, ...project };
@@ -792,7 +792,7 @@ export class ConfigManager {
   }
 
   public async loadGlobalUiPrefs(): Promise<Record<string, string>> {
-    const prefsPath = path.join(this.globalPath, '.ai-stepflow', 'ui-prefs.json');
+    const prefsPath = path.join(this.globalPath, '.claudesteps', 'ui-prefs.json');
     try {
       return JSON.parse(await fs.readFile(prefsPath, 'utf8'));
     } catch {
@@ -802,7 +802,7 @@ export class ConfigManager {
 
   public async saveUiPref(key: string, value: string): Promise<void> {
     if (!this.projectPath) return;
-    const prefsPath = path.join(this.projectPath, '.ai-stepflow', 'ui-prefs.json');
+    const prefsPath = path.join(this.projectPath, '.claudesteps', 'ui-prefs.json');
     try {
       await fs.mkdir(path.dirname(prefsPath), { recursive: true });
       let prefs: Record<string, string> = {};
@@ -810,13 +810,13 @@ export class ConfigManager {
       prefs[key] = value;
       await fs.writeFile(prefsPath, JSON.stringify(prefs, null, 2), 'utf8');
     } catch (e) {
-      console.error('AI StepFlow: failed to save ui pref', e);
+      console.error('ClaudeSteps: failed to save ui pref', e);
     }
   }
 
   public async deleteUiPref(key: string): Promise<void> {
     if (!this.projectPath) return;
-    const prefsPath = path.join(this.projectPath, '.ai-stepflow', 'ui-prefs.json');
+    const prefsPath = path.join(this.projectPath, '.claudesteps', 'ui-prefs.json');
     try {
       const prefs: Record<string, string> = JSON.parse(await fs.readFile(prefsPath, 'utf8'));
       if (!(key in prefs)) return;
@@ -826,7 +826,7 @@ export class ConfigManager {
   }
 
   public async saveGlobalUiPref(key: string, value: string): Promise<void> {
-    const prefsPath = path.join(this.globalPath, '.ai-stepflow', 'ui-prefs.json');
+    const prefsPath = path.join(this.globalPath, '.claudesteps', 'ui-prefs.json');
     try {
       await fs.mkdir(path.dirname(prefsPath), { recursive: true });
       let prefs: Record<string, string> = {};
@@ -834,7 +834,7 @@ export class ConfigManager {
       prefs[key] = value;
       await fs.writeFile(prefsPath, JSON.stringify(prefs, null, 2), 'utf8');
     } catch (e) {
-      console.error('AI StepFlow: failed to save global ui pref', e);
+      console.error('ClaudeSteps: failed to save global ui pref', e);
     }
   }
 
@@ -890,7 +890,7 @@ export class ConfigManager {
         await fs.writeFile(claudeMdPath, content, 'utf8');
       }
     } catch (e) {
-      console.error('AI StepFlow: failed to apply response style to CLAUDE.md', e);
+      console.error('ClaudeSteps: failed to apply response style to CLAUDE.md', e);
     }
   }
 
@@ -898,7 +898,7 @@ export class ConfigManager {
   private scopedDirs(kind: 'agents' | 'skills' | 'flows'): string[] {
     const dirs = [path.join(this.globalPath, kind)];
     if (this.projectPath) {
-      dirs.push(path.join(this.projectPath, '.ai-stepflow', kind));
+      dirs.push(path.join(this.projectPath, '.claudesteps', kind));
     }
     return dirs;
   }
@@ -908,7 +908,7 @@ export class ConfigManager {
     if (!this.projectPath) {
       throw new Error('No workspace folder is open; cannot save to the current repo. Save globally instead.');
     }
-    return path.join(this.projectPath, '.ai-stepflow', kind);
+    return path.join(this.projectPath, '.claudesteps', kind);
   }
 
   private async listFiles(dir: string, predicate: (name: string) => boolean): Promise<string[]> {

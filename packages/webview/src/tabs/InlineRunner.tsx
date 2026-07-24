@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Flow, FlowRunState, StepRunState } from '@ai-stepflow/core/types';
+import { Flow, FlowRunState, StepRunState } from '@claudesteps/core/types';
 import { Icon, metaValue } from '../components/primitives';
 import { formatRunTime, getStepSkills } from '../flowUtils';
 import { sendToVSCode } from '../vscode';
