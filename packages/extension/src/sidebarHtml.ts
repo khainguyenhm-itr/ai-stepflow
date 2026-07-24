@@ -26,7 +26,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
       /* Match the cockpit (packages/webview/src/App.css): follow the VS Code UI
          font size and shrink the whole view uniformly so both read as one product. */
       --font-size: var(--vscode-font-size, 13px);
-      --ui-zoom: 0.85;
+      --ui-zoom: 0.95;
       /* Pinned "GitHub Dark" palette — identical to the webview (packages/webview/src/App.css)
          so the sidebar and the main cockpit read as one product regardless of VS Code theme. */
       --bg: #0d1117;
@@ -49,7 +49,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     html, body { height: 100%; overflow: hidden; margin: 0; padding: 0; }
     /* Anchor rem to the VS Code base so every font-size (rem = px / 13) scales with it. */
     html { font-size: var(--font-size); }
-    body { color: var(--fg); background: var(--panel); font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif); font-size: var(--font-size); line-height: 1.4; zoom: var(--ui-zoom); height: calc(100vh / var(--ui-zoom)); }
+    body { color: var(--fg); background: var(--panel); font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif); font-size: var(--font-size); line-height: 1.4; zoom: var(--ui-zoom); height: calc(100vh / var(--ui-zoom)); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
     button { font-family: inherit; cursor: pointer; }
 
     /* ── shell layout ── */
@@ -267,8 +267,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
 
   <!-- header: brand + version + refresh -->
   <div class="hdr">
-    <span class="mark">AI</span>
-    <span class="brand-name">ClaudeSteps</span>
+    <span class="brand-name">CSF</span>
     <span id="refresh-status" aria-live="polite"></span>
     ${version ? `<span class="ver">v${version}</span>` : ''}
     <button class="icon-btn" id="refresh" title="Refresh" aria-label="Refresh">↻</button>
