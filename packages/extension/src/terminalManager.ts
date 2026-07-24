@@ -9,6 +9,16 @@ import { ConfigManager } from './configManager.js';
  *  `#adhoc-<fingerprint>` terminal so repeated agent/skill runs are independent, not one session. */
 const ADHOC_KEY = '#adhoc';
 
+/** Terminal run kinds: flow step, ad-hoc skill, or ad-hoc agent. */
+type TermKind = 'flow' | 'skill' | 'agent';
+
+/** One fixed icon + tab color per kind so the terminal's kind is obvious at a glance. */
+const KIND_STYLE: Record<TermKind, { icon: string; color: string }> = {
+  flow: { icon: 'git-branch', color: 'terminal.ansiBlue' },
+  skill: { icon: 'beaker', color: 'terminal.ansiGreen' },
+  agent: { icon: 'hubot', color: 'terminal.ansiMagenta' },
+};
+
 /** Per-terminal state: one live interactive `claude` session and its lifecycle bookkeeping. */
 interface TermState {
   terminal: vscode.Terminal;
@@ -36,6 +46,8 @@ export class TerminalManager {
   private _terms = new Map<string, TermState>();
   /** Monotonic salt so two ad-hoc runs in the same millisecond get distinct runId fingerprints. */
   private _adhocSeq = 0;
+  /** Monotonic sequence (stt) shown in terminal names so concurrent terminals are distinguishable. */
+  private _termSeq = 0;
   private _disposables: vscode.Disposable[] = [];
   /** Callback when a terminal is closed while its step is running. */
   private _onDidCloseRunningStep: ((runId: string, stepId: string) => void) | undefined;
@@ -122,6 +134,8 @@ export class TerminalManager {
     // Terminal display label: the agent name for agent runs, or a caller-supplied label (e.g. the
     // skill name) for agent-less runs. Does not affect launch args, only the terminal name.
     const displayLabel = agentName ?? label;
+    // Kind drives the icon family: flow step, ad-hoc agent, or ad-hoc skill.
+    const kind: TermKind = stepId ? 'flow' : agentName ? 'agent' : 'skill';
     // Ad-hoc runs get a unique runId fingerprint (like a flow run's shortRunId), salted with a
     // monotonic seq so two clicks in the same millisecond can't collide on the same terminal.
     const key = stepId
@@ -138,7 +152,7 @@ export class TerminalManager {
       state = undefined;
     }
 
-    const terminal = this._getTerminal(key, projectPath, runId, stepId, displayLabel);
+    const terminal = this._getTerminal(key, projectPath, runId, stepId, displayLabel, kind);
     terminal.show();
     state = this._terms.get(key)!;
 
@@ -296,16 +310,20 @@ export class TerminalManager {
     state.fallbackTimer = setTimeout(poll, POLL_MS);
   }
 
-  private _getTerminal(key: string, projectPath: string, runId?: string, stepId?: string, label?: string): vscode.Terminal {
+  private _getTerminal(key: string, projectPath: string, runId?: string, stepId?: string, label?: string, kind: TermKind = 'skill'): vscode.Terminal {
     const existing = this._terms.get(key);
     if (existing && existing.terminal && !existing.terminal.exitStatus) return existing.terminal;
     // Distinct, human-readable name so concurrent runs are distinguishable in the terminal picker.
-    // Ad-hoc runs append their `#adhoc-<fingerprint>` id so repeated same-label runs don't collide.
-    const fingerprint = key.startsWith(`${ADHOC_KEY}-`) ? key.slice(ADHOC_KEY.length + 1) : '';
+    // A monotonic sequence (stt) replaces the runId so repeated runs don't collide and stay readable.
+    const seq = ++this._termSeq;
     const name = stepId
-      ? `Claude ${stepId}·${shortRunId(runId)}`
-      : `${label ? `Claude · ${label}` : 'AI StepFlow Claude'} · ${fingerprint}`;
-    const terminal = vscode.window.createTerminal({ name, cwd: projectPath || undefined });
+      ? `Claude ${stepId}·#${seq}`
+      : `${label ? `Claude · ${label}` : 'AI StepFlow Claude'} · #${seq}`;
+    // Fixed icon + color per kind so flow/skill/agent are obvious at a glance.
+    const style = KIND_STYLE[kind];
+    const color = new vscode.ThemeColor(style.color);
+    const iconPath = new vscode.ThemeIcon(style.icon);
+    const terminal = vscode.window.createTerminal({ name, cwd: projectPath || undefined, color, iconPath });
     this._terms.set(key, { terminal, running: false, runId, stepId });
     return terminal;
   }
