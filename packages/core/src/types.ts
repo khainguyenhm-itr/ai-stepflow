@@ -76,6 +76,8 @@ export interface AdhocRun {
   tokensUsed?: number;
   costUsd?: number;
   modelUsed?: string;
+  /** Wall-clock span of the session in ms, derived from its `.jsonl` timestamps. */
+  durationMs?: number;
 }
 
 /** Fields the create/update forms send for a skill (a subset of Skill). */

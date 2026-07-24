@@ -2165,6 +2165,11 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 .dmodel { font-family: var(--mono); color: var(--muted); }
 
 /* run history modal */
+.hist-toolbar { display: flex; align-items: flex-end; gap: 12px; margin-bottom: 12px; }
+.hist-toolbar .hist-summary { flex: 1; margin-bottom: 0; }
+.hist-filter { display: flex; flex-direction: column; gap: 4px; flex: none; }
+.hist-filter-lbl { font-size: 0.8462rem; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.hist-filter .select { min-width: 140px; }
 .hist-summary { display: flex; gap: 8px; margin-bottom: 12px; }
 .hist-stat {
   flex: 1; display: flex; flex-direction: column; gap: 2px;

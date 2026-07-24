@@ -111,7 +111,7 @@ export class StateManager {
     const matches = (await this.readAdhocRuns()).filter(r => r.kind === kind && r.name === name);
     return Promise.all(matches.map(async run => {
       const metrics = await readInteractiveSessionStats(run.projectPath, new Date(run.startedAt), run.sessionId);
-      return { ...run, tokensUsed: metrics.tokensUsed, costUsd: metrics.costUsd, modelUsed: metrics.modelUsed };
+      return { ...run, tokensUsed: metrics.tokensUsed, costUsd: metrics.costUsd, modelUsed: metrics.modelUsed, durationMs: metrics.durationMs };
     }));
   }
 
