@@ -39,11 +39,23 @@ It **starts** once its `dependsOn` steps are `done` and every `requires` file
 exists; it **finishes** once every `produces` file/marker exists and the review
 gate passes.
 
-> **Permissions / known limitation.** Steps run with Claude's normal interactive
-> permissions — only run flows you trust and review the diff. `trustLevel: sandboxed`
-> is **not currently enforced** on the interactive path (it is implemented in the
-> headless runner but unwired since steps moved to the terminal); treat sandboxed
-> flows as unrestricted until this is rewired.
+## Permissions and `trustLevel`
+
+A flow declares `trustLevel: trusted` (the default) or `trustLevel: sandboxed`.
+
+- **`trusted`** — steps run with Claude's normal permissions: interactive steps prompt as usual,
+  headless steps auto-accept edits. Only run flows you trust, and review the diff.
+- **`sandboxed`** — enforced on **both** paths:
+  - `Bash`, `WebFetch` and `WebSearch` are **denied**. A deny rule beats any `allow`, including
+    one in your own `.claude/settings.json`, and cannot be approved away at an interactive prompt.
+  - The permission mode drops to `default`, so nothing is auto-accepted.
+  - Only the step's declared `produces` (plus its `review.filePath`) are pre-approved for writing.
+    Any other write still needs your explicit approval interactively, and has no prompt to satisfy
+    headlessly — so it fails. A step that declares no artifacts can write nothing at all.
+
+Two limits worth knowing: an unscoped `allow: ["Write"]`/`["Edit"]` already in your settings cannot
+be revoked additively, so a blanket file-write allow stays in effect; and a custom agent
+`runnerPath` receives the sandbox paths but is free to ignore them.
 
 ## CLI
 

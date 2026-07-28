@@ -13,7 +13,7 @@ import type { HostMessage } from './messages.js';
 import type { FlowRunState, Flow, FlowStep, Agent, Skill } from '@claudesteps/core';
 import {
   resolveTemplate, resolveTemplates, resolveFlowRelativePath, runOutputSlug,
-  composeInteractiveMessage,
+  composeInteractiveMessage, resolveSandboxWritePaths,
   ClaudeStreamingRunOptions, ClaudeStreamingRunResult,
 } from '@claudesteps/core';
 import * as machine from '@claudesteps/core';
@@ -93,6 +93,13 @@ export async function runInteractiveStep(
   ctx.setStepStartTime(stepId, new Date());
   const sessionId = randomUUID();
 
+  // A `trustLevel: sandboxed` flow restricts the interactive session too: Bash/WebFetch/WebSearch
+  // are denied outright (a `deny` rule cannot be approved away at the prompt) and only the declared
+  // artifacts are pre-approved for writing — any other write still needs explicit human approval.
+  const sandboxWritePaths = flow.trustLevel === 'sandboxed'
+    ? resolveSandboxWritePaths(step, projectPath, runInputs, flow.name, runSlug)
+    : undefined;
+
   await ctx.setRunState(
     s => machine.markRunning(s, flow, stepId),
     { stepId, status: 'running', message: autoEnter ? 'Running in Claude terminal' : 'Opened in Claude — press Enter to run' }
@@ -101,12 +108,20 @@ export async function runInteractiveStep(
   ctx.post({
     type: 'stepUpdate',
     stepId,
-    output: autoEnter 
-      ? '\n[running in the Claude terminal — see terminal pane for progress]\n' 
+    output: autoEnter
+      ? '\n[running in the Claude terminal — see terminal pane for progress]\n'
       : '\n[opened in the Claude terminal — review the pre-filled message, press Enter to run]\n',
   });
+  if (sandboxWritePaths) {
+    ctx.post({
+      type: 'stepUpdate',
+      stepId,
+      append: true,
+      output: `[sandboxed: Bash/WebFetch/WebSearch denied; pre-approved writes: ${sandboxWritePaths.join(', ') || '(none declared)'}]\n`,
+    });
+  }
 
-  await terminals.runInTerminal(message, projectPath, agent, autoEnter, stepId, sessionId, ctx.runState.runId);
+  await terminals.runInTerminal(message, projectPath, agent, autoEnter, stepId, sessionId, ctx.runState.runId, undefined, sandboxWritePaths);
 }
 
 // ---------------------------------------------------------------------------

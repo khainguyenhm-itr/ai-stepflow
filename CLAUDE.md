@@ -22,7 +22,7 @@ This project follows **Karpathy's Rules** for high-standard engineering and agen
 
 ---
 
-*Note: When the default library is installed, the extension (`ConfigManager.ensureProjectClaudeMd` in `packages/extension/src/configManager.ts`) merges these rules into the project's `CLAUDE.md` inside `claudesteps:karpathy` markers, so every Claude Code run in the project — including steps launched from ClaudeSteps — picks them up.*
+*Note: When the default library is installed, the extension (`ConfigManager.ensureGlobalClaudeMd` in `packages/extension/src/configManager.ts`) merges these rules into the **global** `~/.claude/CLAUDE.md` inside `claudesteps:karpathy` markers, so every Claude Code run — including steps launched from ClaudeSteps — picks them up. The rules are no longer injected per project; `ensureProjectClaudeMd` only strips the legacy marked block from a project's `CLAUDE.md` if an older version left one behind.*
 
 ## Engineering Discipline (Karpathy Rules)
 - **Think Before Coding**: State assumptions and tradeoffs explicitly before implementation.

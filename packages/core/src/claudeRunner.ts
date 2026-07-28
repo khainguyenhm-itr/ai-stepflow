@@ -93,6 +93,32 @@ export const SANDBOXED_PERMISSION_MODE = 'default';
  */
 export const SANDBOXED_DENY_SETTINGS = JSON.stringify({ permissions: { deny: ['Bash', 'WebFetch', 'WebSearch'] } });
 
+/**
+ * Build the `claude` CLI flags that enforce a step's sandbox, shared by the headless runner and the
+ * interactive terminal launcher so a `trustLevel: sandboxed` flow is restricted the same way on
+ * both paths.
+ *
+ * `settingsRef` is what to hand `--settings`: the inline {@link SANDBOXED_DENY_SETTINGS} JSON
+ * (headless, where we control the argv array) or a path to a file holding it (interactive, where
+ * the command line may have to survive a shell — a path has no quoting hazards).
+ *
+ * The returned flags:
+ * - `--permission-mode default` — never auto-accept edits, even if the user's settings set a
+ *   wider `defaultMode`.
+ * - `--settings <ref>` — deny Bash/WebFetch/WebSearch outright. `deny` beats `allow`, so this
+ *   holds regardless of the user's ambient `.claude/settings.json` and cannot be approved away
+ *   at an interactive prompt.
+ * - `--allowedTools Write(p) Edit(p) MultiEdit(p)…` — pre-approve writes to the declared artifacts
+ *   only. An empty `allowedWritePaths` emits no allow-rule at all, which is fail-closed.
+ */
+export function buildSandboxArgs(allowedWritePaths: string[], settingsRef: string): string[] {
+  const args = ['--permission-mode', SANDBOXED_PERMISSION_MODE, '--settings', settingsRef];
+  if (allowedWritePaths.length > 0) {
+    args.push('--allowedTools', ...allowedWritePaths.flatMap(p => [`Write(${p})`, `Edit(${p})`, `MultiEdit(${p})`]));
+  }
+  return args;
+}
+
 /** Headless Claude runner with NDJSON streaming output and final usage/cost capture. */
 export function runClaudeStreaming(opts: ClaudeStreamingRunOptions, spawnFn: SpawnFn = spawn): ClaudeStreamingRunHandle {
   // Sandboxed runs drop the auto-accept permission mode and whitelist writes to the declared
@@ -100,15 +126,13 @@ export function runClaudeStreaming(opts: ClaudeStreamingRunOptions, spawnFn: Spa
   // `allowedWritePaths` present (even as []) means sandboxed: an empty list is fail-closed
   // (default mode + no write allow-rule → every write is denied). `undefined` means trusted.
   const sandboxed = opts.allowedWritePaths !== undefined;
-  const permissionMode = sandboxed ? SANDBOXED_PERMISSION_MODE : HEADLESS_PERMISSION_MODE;
-  const args = ['--print', '--output-format', 'stream-json', '--verbose', '--permission-mode', permissionMode];
+  const args = ['--print', '--output-format', 'stream-json', '--verbose'];
   if (sandboxed) {
-    // Deny exec/network tools regardless of the user's ambient settings (deny beats allow).
-    args.push('--settings', SANDBOXED_DENY_SETTINGS);
-    if (opts.allowedWritePaths!.length > 0) {
-      const rules = opts.allowedWritePaths!.flatMap(p => [`Write(${p})`, `Edit(${p})`, `MultiEdit(${p})`]);
-      args.push('--allowedTools', ...rules);
-    }
+    // Deny exec/network tools regardless of the user's ambient settings (deny beats allow) and
+    // whitelist writes to the declared paths only. Shared with the interactive path.
+    args.push(...buildSandboxArgs(opts.allowedWritePaths!, SANDBOXED_DENY_SETTINGS));
+  } else {
+    args.push('--permission-mode', HEADLESS_PERMISSION_MODE);
   }
   if (opts.model) args.push('--model', opts.model);
   if (opts.mcpConfig !== undefined) args.push('--mcp-config', opts.mcpConfig, '--strict-mcp-config');

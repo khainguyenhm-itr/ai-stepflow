@@ -4,7 +4,7 @@ import {
   runClaudeStreaming,
   loadAgents, loadFlowByIdOrPath, loadSkills,
   composeSystemPrompt,
-  validateProduces, validateRequires,
+  validateProduces, validateRequires, resolveSandboxWritePaths,
   renderRunReport,
   Flow, FlowRunState, FlowStep,
   reviewStepArtifacts,
@@ -265,6 +265,17 @@ async function runFlow(projectPath: string, flowRef: string, inputs: Record<stri
     await saveRun(projectPath, runState);
     process.stdout.write(`\n=== ${next.title || next.id} ===\n`);
 
+    // `trustLevel: 'sandboxed'` restricts the run to writing only its declared artifacts and denies
+    // Bash/WebFetch/WebSearch. Passing `[]` (a step that declares nothing) is fail-closed by design;
+    // `undefined` keeps the default trusted mode. A custom agent runner may ignore this — documented
+    // in the runner contract.
+    const allowedWritePaths = flow.trustLevel === 'sandboxed'
+      ? resolveSandboxWritePaths(next, projectPath, runState.inputs, flow.name, runSlug)
+      : undefined;
+    if (allowedWritePaths) {
+      process.stdout.write(`[sandboxed: writes limited to ${allowedWritePaths.join(', ') || '(nothing declared)'}; Bash/WebFetch/WebSearch denied]\n`);
+    }
+
     let output = '';
     const result = await runner({
       systemPrompt: composeSystemPrompt(agent, stepSkillNames, skills, resolveTemplates(next.produces, runState.inputs), runState.inputs, resolveTemplates(next.requires, runState.inputs), next.producesContains),
@@ -272,6 +283,7 @@ async function runFlow(projectPath: string, flowRef: string, inputs: Record<stri
       model: agent.model,
       maxTurns: resolveMaxTurns(agent.maxTurns, 6),
       projectPath,
+      allowedWritePaths,
       onText: chunk => { output += chunk; process.stdout.write(chunk); }
     });
 

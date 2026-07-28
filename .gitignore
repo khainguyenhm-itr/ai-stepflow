@@ -4,6 +4,8 @@ node_modules/
 # Build output
 out/
 out-itest/
+out-test/
+out-unit/
 dist/
 *.vsix
 

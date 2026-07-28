@@ -1,0 +1,15 @@
+{
+  "all": true,
+  "//": "Gates only the extension-host modules that the unit suite actually covers. Listing the whole package would either force a meaningless 10% threshold or claim coverage that does not exist; this way the covered modules cannot regress, and adding a module here is a deliberate act.",
+  "include": [
+    "packages/extension/out-unit/src/messages.js",
+    "packages/extension/out-unit/src/terminalManager.js",
+    "packages/extension/out-unit/src/configManager.js",
+    "packages/extension/out-unit/src/uiPalette.js"
+  ],
+  "reporter": ["text", "text-summary"],
+  "check-coverage": true,
+  "lines": 60,
+  "branches": 60,
+  "functions": 45
+}

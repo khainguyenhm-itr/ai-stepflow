@@ -40,6 +40,23 @@ function resolveProducedPaths(step: FlowStep, projectPath: string, inputs: Recor
   return [...new Set(produces.map(p => locateProducedFile(p, flowName, projectPath, runSlug, legacyRunSlug)))];
 }
 
+/**
+ * Resolve the write-allow list for a **sandboxed** step (`trustLevel: 'sandboxed'`): its declared
+ * `produces` plus the review artifact, expressed relative to the project root because that is how
+ * Claude's permission matcher resolves `Write(path)` rules against the run cwd. A path that lands
+ * outside the project stays absolute.
+ *
+ * Returns `[]` when the step declares no artifacts. Callers must pass that empty array through
+ * rather than dropping to `undefined`: `[]` is a fail-closed sandbox (nothing writable), whereas
+ * `undefined` means trusted. See {@link buildSandboxArgs}.
+ */
+export function resolveSandboxWritePaths(step: FlowStep, projectPath: string, inputs: Record<string, string> = {}, flowName = '', runSlug = '', legacyRunSlug = ''): string[] {
+  return resolveProducedPaths(step, projectPath, inputs, flowName, runSlug, legacyRunSlug).map(abs => {
+    const rel = path.relative(projectPath, abs);
+    return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? rel : abs;
+  });
+}
+
 /** Verify a step's declared `produces`/review files exist on disk (existence only — no content check). */
 export function validateProducesFiles(step: FlowStep, projectPath: string, inputs: Record<string, string> = {}, flowName = '', runSlug = '', legacyRunSlug = ''): ProducesValidationResult {
   const resolved = resolveProducedPaths(step, projectPath, inputs, flowName, runSlug, legacyRunSlug);

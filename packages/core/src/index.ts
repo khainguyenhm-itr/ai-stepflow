@@ -15,3 +15,4 @@ export * from './review.js';
 export * from './validatorRunner.js';
 export * from './verifyRun.js';
 export * from './schema.js';
+export * from './shellQuote.js';

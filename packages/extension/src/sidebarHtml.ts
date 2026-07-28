@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as crypto from 'node:crypto';
+import { renderPaletteVars } from './uiPalette.js';
 
 /**
  * Generates the full HTML for the sidebar webview.
@@ -27,23 +28,11 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
          font size and shrink the whole view uniformly so both read as one product. */
       --font-size: var(--vscode-font-size, 13px);
       --ui-zoom: 0.95;
-      /* Pinned "GitHub Dark" palette — identical to the webview (packages/webview/src/App.css)
-         so the sidebar and the main cockpit read as one product regardless of VS Code theme. */
-      --bg: #0d1117;
-      --border: #30363d;
-      --panel: #161b22;
-      --panel-2: #1c2128;
-      --hover: #1c2128;
-      --focus: #388bfd;
-      --btn: #1f6feb;
-      --btn-fg: #ffffff;
-      --btn-h: #388bfd;
-      --error: #f85149;
-      --badge: #30363d;
-      --badge-fg: #c9d1d9;
-      --muted: #8b949e;
-      --success: #3fb950;
-      --fg: #c9d1d9;
+      /* Pinned "GitHub Dark" palette — identical to the webview (packages/webview/src/App.css) so
+         the sidebar and the main cockpit read as one product regardless of VS Code theme. Values
+         live in uiPalette.ts and a unit test diffs them against App.css, so the two cannot drift
+         silently. */
+${renderPaletteVars()}
     }
     *, *::before, *::after { box-sizing: border-box; }
     html, body { height: 100%; overflow: hidden; margin: 0; padding: 0; }

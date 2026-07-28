@@ -1,8 +1,12 @@
 import * as vscode from 'vscode';
 import * as os from 'os';
 import * as path from 'path';
-import { existsSync, rmSync } from 'fs';
-import { Agent, shortRunId } from '@claudesteps/core';
+import { existsSync, rmSync, writeFileSync } from 'fs';
+import {
+  Agent, shortRunId,
+  buildSandboxArgs, SANDBOXED_DENY_SETTINGS,
+  detectShellKind, quoteShellArgs,
+} from '@claudesteps/core';
 import { ConfigManager } from './configManager.js';
 
 /** Key prefix for ad-hoc agent/skill runs (no flow step). Each run gets its own
@@ -32,6 +36,8 @@ interface TermState {
   fallbackTimer?: ReturnType<typeof setTimeout>;
   /** POSIX completion-sentinel file path, when launched via sendText (no shell integration). */
   sentinelPath?: string;
+  /** Temp file holding the sandbox deny-settings JSON for this launch, removed on dispose. */
+  settingsPath?: string;
   /** Set by {@link cancelStep} when a Stop arrives during the shell-integration wait, before live. */
   launchAborted?: boolean;
 }
@@ -118,6 +124,10 @@ export class TerminalManager {
       try { rmSync(state.sentinelPath, { force: true }); } catch { /* best-effort cleanup */ }
       state.sentinelPath = undefined;
     }
+    if (state.settingsPath) {
+      try { rmSync(state.settingsPath, { force: true }); } catch { /* best-effort cleanup */ }
+      state.settingsPath = undefined;
+    }
     this._terms.delete(key);
   }
 
@@ -129,8 +139,11 @@ export class TerminalManager {
    * Each flow step (a call carrying `stepId`) gets its own terminal keyed by `${runId}::${stepId}`,
    * except a Re-run whose step is still live, which continues in place. Ad-hoc agent/skill runs
    * (no `stepId`) each get a fresh independent terminal keyed `#adhoc-<fingerprint>`, so every run is isolated.
+   *
+   * `sandboxWritePaths` enforces a `trustLevel: sandboxed` step (see {@link buildSandboxArgs}).
+   * Pass `undefined` for a trusted step; an empty array is a deliberate fail-closed sandbox.
    */
-  public async runInTerminal(prompt: string, projectPath: string, agent?: Agent | string, submit = true, stepId?: string, sessionId?: string, runId?: string, label?: string): Promise<void> {
+  public async runInTerminal(prompt: string, projectPath: string, agent?: Agent | string, submit = true, stepId?: string, sessionId?: string, runId?: string, label?: string, sandboxWritePaths?: string[]): Promise<void> {
     const agentName = typeof agent === 'string' ? agent : agent?.name;
     // Terminal display label: the agent name for agent runs, or a caller-supplied label (e.g. the
     // skill name) for agent-less runs. Does not affect launch args, only the terminal name.
@@ -186,13 +199,19 @@ export class TerminalManager {
     cur.agentName = agentName;
 
     const agentObj = typeof agent === 'string' ? (await this.configManager.loadAgents()).find(a => a.name === agent) : agent;
-    const launchArgs = this._constructClaudeArgs(agentObj, sessionId);
-    // Auto-submitted runs bake the prompt into the launch command. For a pre-fill (submit=false)
-    // we launch claude bare, then type the prompt unsent once the REPL has come up.
-    if (prompt && submit) launchArgs.push(prompt);
+    const launchArgs = this._constructClaudeArgs(agentObj, sessionId, sandboxWritePaths, key);
+
+    // Whether the prompt travels as an argv entry (safe: no shell parses it) or has to be typed
+    // into the REPL afterwards. Only the shell-integration path can take an argv array, so the
+    // sendText fallback never puts prompt text on a command line — that was the injection vector.
+    const promptAsArg = !!prompt && submit && !!shellIntegration;
 
     if (shellIntegration) {
-      cur.execution = shellIntegration.executeCommand(this._shellQuoteArgs(launchArgs));
+      // `executeCommand(executable, args)` hands VS Code an argv array and lets it quote for the
+      // real shell. Building the string ourselves is what allowed `$(...)` in a prompt to be
+      // expanded by PowerShell.
+      const [exe, ...rest] = promptAsArg ? [...launchArgs, prompt] : launchArgs;
+      cur.execution = shellIntegration.executeCommand(exe, rest);
       // `onDidEndTerminalShellExecution` only fires when `claude` exits, but a step runs an
       // interactive REPL that stays alive after finishing — so also poll the artifact readiness
       // probe. Whichever completion signal fires first wins (_disposeState clears the other).
@@ -201,14 +220,18 @@ export class TerminalManager {
       // Fallback: shell integration unavailable, so we never get the real command-end event. On
       // POSIX we append `; touch <sentinel>` — the shell creates the file only after `claude` exits,
       // turning the fallback into a real process-exit poll rather than a guessed timeout.
+      // Only `claude` + its flags reach the shell here; the prompt is typed in below.
       const cmd = this._shellQuoteArgs(launchArgs);
       const sentinel = stepId ? this._prepareSentinel(key, runId, stepId) : undefined;
       terminal.sendText(sentinel ? `${cmd}; touch ${this._shellQuote(sentinel)}` : cmd, true);
       if (stepId) this._scheduleFallbackCompletion(key);
     }
 
-    if (prompt && !submit) {
-      setTimeout(() => { try { terminal.sendText(prompt, false); } catch { /* terminal closed */ } }, 1500);
+    // Type the prompt into the REPL once it has come up: unsent for a pre-fill (submit=false), and
+    // submitted when the prompt could not ride along as an argv entry (the fallback path).
+    if (prompt && !promptAsArg) {
+      const send = submit;
+      setTimeout(() => { try { terminal.sendText(prompt, send); } catch { /* terminal closed */ } }, 1500);
     }
   }
 
@@ -221,18 +244,22 @@ export class TerminalManager {
     const key = `${ADHOC_KEY}-resume-${shortRunId(`${sessionId}-${++this._adhocSeq}`)}`;
     const terminal = this._getTerminal(key, projectPath, undefined, undefined, label, kind);
     terminal.show();
-    const state = this._terms.get(key)!;
     const args = ['claude', '--resume', sessionId];
     const shellIntegration = await this._waitForShellIntegration(terminal);
     const cur = this._terms.get(key);
     if (!cur || cur.terminal !== terminal) return; // disposed during the await
     cur.running = true;
-    const cmd = this._shellQuoteArgs(args);
-    if (shellIntegration) cur.execution = shellIntegration.executeCommand(cmd);
-    else terminal.sendText(cmd, true);
+    if (shellIntegration) cur.execution = shellIntegration.executeCommand(args[0], args.slice(1));
+    else terminal.sendText(this._shellQuoteArgs(args), true);
   }
 
-  private _constructClaudeArgs(agent?: Agent, sessionId?: string): string[] {
+  /**
+   * Build the `claude` argv for a launch. `sandboxWritePaths` (present only for a
+   * `trustLevel: sandboxed` step) adds the sandbox flags; its deny-settings JSON goes to a temp
+   * file rather than inline so the fallback command line carries a plain path instead of quoted
+   * JSON. `termKey` is where the temp file is registered for cleanup.
+   */
+  private _constructClaudeArgs(agent?: Agent, sessionId?: string, sandboxWritePaths?: string[], termKey?: string): string[] {
     const args = ['claude'];
     // Pin the session id so we can read exactly this run's .jsonl for metrics/output,
     // instead of guessing by project dir + time window (wrong when sessions run concurrently).
@@ -241,16 +268,32 @@ export class TerminalManager {
       args.push('--agent', agent.name);
       if (agent.model) args.push('--model', agent.model);
     }
+    if (sandboxWritePaths) {
+      args.push(...buildSandboxArgs(sandboxWritePaths, this._writeSandboxSettings(termKey, sessionId)));
+    }
     return args;
   }
 
+  /**
+   * Persist the sandbox deny-settings to a temp file and return its path. Registered on the
+   * terminal state so {@link _disposeState} removes it when the run ends.
+   */
+  private _writeSandboxSettings(termKey: string | undefined, sessionId?: string): string {
+    const safe = (sessionId ?? String(++this._adhocSeq)).replace(/[^A-Za-z0-9._-]/g, '_');
+    const settingsPath = path.join(os.tmpdir(), `csf-sandbox-${safe}.json`);
+    writeFileSync(settingsPath, SANDBOXED_DENY_SETTINGS, 'utf8');
+    const state = termKey ? this._terms.get(termKey) : undefined;
+    if (state) state.settingsPath = settingsPath;
+    return settingsPath;
+  }
+
+  /**
+   * Quote an argv array into one command line for the `sendText` fallback (no argv array accepted).
+   * Quoting follows the shell VS Code actually reports, so PowerShell gets literal single quotes
+   * instead of expanding double quotes.
+   */
   private _shellQuoteArgs(args: string[]): string {
-    return args.map(arg => {
-      if (arg.includes(' ') || arg.includes('"') || arg.includes("'") || arg.startsWith('/')) {
-        return process.platform === 'win32' ? `"${arg.replace(/"/g, '""')}"` : `'${arg.replace(/'/g, "'\\''")}'`;
-      }
-      return arg;
-    }).join(' ');
+    return quoteShellArgs(args, detectShellKind(process.platform, vscode.env.shell));
   }
 
   private _shellQuote(arg: string): string {
@@ -365,5 +408,9 @@ export class TerminalManager {
 
   public dispose(): void {
     while (this._disposables.length) this._disposables.pop()?.dispose();
+    // Per-terminal state owns a polling timer and (for sandboxed runs) a temp settings file. Without
+    // this, deactivating the extension left the fallback poll running until its hard cap and leaked
+    // the temp file; only a terminal-close or step-cancel used to clean them up.
+    for (const key of [...this._terms.keys()]) this._disposeState(key);
   }
 }
