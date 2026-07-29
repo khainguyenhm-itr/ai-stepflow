@@ -39,7 +39,8 @@
     "test:integration": "npm run compile-all && npm run compile:itest && node packages/extension/out-itest/test/runIntegration.js",
     "test": "npm run test:unit && npm run test:unit-ext && npm run test:webview",
     "test:coverage": "npm run compile && npm run compile:test && c8 node --test packages/core/out/test/test/*.test.js",
-    "test:coverage-ext": "npm run compile && npm run compile:unit-ext && c8 --config .c8rc.extension.json node --test packages/extension/out-unit/test/unit/*.test.js"
+    "test:coverage-ext": "npm run compile && npm run compile:unit-ext && c8 --config .c8rc.extension.json node --test packages/extension/out-unit/test/unit/*.test.js",
+    "test:coverage-webview": "npm run compile && npm run compile:webview-test && c8 --config .c8rc.webview.json node --test packages/webview/out-test/test/*.test.js"
   },
   "devDependencies": {
     "@types/glob": "^8.1.0",

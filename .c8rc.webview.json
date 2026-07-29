@@ -1,0 +1,14 @@
+{
+  "all": true,
+  "//": "Gates only the pure webview modules the unit suite covers. React components stay out until they have tests; adding a module here is a deliberate act, not a default.",
+  "include": [
+    "packages/webview/out-test/src/flowUtils.js",
+    "packages/webview/out-test/src/tagUtils.js",
+    "packages/webview/out-test/src/hooks/appState/hostMessageReducers.js"
+  ],
+  "reporter": ["text", "text-summary"],
+  "check-coverage": true,
+  "lines": 85,
+  "branches": 75,
+  "functions": 85
+}

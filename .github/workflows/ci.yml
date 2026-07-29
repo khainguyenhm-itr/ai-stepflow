@@ -39,6 +39,9 @@ jobs:
       - name: Coverage (extension host modules under test, gated)
         run: npm run test:coverage-ext
 
+      - name: Coverage (webview pure modules, gated)
+        run: npm run test:coverage-webview
+
   integration:
     runs-on: ubuntu-latest
     steps:
