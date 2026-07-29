@@ -26,7 +26,7 @@ jobs:
         run: npm test
 
       - name: Build VSIX
-        run: npm run package:vsix
+        run: npm run build
 
       - name: Publish to VS Code Marketplace
         # vsce reads the token from the VSCE_PAT env var. Set it in repo Settings → Secrets.
