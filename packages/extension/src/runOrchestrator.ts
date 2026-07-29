@@ -8,6 +8,7 @@ import { StateManager } from './stateManager.js';
 import { TerminalManager } from './terminalManager.js';
 import { HostMessage, HistoryEvent } from './messages.js';
 import { readInteractiveSessionStats } from './sessionStats.js';
+import { runKey, isRunKeyOf } from './runOrchestratorHelpers.js';
 import {
   Flow, FlowRunState, FlowStep, Skill,
   runClaudeStreaming, ClaudeStreamingRunOptions, ClaudeStreamingRunResult,
@@ -90,7 +91,7 @@ export class RunOrchestrator {
   private _outputFlushTimer: ReturnType<typeof setTimeout> | undefined;
 
   /** Composite key so process-global maps never confuse two runs that share a stepId (e.g. "step-1"). */
-  private _rk(runId: string, stepId: string): string { return `${runId}::${stepId}`; }
+  private _rk(runId: string, stepId: string): string { return runKey(runId, stepId); }
 
   /** Tag a step/review output message with its owning runId so the webview can route it per run. */
   private _withRun(runId: string | undefined, msg: HostMessage): HostMessage {
@@ -439,16 +440,14 @@ export class RunOrchestrator {
    */
   /** Kill (and mark cancelled) only the headless step children belonging to `runId`. */
   private _killRunChildren(runId: string): void {
-    const prefix = `${runId}::`;
     for (const [key, child] of this._runChildrenByStep) {
-      if (key.startsWith(prefix)) { this._cancelledStepIds.add(key); child.kill(); }
+      if (isRunKeyOf(key, runId)) { this._cancelledStepIds.add(key); child.kill(); }
     }
   }
 
   /** Drop a dead run's `${runId}::*` entries from the global cancelled set. */
   private _purgeRunKeys(runId: string): void {
-    const prefix = `${runId}::`;
-    for (const key of [...this._cancelledStepIds]) if (key.startsWith(prefix)) this._cancelledStepIds.delete(key);
+    for (const key of [...this._cancelledStepIds]) if (isRunKeyOf(key, runId)) this._cancelledStepIds.delete(key);
   }
 
   /** Reset a run (targets `explicitRunId`, else the focused run) to a fresh state, terminating its in-flight processes. */
