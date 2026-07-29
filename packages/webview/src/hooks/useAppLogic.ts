@@ -13,11 +13,16 @@ import { useLibraryState } from './appState/useLibraryState';
 import { useRunState } from './appState/useRunState';
 import { useBuilderState } from './appState/useBuilderState';
 import { useChatState } from './appState/useChatState';
-import { ScopeFilter, ViewFilter, ViewFilterItem, SortOrder, SaveScope } from './appState/types';
-
-const VALID_FILTERS: ScopeFilter[] = ['all', 'project', 'global'];
-const parseFilter = (v: string | undefined): ScopeFilter =>
-  VALID_FILTERS.includes(v as ScopeFilter) ? (v as ScopeFilter) : 'all';
+import { SaveScope } from './appState/types';
+import {
+  parseScopeFilter as parseFilter,
+  parseViewFilter,
+  parseSortOrder,
+  parseGroupBy,
+  dropKey,
+  appendOutput,
+  computeRunAggregate
+} from './appState/hostMessageReducers';
 
 export const useAppLogic = () => {
   const libState = useLibraryState();
@@ -150,13 +155,6 @@ export const useAppLogic = () => {
             reviews: parseFilter(message.uiPrefs['scopeFilter:reviews']),
           });
           libState.setOverviewScope(parseFilter(message.uiPrefs['overviewScope']));
-          const parseViewFilter = (v: unknown): ViewFilter => {
-            if (Array.isArray(v)) return (v as string[]).filter((x): x is ViewFilterItem => x === 'built-in');
-            if (v === 'built-in') return [v]; // migrate old persisted string
-            return [];
-          };
-          const parseSortOrder = (v: string | undefined): SortOrder =>
-            v === 'desc' || v === 'asc' || v === 'newest' || v === 'oldest' ? v : 'activity';
           libState.setViewFilters({
             flows: parseViewFilter(message.uiPrefs['viewFilter:flows']),
             agents: parseViewFilter(message.uiPrefs['viewFilter:agents']),
@@ -169,7 +167,6 @@ export const useAppLogic = () => {
             skills: parseSortOrder(message.uiPrefs['sortOrder:skills']),
             reviews: parseSortOrder(message.uiPrefs['sortOrder:reviews']),
           });
-          const parseGroupBy = (v: string | undefined): 'list' | 'tag' => (v === 'tag' ? 'tag' : 'list');
           libState.setGroupBys({
             agents: parseGroupBy(message.uiPrefs['groupBy:agents']),
             skills: parseGroupBy(message.uiPrefs['groupBy:skills']),
@@ -205,8 +202,8 @@ export const useAppLogic = () => {
               : s
           ));
           // Reset mints a new runId — move the open drawer from the old runId to the new one.
-          runState.setOpenRuns(prev => { const { [prevRunId]: _drop, ...rest } = prev; return rest; });
-          runState.setOpenStepIds(prev => { const { [prevRunId]: _drop, ...rest } = prev; return rest; });
+          runState.setOpenRuns(prev => dropKey(prev, prevRunId));
+          runState.setOpenStepIds(prev => dropKey(prev, prevRunId));
         }
         runState.setActiveFlow(message.flow);
         runState.setRunState(message.runState);
@@ -227,8 +224,8 @@ export const useAppLogic = () => {
           return { ...prev, [flowId]: filtered };
         });
         // Close this run's drawer.
-        runState.setOpenRuns(prev => { const { [runId]: _drop, ...rest } = prev; return rest; });
-        runState.setOpenStepIds(prev => { const { [runId]: _drop, ...rest } = prev; return rest; });
+        runState.setOpenRuns(prev => dropKey(prev, runId));
+        runState.setOpenStepIds(prev => dropKey(prev, runId));
         // Only clear the focused facade if the deleted run was the focused one.
         if (!runId || runState.activeRunIdRef.current === runId) {
           runState.setRunState(null);
@@ -249,8 +246,8 @@ export const useAppLogic = () => {
         // Close this run's drawer (if the message carried a runId).
         if (message.runId) {
           const cid = message.runId;
-          runState.setOpenRuns(prev => { const { [cid]: _drop, ...rest } = prev; return rest; });
-          runState.setOpenStepIds(prev => { const { [cid]: _drop, ...rest } = prev; return rest; });
+          runState.setOpenRuns(prev => dropKey(prev, cid));
+          runState.setOpenStepIds(prev => dropKey(prev, cid));
         }
         // Only clear the focused facade if the closed run was the focused one (or legacy: no runId).
         if (!message.runId || runState.activeRunIdRef.current === message.runId) {
@@ -290,7 +287,7 @@ export const useAppLogic = () => {
           const rs = prev[rid];
           if (!rs) return prev; // drawer not open — output is shown from persisted state on open
           const ps = rs.steps[message.stepId];
-          const output = message.append ? `${ps?.output || ''}${message.output || ''}` : (message.output || '');
+          const output = appendOutput(ps?.output, message.output, message.append);
           return { ...prev, [rid]: { ...rs, steps: { ...rs.steps, [message.stepId]: { ...ps, output } } } };
         });
         break;
@@ -302,7 +299,7 @@ export const useAppLogic = () => {
           const rs = prev[rid];
           if (!rs) return prev;
           const ps = rs.steps[message.stepId];
-          const aiReviewOutput = message.append ? `${ps?.aiReviewOutput || ''}${message.output || ''}` : (message.output || '');
+          const aiReviewOutput = appendOutput(ps?.aiReviewOutput, message.output, message.append);
           return { ...prev, [rid]: { ...rs, steps: { ...rs.steps, [message.stepId]: { ...ps, aiReviewOutput } } } };
         });
         break;
@@ -331,27 +328,7 @@ export const useAppLogic = () => {
         }
         // Keep the outer run table row in sync with the live run — otherwise steps/cost/tokens
         // only refresh on a full reload, so the detail drawer updates but the table lags behind.
-        const steps = Object.values(changed.steps || {}) as any[];
-        const span = (from?: string, to?: string) => {
-          if (!from || !to) return 0;
-          const ms = new Date(to).getTime() - new Date(from).getTime();
-          return Number.isFinite(ms) && ms > 0 ? ms : 0;
-        };
-        const isReviewing = (s: any) => s.reviewStatus === 'ai_review_running' || s.reviewStatus === 'waiting_human';
-        const agg = {
-          completedSteps: steps.filter(s => s.completionStatus === 'done').length,
-          // Steps that have started but aren't done yet (running or under review) — counted toward
-          // the table's "N/total" so a step in flight shows its own position (e.g. 2/5), and used
-          // to flag the run as under review (yellow) rather than plain running (blue).
-          inProgressSteps: steps.filter(s => s.executionStatus === 'running' || isReviewing(s)).length,
-          reviewing: steps.some(isReviewing),
-          failedSteps: steps.filter(s => s.executionStatus === 'failed').length,
-          totalSteps: steps.length,
-          costUsd: steps.reduce((t, s) => t + (s.costUsd ?? 0), 0),
-          tokensUsed: steps.reduce((t, s) => t + (s.tokensUsed ?? 0), 0),
-          taskTimeMs: steps.reduce((t, s) => t + span(s.startedAt, s.completedAt), 0),
-          reviewTimeMs: steps.reduce((t, s) => t + span(s.completedAt, s.reviewCompletedAt), 0)
-        };
+        const agg = computeRunAggregate(changed);
         libState.setRunSummaries(prev => prev.map(s =>
           s.flowId === changed.flowId && s.runId === changed.runId
             ? { ...s, ...agg, runName: changed.runName, isClosed: !!changed.isClosed, mtimeMs: Date.now() }
@@ -670,8 +647,8 @@ export const useAppLogic = () => {
    * the run can be reopened later via switchRun.
    */
   const collapseRun = (runId: string) => {
-    runState.setOpenRuns(prev => { const { [runId]: _drop, ...rest } = prev; return rest; });
-    runState.setOpenStepIds(prev => { const { [runId]: _drop, ...rest } = prev; return rest; });
+    runState.setOpenRuns(prev => dropKey(prev, runId));
+    runState.setOpenStepIds(prev => dropKey(prev, runId));
     if (runState.activeRunIdRef.current === runId) {
       runState.activeRunIdRef.current = null;
       runState.setRunState(null);
