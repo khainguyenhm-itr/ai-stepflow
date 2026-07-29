@@ -6,7 +6,9 @@
     "packages/extension/out-unit/src/terminalManager.js",
     "packages/extension/out-unit/src/configManager.js",
     "packages/extension/out-unit/src/uiPalette.js",
-    "packages/extension/out-unit/src/runOrchestratorHelpers.js"
+    "packages/extension/out-unit/src/runOrchestratorHelpers.js",
+    "packages/extension/out-unit/src/webviewGeneration.js",
+    "packages/extension/out-unit/src/bundledMeta.js"
   ],
   "reporter": ["text", "text-summary"],
   "check-coverage": true,

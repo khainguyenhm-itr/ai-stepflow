@@ -5,6 +5,7 @@ import { promises as fs } from 'fs';
 import { parse, parseDocument, Document, isMap } from 'yaml';
 import matter from 'gray-matter';
 import { Agent, Skill, Flow, parseFlow, formatFlowError, AgentInput, SkillInput, normalizeTools, ReviewKit, ReviewKitInput } from '@claudesteps/core';
+import { firstHeading, firstJsComment } from './bundledMeta.js';
 
 export type BundledKind = 'agents' | 'skills' | 'reviews' | 'validators';
 
@@ -140,19 +141,11 @@ export class ConfigManager {
   }
 
   private _firstHeading(md: string): string {
-    const m = md.match(/^#{1,2}\s+(.+)/m);
-    return m ? m[1].trim() : '';
+    return firstHeading(md);
   }
 
   private _firstJsComment(js: string): string {
-    for (const line of js.split('\n')) {
-      const m = line.match(/^\/\/\s*(.+)/);
-      if (!m) continue;
-      const text = m[1].trim();
-      if (text.toLowerCase().startsWith('claudesteps')) continue;
-      return text;
-    }
-    return '';
+    return firstJsComment(js);
   }
 
   /**
