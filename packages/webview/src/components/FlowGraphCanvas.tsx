@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { FlowStep } from '@ai-stepflow/core/types';
+import { FlowStep } from '@claudesteps/core/types';
 
 interface FlowGraphCanvasProps {
   steps: FlowStep[];

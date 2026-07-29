@@ -1,5 +1,5 @@
 import React from 'react';
-import { Agent, Skill } from '@ai-stepflow/core/types';
+import { Agent, Skill } from '@claudesteps/core/types';
 import { Modal } from '../components/primitives';
 
 interface StandaloneRunModalProps {

@@ -4,7 +4,7 @@ import {
   runClaudeStreaming,
   loadAgents, loadFlowByIdOrPath, loadSkills,
   composeSystemPrompt,
-  validateProduces, validateRequires,
+  validateProduces, validateRequires, resolveSandboxWritePaths,
   renderRunReport,
   Flow, FlowRunState, FlowStep,
   reviewStepArtifacts,
@@ -12,8 +12,8 @@ import {
   resolveStepRunner,
   renderVerifyReportMarkdown, verifyRun,
   resolveTemplates, resolveMaxTurns
-} from '@ai-stepflow/core';
-import * as machine from '@ai-stepflow/core';
+} from '@claudesteps/core';
+import * as machine from '@claudesteps/core';
 
 const COMMANDS = ['run', 'verify', 'report', 'approve', 'reject', 'mark-done', 'lint'] as const;
 type Command = typeof COMMANDS[number];
@@ -31,7 +31,7 @@ interface CliOptions {
 function parseArgs(argv: string[]): { command: Command; options: CliOptions } {
   const [commandRaw, ...rest] = argv;
   if (!COMMANDS.includes(commandRaw as Command)) {
-    throw new Error('Usage: ai-stepflow <run|verify|report|approve|reject|mark-done|lint> --project <path> [--flow <id-or-path>] [--run <file>] [--step <id>] [--out <file>] [--comment <text>] [--input key=value]');
+    throw new Error('Usage: claudesteps <run|verify|report|approve|reject|mark-done|lint> --project <path> [--flow <id-or-path>] [--run <file>] [--step <id>] [--out <file>] [--comment <text>] [--input key=value]');
   }
   const options: CliOptions = { project: process.cwd(), input: {} };
   for (let i = 0; i < rest.length; i++) {
@@ -64,7 +64,7 @@ function slugify(value: string): string {
 }
 
 async function saveRun(projectPath: string, run: FlowRunState): Promise<string> {
-  const runsDir = path.join(projectPath, '.ai-stepflow', 'runs');
+  const runsDir = path.join(projectPath, '.claudesteps', 'runs');
   await fs.mkdir(runsDir, { recursive: true });
   const filePath = path.join(runsDir, `${runFileBase(run)}.json`);
   await fs.writeFile(filePath, JSON.stringify(run, null, 2), 'utf8');
@@ -73,12 +73,13 @@ async function saveRun(projectPath: string, run: FlowRunState): Promise<string> 
 
 function runFileBase(run: FlowRunState): string {
   const flow = slugify(run.flowName || run.flowId) || slugify(run.flowId);
-  const name = slugify(run.runName || '') || slugify(run.runId);
+  const named = slugify(run.runName || '');
+  const name = named ? `${named}-${machine.shortRunId(run.runId)}` : slugify(run.runId);
   return `${flow}-${name}`;
 }
 
 async function saveReport(projectPath: string, run: FlowRunState, content: string, out?: string): Promise<string> {
-  const filePath = out ?? path.join(projectPath, '.ai-stepflow', 'reports', `${runFileBase(run)}.md`);
+  const filePath = out ?? path.join(projectPath, '.claudesteps', 'reports', `${runFileBase(run)}.md`);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, content, 'utf8');
   return filePath;
@@ -86,7 +87,7 @@ async function saveReport(projectPath: string, run: FlowRunState, content: strin
 
 async function readActiveReviewKitPref(projectPath: string): Promise<string> {
   try {
-    const raw = await fs.readFile(path.join(projectPath, '.ai-stepflow', 'ui-prefs.json'), 'utf8');
+    const raw = await fs.readFile(path.join(projectPath, '.claudesteps', 'ui-prefs.json'), 'utf8');
     const prefs = JSON.parse(raw) as Record<string, string>;
     return prefs['review:activeKit'] || '';
   } catch {
@@ -264,6 +265,17 @@ async function runFlow(projectPath: string, flowRef: string, inputs: Record<stri
     await saveRun(projectPath, runState);
     process.stdout.write(`\n=== ${next.title || next.id} ===\n`);
 
+    // `trustLevel: 'sandboxed'` restricts the run to writing only its declared artifacts and denies
+    // Bash/WebFetch/WebSearch. Passing `[]` (a step that declares nothing) is fail-closed by design;
+    // `undefined` keeps the default trusted mode. A custom agent runner may ignore this — documented
+    // in the runner contract.
+    const allowedWritePaths = flow.trustLevel === 'sandboxed'
+      ? resolveSandboxWritePaths(next, projectPath, runState.inputs, flow.name, runSlug)
+      : undefined;
+    if (allowedWritePaths) {
+      process.stdout.write(`[sandboxed: writes limited to ${allowedWritePaths.join(', ') || '(nothing declared)'}; Bash/WebFetch/WebSearch denied]\n`);
+    }
+
     let output = '';
     const result = await runner({
       systemPrompt: composeSystemPrompt(agent, stepSkillNames, skills, resolveTemplates(next.produces, runState.inputs), runState.inputs, resolveTemplates(next.requires, runState.inputs), next.producesContains),
@@ -271,6 +283,7 @@ async function runFlow(projectPath: string, flowRef: string, inputs: Record<stri
       model: agent.model,
       maxTurns: resolveMaxTurns(agent.maxTurns, 6),
       projectPath,
+      allowedWritePaths,
       onText: chunk => { output += chunk; process.stdout.write(chunk); }
     });
 

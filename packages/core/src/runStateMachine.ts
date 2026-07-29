@@ -11,6 +11,8 @@ export interface StepMetrics {
   modelUsed?: string;
   tokensUsed?: number;
   costUsd?: number;
+  /** Wall-clock span of the session, from its first to last recorded timestamp (ms). */
+  durationMs?: number;
   /** The run's captured output, folded into the step so a state broadcast stays self-consistent. */
   output?: string;
   /** High-level error description. */

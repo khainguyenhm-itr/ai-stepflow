@@ -1,136 +1,265 @@
 import * as vscode from 'vscode';
-import { Agent } from '@ai-stepflow/core';
+import * as os from 'os';
+import * as path from 'path';
+import { existsSync, rmSync, writeFileSync } from 'fs';
+import {
+  Agent, shortRunId,
+  buildSandboxArgs, SANDBOXED_DENY_SETTINGS,
+  detectShellKind, quoteShellArgs,
+} from '@claudesteps/core';
 import { ConfigManager } from './configManager.js';
 
+/** Key prefix for ad-hoc agent/skill runs (no flow step). Each run gets its own
+ *  `#adhoc-<fingerprint>` terminal so repeated agent/skill runs are independent, not one session. */
+const ADHOC_KEY = '#adhoc';
+
+/** Terminal run kinds: flow step, ad-hoc skill, or ad-hoc agent. */
+type TermKind = 'flow' | 'skill' | 'agent';
+
+/** One fixed tab color per kind so the terminal's kind is obvious at a glance.
+ *  The icon is left at VS Code's default; only the color varies. */
+const KIND_COLOR: Record<TermKind, string> = {
+  flow: 'terminal.ansiBlue',
+  skill: 'terminal.ansiGreen',
+  agent: 'terminal.ansiMagenta',
+};
+
+/** Per-terminal state: one live interactive `claude` session and its lifecycle bookkeeping. */
+interface TermState {
+  terminal: vscode.Terminal;
+  running: boolean;
+  execution?: vscode.TerminalShellExecution;
+  agentName?: string;
+  /** Owning run + step (undefined for the ad-hoc terminal). */
+  runId?: string;
+  stepId?: string;
+  fallbackTimer?: ReturnType<typeof setTimeout>;
+  /** POSIX completion-sentinel file path, when launched via sendText (no shell integration). */
+  sentinelPath?: string;
+  /** Temp file holding the sandbox deny-settings JSON for this launch, removed on dispose. */
+  settingsPath?: string;
+  /** Set by {@link cancelStep} when a Stop arrives during the shell-integration wait, before live. */
+  launchAborted?: boolean;
+}
+
 /**
- * Owns the single interactive `claude` terminal and its lifecycle, extracted from the
- * cockpit panel so the tricky shell-integration timing lives in one place. The panel
- * delegates ad-hoc agent/skill runs and the interactive (non-headless) step path here;
- * headless `claude -p` runs are unrelated and stay in the panel.
+ * Owns the interactive `claude` terminals and their lifecycle, extracted from the cockpit panel so
+ * the tricky shell-integration timing lives in one place. Each flow-step run gets its OWN terminal,
+ * keyed by `${runId}::${stepId}`, so multiple runs can hold live interactive sessions concurrently.
+ * Ad-hoc agent/skill runs (no step) each get their OWN terminal too, keyed `#adhoc-<fingerprint>`,
+ * so repeated runs are independent. Headless `claude -p` runs are unrelated and stay in the panel.
  */
 export class TerminalManager {
-  private _terminal: vscode.Terminal | undefined;
-  /** Whether an interactive `claude` session is live in our terminal. */
-  private _running = false;
-  /** The shell execution that launched claude, so we can tell when it exits. */
-  private _execution: vscode.TerminalShellExecution | undefined;
-  /** The name of the agent currently running in our terminal, if any. */
-  private _currentAgentName: string | undefined;
-  /** The ID of the step currently running in our terminal, if any. */
-  private _currentStepId: string | undefined;
+  private _terms = new Map<string, TermState>();
+  /** Monotonic salt so two ad-hoc runs in the same millisecond get distinct runId fingerprints. */
+  private _adhocSeq = 0;
+  /** Monotonic sequence (stt) shown in terminal names so concurrent terminals are distinguishable. */
+  private _termSeq = 0;
   private _disposables: vscode.Disposable[] = [];
-  /** Callback to notify when the terminal is closed while a step is running. */
-  private _onDidCloseRunningStep: ((stepId: string) => void) | undefined;
-  /** Callback to notify when the shell execution (claude session) ends while a step is running. */
-  private _onDidEndRunningStep: ((stepId: string) => void) | undefined;
-  /** Fallback timeout timer when shell integration is unavailable. */
-  private _fallbackCompletionTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Callback when a terminal is closed while its step is running. */
+  private _onDidCloseRunningStep: ((runId: string, stepId: string) => void) | undefined;
+  /** Callback when the shell execution (claude session) ends while its step is running. */
+  private _onDidEndRunningStep: ((runId: string, stepId: string) => void) | undefined;
+  /**
+   * Readiness probe used only by the shell-integration fallback: returns whether the step's
+   * declared artifacts already exist and are fresh (`true`/`false`), or `undefined` when the step
+   * has nothing to gate on. Lets the fallback wait for the real artifact instead of guessing.
+   */
+  private _isStepReady: ((runId: string, stepId: string) => boolean | undefined) | undefined;
 
   constructor(private readonly configManager: ConfigManager) {
     this._disposables.push(
       vscode.window.onDidEndTerminalShellExecution(event => {
-        if (event.execution === this._execution) {
-          if (this._running && this._currentStepId && this._onDidEndRunningStep) {
-            this._onDidEndRunningStep(this._currentStepId);
-          }
-          // Clear fallback timer if it was scheduled (shouldn't double-fire)
-          if (this._fallbackCompletionTimer) {
-            clearTimeout(this._fallbackCompletionTimer);
-            this._fallbackCompletionTimer = undefined;
-          }
-          this._reset();
+        const entry = this._findByExecution(event.execution);
+        if (!entry) return;
+        const [key, state] = entry;
+        if (state.running && state.runId && state.stepId && this._onDidEndRunningStep) {
+          this._onDidEndRunningStep(state.runId, state.stepId);
         }
+        this._disposeState(key);
       }),
       vscode.window.onDidCloseTerminal(terminal => {
-        if (terminal === this._terminal) {
-          if (this._running && this._currentStepId && this._onDidCloseRunningStep) {
-            this._onDidCloseRunningStep(this._currentStepId);
-          }
-          this._reset();
+        const entry = this._findByTerminal(terminal);
+        if (!entry) return;
+        const [key, state] = entry;
+        if (state.running && state.runId && state.stepId && this._onDidCloseRunningStep) {
+          this._onDidCloseRunningStep(state.runId, state.stepId);
         }
+        this._disposeState(key);
       })
     );
   }
 
-  public onDidCloseRunningStep(cb: (stepId: string) => void): void {
+  public onDidCloseRunningStep(cb: (runId: string, stepId: string) => void): void {
     this._onDidCloseRunningStep = cb;
   }
 
-  public onDidEndRunningStep(cb: (stepId: string) => void): void {
+  public onDidEndRunningStep(cb: (runId: string, stepId: string) => void): void {
     this._onDidEndRunningStep = cb;
   }
 
-  private _reset(): void {
-    this._running = false;
-    this._execution = undefined;
-    this._currentAgentName = undefined;
-    this._currentStepId = undefined;
-    if (this._fallbackCompletionTimer) {
-      clearTimeout(this._fallbackCompletionTimer);
-      this._fallbackCompletionTimer = undefined;
+  /** Register the fallback readiness probe (see {@link _isStepReady}). */
+  public onCheckStepReady(cb: (runId: string, stepId: string) => boolean | undefined): void {
+    this._isStepReady = cb;
+  }
+
+  private _key(runId: string | undefined, stepId: string): string { return `${runId ?? ''}::${stepId}`; }
+
+  private _findByExecution(execution: vscode.TerminalShellExecution): [string, TermState] | undefined {
+    for (const entry of this._terms) if (entry[1].execution === execution) return entry;
+    return undefined;
+  }
+
+  private _findByTerminal(terminal: vscode.Terminal): [string, TermState] | undefined {
+    for (const entry of this._terms) if (entry[1].terminal === terminal) return entry;
+    return undefined;
+  }
+
+  /** Clear a run's terminal state: cancel its fallback timer, remove its sentinel, drop the entry. */
+  private _disposeState(key: string): void {
+    const state = this._terms.get(key);
+    if (!state) return;
+    if (state.fallbackTimer) { clearTimeout(state.fallbackTimer); state.fallbackTimer = undefined; }
+    if (state.sentinelPath) {
+      try { rmSync(state.sentinelPath, { force: true }); } catch { /* best-effort cleanup */ }
+      state.sentinelPath = undefined;
     }
+    if (state.settingsPath) {
+      try { rmSync(state.settingsPath, { force: true }); } catch { /* best-effort cleanup */ }
+      state.settingsPath = undefined;
+    }
+    this._terms.delete(key);
   }
 
   /**
-   * Open (or reuse) the interactive `claude` terminal for an ad-hoc or step run.
+   * Open (or reuse) an interactive `claude` terminal for an ad-hoc or step run.
    * When `submit` is false the prompt is typed into the chat box but NOT sent, so the
    * user can review the agent/skill/model context and press Enter to start the run.
    *
-   * Terminal lifecycle for a flow step run (a call carrying `stepId`): every "Run Step" gets a
-   * brand-new terminal, except a Re-run whose step is still live in the current terminal, which
-   * continues in place. Ad-hoc agent/skill runs (no `stepId`) keep the shared session and only
-   * relaunch when the agent changes.
+   * Each flow step (a call carrying `stepId`) gets its own terminal keyed by `${runId}::${stepId}`,
+   * except a Re-run whose step is still live, which continues in place. Ad-hoc agent/skill runs
+   * (no `stepId`) each get a fresh independent terminal keyed `#adhoc-<fingerprint>`, so every run is isolated.
+   *
+   * `sandboxWritePaths` enforces a `trustLevel: sandboxed` step (see {@link buildSandboxArgs}).
+   * Pass `undefined` for a trusted step; an empty array is a deliberate fail-closed sandbox.
    */
-  public async runInTerminal(prompt: string, projectPath: string, agent?: Agent | string, submit = true, stepId?: string, sessionId?: string): Promise<void> {
+  public async runInTerminal(prompt: string, projectPath: string, agent?: Agent | string, submit = true, stepId?: string, sessionId?: string, runId?: string, label?: string, sandboxWritePaths?: string[]): Promise<void> {
     const agentName = typeof agent === 'string' ? agent : agent?.name;
+    // Terminal display label: the agent name for agent runs, or a caller-supplied label (e.g. the
+    // skill name) for agent-less runs. Does not affect launch args, only the terminal name.
+    const displayLabel = agentName ?? label;
+    // Kind drives the icon family: flow step, ad-hoc agent, or ad-hoc skill.
+    const kind: TermKind = stepId ? 'flow' : agentName ? 'agent' : 'skill';
+    // Ad-hoc runs get a unique runId fingerprint (like a flow run's shortRunId), salted with a
+    // monotonic seq so two clicks in the same millisecond can't collide on the same terminal.
+    const key = stepId
+      ? this._key(runId, stepId)
+      : `${ADHOC_KEY}-${shortRunId(`${new Date().toISOString()}-${++this._adhocSeq}`)}`;
+    let state = this._terms.get(key);
 
-    const continueLiveStep = !!stepId && this._running && this._currentStepId === stepId;
-    const adHocSwitch = !stepId && this._running && agentName !== this._currentAgentName;
-    const needFreshTerminal = (!!stepId && !continueLiveStep) || adHocSwitch;
+    const continueLiveStep = !!stepId && !!state?.running;
+    const needFreshTerminal = !!stepId && !continueLiveStep;
 
-    if (needFreshTerminal && this._terminal) {
-      this._terminal.dispose();
-      this._terminal = undefined;
-      this._execution = undefined;
-      this._running = false;
+    if (needFreshTerminal && state?.terminal) {
+      state.terminal.dispose();
+      this._disposeState(key);
+      state = undefined;
     }
 
-    const terminal = this._getTerminal(projectPath);
+    const terminal = this._getTerminal(key, projectPath, runId, stepId, displayLabel, kind);
     terminal.show();
+    state = this._terms.get(key)!;
 
-    if (this._running) {
-      // Continue in the live terminal: a Re-run of the running step, or an ad-hoc follow-up
-      // prompt for the same agent.
+    if (state.running) {
+      // Continue in the live terminal: a Re-run of the still-running step. (Ad-hoc runs always get a
+      // fresh key above, so they never land here.)
       if (prompt) terminal.sendText(prompt, submit);
       return;
     }
 
+    // Claim the step BEFORE awaiting shell integration so a Stop pressed during that window is
+    // recognized by cancelStep and aborts this launch — otherwise the claude terminal would come up
+    // after the cancel with nothing able to close it.
+    state.stepId = stepId;
+    state.runId = runId;
+    state.launchAborted = false;
+
     const shellIntegration = await this._waitForShellIntegration(terminal);
-    this._running = true;
-    this._currentAgentName = agentName;
-    this._currentStepId = stepId;
+    const cur = this._terms.get(key);
+    if (!cur || cur.terminal !== terminal) return; // disposed/replaced during the await
+    if (stepId && cur.launchAborted) {
+      // Cancelled during the shell-integration wait: dispose and do not launch. The orchestrator
+      // has already recorded the step as cancelled.
+      cur.launchAborted = false;
+      cur.terminal.dispose();
+      this._disposeState(key);
+      return;
+    }
+    cur.running = true;
+    cur.agentName = agentName;
 
     const agentObj = typeof agent === 'string' ? (await this.configManager.loadAgents()).find(a => a.name === agent) : agent;
-    const launchArgs = this._constructClaudeArgs(agentObj, sessionId);
-    // Auto-submitted runs bake the prompt into the launch command. For a pre-fill (submit=false)
-    // we launch claude bare, then type the prompt unsent once the REPL has come up.
-    if (prompt && submit) launchArgs.push(prompt);
+    const launchArgs = this._constructClaudeArgs(agentObj, sessionId, sandboxWritePaths, key);
+
+    // Whether the prompt travels as an argv entry (safe: no shell parses it) or has to be typed
+    // into the REPL afterwards. Only the shell-integration path can take an argv array, so the
+    // sendText fallback never puts prompt text on a command line — that was the injection vector.
+    const promptAsArg = !!prompt && submit && !!shellIntegration;
 
     if (shellIntegration) {
-      this._execution = shellIntegration.executeCommand(this._shellQuoteArgs(launchArgs));
+      // `executeCommand(executable, args)` hands VS Code an argv array and lets it quote for the
+      // real shell. Building the string ourselves is what allowed `$(...)` in a prompt to be
+      // expanded by PowerShell.
+      const [exe, ...rest] = promptAsArg ? [...launchArgs, prompt] : launchArgs;
+      cur.execution = shellIntegration.executeCommand(exe, rest);
+      // `onDidEndTerminalShellExecution` only fires when `claude` exits, but a step runs an
+      // interactive REPL that stays alive after finishing — so also poll the artifact readiness
+      // probe. Whichever completion signal fires first wins (_disposeState clears the other).
+      if (stepId) this._scheduleFallbackCompletion(key);
     } else {
-      // Fallback: shell integration unavailable. Schedule a timeout to detect command completion.
-      // This prevents steps from hanging indefinitely when shell integration is not ready.
-      terminal.sendText(this._shellQuoteArgs(launchArgs), true);
-      if (stepId) this._scheduleFallbackCompletion(stepId);
+      // Fallback: shell integration unavailable, so we never get the real command-end event. On
+      // POSIX we append `; touch <sentinel>` — the shell creates the file only after `claude` exits,
+      // turning the fallback into a real process-exit poll rather than a guessed timeout.
+      // Only `claude` + its flags reach the shell here; the prompt is typed in below.
+      const cmd = this._shellQuoteArgs(launchArgs);
+      const sentinel = stepId ? this._prepareSentinel(key, runId, stepId) : undefined;
+      terminal.sendText(sentinel ? `${cmd}; touch ${this._shellQuote(sentinel)}` : cmd, true);
+      if (stepId) this._scheduleFallbackCompletion(key);
     }
 
-    if (prompt && !submit) {
-      setTimeout(() => { try { terminal.sendText(prompt, false); } catch { /* terminal closed */ } }, 1500);
+    // Type the prompt into the REPL once it has come up: unsent for a pre-fill (submit=false), and
+    // submitted when the prompt could not ride along as an argv entry (the fallback path).
+    if (prompt && !promptAsArg) {
+      const send = submit;
+      setTimeout(() => { try { terminal.sendText(prompt, send); } catch { /* terminal closed */ } }, 1500);
     }
   }
 
-  private _constructClaudeArgs(agent?: Agent, sessionId?: string): string[] {
+  /**
+   * Reopen a past ad-hoc run's conversation in a fresh terminal via `claude --resume <sessionId>`.
+   * Runs in the same `projectPath` the session was launched from (resume is scoped to that project).
+   * Gets its own `#adhoc-resume-<fingerprint>` terminal so it never collides with a live run.
+   */
+  public async resumeSession(sessionId: string, projectPath: string, label?: string, kind: TermKind = 'agent'): Promise<void> {
+    const key = `${ADHOC_KEY}-resume-${shortRunId(`${sessionId}-${++this._adhocSeq}`)}`;
+    const terminal = this._getTerminal(key, projectPath, undefined, undefined, label, kind);
+    terminal.show();
+    const args = ['claude', '--resume', sessionId];
+    const shellIntegration = await this._waitForShellIntegration(terminal);
+    const cur = this._terms.get(key);
+    if (!cur || cur.terminal !== terminal) return; // disposed during the await
+    cur.running = true;
+    if (shellIntegration) cur.execution = shellIntegration.executeCommand(args[0], args.slice(1));
+    else terminal.sendText(this._shellQuoteArgs(args), true);
+  }
+
+  /**
+   * Build the `claude` argv for a launch. `sandboxWritePaths` (present only for a
+   * `trustLevel: sandboxed` step) adds the sandbox flags; its deny-settings JSON goes to a temp
+   * file rather than inline so the fallback command line carries a plain path instead of quoted
+   * JSON. `termKey` is where the temp file is registered for cleanup.
+   */
+  private _constructClaudeArgs(agent?: Agent, sessionId?: string, sandboxWritePaths?: string[], termKey?: string): string[] {
     const args = ['claude'];
     // Pin the session id so we can read exactly this run's .jsonl for metrics/output,
     // instead of guessing by project dir + time window (wrong when sessions run concurrently).
@@ -139,16 +268,51 @@ export class TerminalManager {
       args.push('--agent', agent.name);
       if (agent.model) args.push('--model', agent.model);
     }
+    if (sandboxWritePaths) {
+      args.push(...buildSandboxArgs(sandboxWritePaths, this._writeSandboxSettings(termKey, sessionId)));
+    }
     return args;
   }
 
+  /**
+   * Persist the sandbox deny-settings to a temp file and return its path. Registered on the
+   * terminal state so {@link _disposeState} removes it when the run ends.
+   */
+  private _writeSandboxSettings(termKey: string | undefined, sessionId?: string): string {
+    const safe = (sessionId ?? String(++this._adhocSeq)).replace(/[^A-Za-z0-9._-]/g, '_');
+    const settingsPath = path.join(os.tmpdir(), `csf-sandbox-${safe}.json`);
+    writeFileSync(settingsPath, SANDBOXED_DENY_SETTINGS, 'utf8');
+    const state = termKey ? this._terms.get(termKey) : undefined;
+    if (state) state.settingsPath = settingsPath;
+    return settingsPath;
+  }
+
+  /**
+   * Quote an argv array into one command line for the `sendText` fallback (no argv array accepted).
+   * Quoting follows the shell VS Code actually reports, so PowerShell gets literal single quotes
+   * instead of expanding double quotes.
+   */
   private _shellQuoteArgs(args: string[]): string {
-    return args.map(arg => {
-      if (arg.includes(' ') || arg.includes('"') || arg.includes("'") || arg.startsWith('/')) {
-        return process.platform === 'win32' ? `"${arg.replace(/"/g, '""')}"` : `'${arg.replace(/'/g, "'\\''")}'`;
-      }
-      return arg;
-    }).join(' ');
+    return quoteShellArgs(args, detectShellKind(process.platform, vscode.env.shell));
+  }
+
+  private _shellQuote(arg: string): string {
+    return this._shellQuoteArgs([arg]);
+  }
+
+  /**
+   * Pick a fresh completion-sentinel path for a run's step, deleting any leftover so its later
+   * appearance unambiguously means THIS run's `claude` exited. The runId fingerprint keeps two
+   * concurrent runs of the same stepId from sharing a sentinel. Returns undefined on win32.
+   */
+  private _prepareSentinel(key: string, runId: string | undefined, stepId: string): string | undefined {
+    if (process.platform === 'win32') return undefined;
+    const safe = `${shortRunId(runId)}-${stepId}`.replace(/[^A-Za-z0-9._-]/g, '_');
+    const sentinelPath = path.join(os.tmpdir(), `csf-done-${safe}`);
+    try { rmSync(sentinelPath, { force: true }); } catch { /* nothing to clear */ }
+    const state = this._terms.get(key);
+    if (state) state.sentinelPath = sentinelPath;
+    return sentinelPath;
   }
 
   private async _waitForShellIntegration(terminal: vscode.Terminal, timeoutMs = 3000): Promise<vscode.TerminalShellIntegration | undefined> {
@@ -162,48 +326,91 @@ export class TerminalManager {
   }
 
   /**
-   * Schedule a fallback completion callback when shell integration is unavailable.
-   * This ensures steps don't hang indefinitely if shell integration times out.
-   * The timeout is conservatively set to allow claude commands to complete.
-   * If shell execution actually ends via onDidEndTerminalShellExecution, the timer is cleared.
+   * Fallback completion detection when shell integration is unavailable and the real
+   * `onDidEndTerminalShellExecution` signal never arrives. Two signals, in order of trust:
+   *   1) the completion sentinel (POSIX) — a file the shell writes only after `claude` exits;
+   *   2) otherwise the artifact readiness probe ({@link _isStepReady}). The configured run timeout
+   * is a hard cap so a stuck step can't hang forever.
    */
-  private _scheduleFallbackCompletion(stepId: string): void {
-    // Clear any existing fallback timer
-    if (this._fallbackCompletionTimer) {
-      clearTimeout(this._fallbackCompletionTimer);
-    }
+  private _scheduleFallbackCompletion(key: string): void {
+    const state = this._terms.get(key);
+    if (!state) return;
+    if (state.fallbackTimer) clearTimeout(state.fallbackTimer);
 
-    // Schedule completion callback after a conservative timeout
-    // Uses the configured run timeout (default 600s = 10 minutes) as the upper bound
-    const maxTimeoutMs = (vscode.workspace.getConfiguration('ai-stepflow').get<number>('run.timeoutSeconds', 600)) * 1000;
-    // But cap it at 30 seconds for interactive steps (they should finish quickly)
-    const timeoutMs = Math.min(maxTimeoutMs, 30_000);
+    const hardCapMs = (vscode.workspace.getConfiguration('claudesteps').get<number>('run.timeoutSeconds', 600)) * 1000;
+    const deadline = Date.now() + hardCapMs;
+    const POLL_MS = 2_000;
+    const NO_ARTIFACT_DELAY_MS = Math.min(hardCapMs, 30_000);
 
-    this._fallbackCompletionTimer = setTimeout(() => {
-      if (this._running && this._currentStepId === stepId && this._onDidEndRunningStep) {
-        this._onDidEndRunningStep(stepId);
+    const fire = () => {
+      const s = this._terms.get(key);
+      if (s?.running && s.runId && s.stepId && this._onDidEndRunningStep) {
+        this._onDidEndRunningStep(s.runId, s.stepId);
       }
-      this._reset();
-    }, timeoutMs);
+      this._disposeState(key);
+    };
+
+    const poll = () => {
+      const s = this._terms.get(key);
+      if (!s || !s.running) { if (s) s.fallbackTimer = undefined; return; }
+      const ready = (this._isStepReady && s.runId && s.stepId) ? this._isStepReady(s.runId, s.stepId) : undefined;
+      if (ready !== undefined) {
+        // Step declares artifacts: complete once they exist and go quiescent, WITHOUT waiting for
+        // `claude` to exit (the REPL stays alive after the prompt finishes). Hard cap bounds a stuck step.
+        if (ready || Date.now() >= deadline) { fire(); return; }
+        s.fallbackTimer = setTimeout(poll, POLL_MS);
+        return;
+      }
+      // Nothing to gate on. Trust the process-exit sentinel if we have one (POSIX); otherwise fall
+      // back to the old fixed delay (win32 / no sentinel).
+      if (s.sentinelPath) {
+        if (existsSync(s.sentinelPath) || Date.now() >= deadline) { fire(); return; }
+        s.fallbackTimer = setTimeout(poll, POLL_MS);
+        return;
+      }
+      s.fallbackTimer = setTimeout(fire, NO_ARTIFACT_DELAY_MS);
+    };
+
+    state.fallbackTimer = setTimeout(poll, POLL_MS);
   }
 
-  private _getTerminal(projectPath: string): vscode.Terminal {
-    if (!this._terminal || this._terminal.exitStatus) {
-      this._running = false;
-      this._terminal = vscode.window.createTerminal({ name: 'AI StepFlow Claude', cwd: projectPath || undefined });
+  private _getTerminal(key: string, projectPath: string, runId?: string, stepId?: string, label?: string, kind: TermKind = 'skill'): vscode.Terminal {
+    const existing = this._terms.get(key);
+    if (existing && existing.terminal && !existing.terminal.exitStatus) return existing.terminal;
+    // Distinct, human-readable name so concurrent runs are distinguishable in the terminal picker.
+    // A monotonic sequence (stt) replaces the runId so repeated runs don't collide and stay readable.
+    const seq = ++this._termSeq;
+    const name = stepId
+      ? `Claude ${stepId}·#${seq}`
+      : `${label ? `Claude · ${label}` : 'ClaudeSteps Claude'} · #${seq}`;
+    // Fixed color per kind so flow/skill/agent are obvious at a glance; icon stays the default.
+    const color = new vscode.ThemeColor(KIND_COLOR[kind]);
+    const terminal = vscode.window.createTerminal({ name, cwd: projectPath || undefined, color });
+    this._terms.set(key, { terminal, running: false, runId, stepId });
+    return terminal;
+  }
+
+  /** Kill the interactive terminal for a run's step. Returns true if the terminal was closed. */
+  public cancelStep(runId: string | undefined, stepId: string): boolean {
+    const key = this._key(runId, stepId);
+    const state = this._terms.get(key);
+    if (!state) return false;
+    if (!state.running) {
+      // Launch is mid-flight (awaiting shell integration): flag it so runInTerminal aborts before
+      // spawning claude. No live terminal to dispose yet, so report "not closed".
+      state.launchAborted = true;
+      return false;
     }
-    return this._terminal;
-  }
-
-  /** Kill the interactive terminal for a step. Returns true if the terminal was closed. */
-  public cancelStep(stepId: string): boolean {
-    if (this._currentStepId !== stepId || !this._running) return false;
-    this._terminal?.dispose();
-    this._terminal = undefined;
+    state.terminal.dispose();
+    this._disposeState(key);
     return true;
   }
 
   public dispose(): void {
     while (this._disposables.length) this._disposables.pop()?.dispose();
+    // Per-terminal state owns a polling timer and (for sandboxed runs) a temp settings file. Without
+    // this, deactivating the extension left the fallback poll running until its hard cap and leaked
+    // the temp file; only a terminal-close or step-cancel used to clean them up.
+    for (const key of [...this._terms.keys()]) this._disposeState(key);
   }
 }

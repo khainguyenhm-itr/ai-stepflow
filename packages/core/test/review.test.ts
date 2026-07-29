@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync, utimesSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { reviewStepArtifacts, readProducedArtifacts, loadReviewKit, renderReviewReport, findStaleProducedFile, REVIEW_ARTIFACT_CHAR_CAP, REVIEW_TOTAL_CHAR_CAP } from '@ai-stepflow/core';
-import { FlowRunState, FlowStep } from '@ai-stepflow/core';
+import { reviewStepArtifacts, readProducedArtifacts, loadReviewKit, renderReviewReport, findStaleProducedFile, REVIEW_ARTIFACT_CHAR_CAP, REVIEW_TOTAL_CHAR_CAP } from '@claudesteps/core';
+import { FlowRunState, FlowStep } from '@claudesteps/core';
 
 function step(reviewPatch: Partial<FlowStep['review']> = {}, extra: Partial<FlowStep> = {}): FlowStep {
   return { id: 's', title: 'Step', agent: 'a', skill: 'k', review: { required: true, type: 'ai', ...reviewPatch }, ...extra } as FlowStep;
@@ -15,7 +15,7 @@ const runState: FlowRunState = { flowId: 'f', runId: 'r', source: '/f.yaml', pro
 const stubRunner = (resultText: string) => async () => ({ success: true, exitCode: 0, resultText });
 
 test('validator reject short-circuits before the LLM', async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-review-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'csf-review-'));
   try {
     writeFileSync(path.join(dir, 'reject.mjs'), "export default () => ({ decision: 'reject', reason: 'bad' });", 'utf8');
     let llmCalled = false;
@@ -31,7 +31,7 @@ test('validator reject short-circuits before the LLM', async () => {
 });
 
 test('deep=false approves when the validator passes (no LLM)', async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-review-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'csf-review-'));
   let llmCalled = false;
   try {
     writeFileSync(path.join(dir, 'pass.mjs'), "export default () => ({ decision: 'pass', reason: 'ok' });", 'utf8');
@@ -47,7 +47,7 @@ test('deep=false approves when the validator passes (no LLM)', async () => {
 });
 
 test('validator-only review rejects when the explicit validator is missing', async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-review-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'csf-review-'));
   try {
     const result = await reviewStepArtifacts({
       workspaceRoot: dir, step: step({ validatorPath: 'non-existent.mjs' }), runState, deep: false,
@@ -119,7 +119,7 @@ test('deep review waits for a human when the review kit or artifacts are missing
 });
 
 test('readProducedArtifacts enforces per-file and total caps', () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-artifacts-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'csf-artifacts-'));
   try {
     const big = 'x'.repeat(REVIEW_ARTIFACT_CHAR_CAP + 5000);
     writeFileSync(path.join(dir, 'a.txt'), big, 'utf8');
@@ -131,7 +131,7 @@ test('readProducedArtifacts enforces per-file and total caps', () => {
 });
 
 test('readProducedArtifacts prefers review.filePath even when produces is empty', () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-review-artifact-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'csf-review-artifact-'));
   try {
     const filePath = path.join(dir, 'docs', 'EPIC-1', 'review.md');
     mkdirSync(path.dirname(filePath), { recursive: true });
@@ -143,7 +143,7 @@ test('readProducedArtifacts prefers review.filePath even when produces is empty'
 });
 
 test('readProducedArtifacts de-duplicates review.filePath and produces', () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-review-artifact-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'csf-review-artifact-'));
   try {
     writeFileSync(path.join(dir, 'review.md'), 'same file', 'utf8');
     const { count } = readProducedArtifacts(step({ filePath: './review.md' }, { produces: ['./review.md'] }), dir, {});
@@ -152,7 +152,7 @@ test('readProducedArtifacts de-duplicates review.filePath and produces', () => {
 });
 
 test('loadReviewKit prefers a project copy, returns empty when absent', () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-kit-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'csf-kit-'));
   try {
     assert.equal(loadReviewKit(dir, 'nope-missing.md'), '');
     mkdirSync(path.join(dir, '.claude', 'reviews'), { recursive: true });
@@ -162,7 +162,7 @@ test('loadReviewKit prefers a project copy, returns empty when absent', () => {
 });
 
 test('reviewStepArtifacts surfaces LLM findings on a reject verdict', async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-review-findings-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'csf-review-findings-'));
   try {
     writeFileSync(path.join(dir, 'out.md'), 'artifact body', 'utf8');
     const reply = JSON.stringify({
@@ -194,6 +194,7 @@ test('renderReviewReport builds a Markdown report with tables and metadata', () 
     flowName: 'Design Flow',
     runName: 'run-1',
     runId: 'r1',
+    verdict: 'rejected',
     source: 'llm',
     reason: 'missing acceptance criteria',
     correct: ['title is clear'],
@@ -218,7 +219,7 @@ test('renderReviewReport builds a Markdown report with tables and metadata', () 
 });
 
 test('renderReviewReport renders placeholders when findings are empty', () => {
-  const md = renderReviewReport({ step: step(), runId: 'r1', source: 'validator', reason: 'file missing' });
+  const md = renderReviewReport({ step: step(), runId: 'r1', verdict: 'rejected', source: 'validator', reason: 'file missing' });
   assert.match(md, /## What's correct\n\n_None reported\._/);
   assert.match(md, /## Issues found\n\n_None reported\._/);
   assert.match(md, /\| Model \| — \|/);
@@ -232,9 +233,9 @@ function runStateWithStart(startedAt: string): FlowRunState {
 }
 
 // Path-form produces ('sub/out.md' with a '/') resolve relative to workspaceRoot, so the test
-// file location matches the resolver — a plain filename would resolve into .ai-stepflow/output/.
+// file location matches the resolver — a plain filename would resolve into .claudesteps/output/.
 test('findStaleProducedFile flags a produces file older than the step start', () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-fresh-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'csf-fresh-'));
   try {
     const f = path.join(dir, 'sub', 'out.md');
     mkdirSync(path.dirname(f), { recursive: true });
@@ -247,7 +248,7 @@ test('findStaleProducedFile flags a produces file older than the step start', ()
 });
 
 test('findStaleProducedFile returns null for a file written after the step start', () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-fresh-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'csf-fresh-'));
   try {
     const f = path.join(dir, 'sub', 'out.md');
     mkdirSync(path.dirname(f), { recursive: true });
@@ -258,7 +259,7 @@ test('findStaleProducedFile returns null for a file written after the step start
 });
 
 test('findStaleProducedFile ignores missing files (validator reports those) and no-produces steps', () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-fresh-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'csf-fresh-'));
   try {
     assert.equal(findStaleProducedFile(step({}, { produces: ['sub/nope.md'] }), dir, {}, '2026-07-09T00:00:00.000Z'), null);
     assert.equal(findStaleProducedFile(step(), dir, {}, '2026-07-09T00:00:00.000Z'), null);
@@ -266,7 +267,7 @@ test('findStaleProducedFile ignores missing files (validator reports those) and 
 });
 
 test('reviewStepArtifacts rejects a stale artifact (freshness) before the validator or LLM', async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'aisf-fresh-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'csf-fresh-'));
   try {
     const f = path.join(dir, 'sub', 'out.md');
     mkdirSync(path.dirname(f), { recursive: true });

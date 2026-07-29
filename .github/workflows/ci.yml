@@ -1,10 +1,12 @@
 name: CI
 
 on:
+  # Every branch, not just main: work happens on long-lived feature branches here, so gating only
+  # `main` meant most commits never ran lint, tests, or the coverage gate.
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   build-test:
@@ -23,11 +25,22 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Audits only what actually ships in the VSIX. Dev-tool advisories (eslint/mocha transitives)
+      # would otherwise block every build without affecting a single user.
+      - name: Audit shipped dependencies
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Test
         run: npm test
 
       - name: Coverage (core, gated)
         run: npm run test:coverage
+
+      - name: Coverage (extension host modules under test, gated)
+        run: npm run test:coverage-ext
+
+      - name: Coverage (webview pure modules, gated)
+        run: npm run test:coverage-webview
 
   integration:
     runs-on: ubuntu-latest

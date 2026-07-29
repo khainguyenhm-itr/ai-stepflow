@@ -5,7 +5,7 @@ import {
   resolveTimeoutMs,
   buildHeadlessMcpConfig,
   composeInteractiveMessage,
-} from '@ai-stepflow/core';
+} from '@claudesteps/core';
 
 test('resolveMaxTurns: agent override wins when set (including 0 = no limit)', () => {
   assert.equal(resolveMaxTurns(12, 6), 12);

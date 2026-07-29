@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { resolveTemplate, validateProduces, validateProducesFiles, verifyProducesContent, validateRequires, FlowStep } from '@ai-stepflow/core';
-import type { StepRunner, ClaudeStreamingRunResult } from '@ai-stepflow/core';
+import { resolveTemplate, validateProduces, validateProducesFiles, verifyProducesContent, validateRequires, FlowStep } from '@claudesteps/core';
+import type { StepRunner, ClaudeStreamingRunResult } from '@claudesteps/core';
 
 /** Stub runner returning a fixed result text; records whether it was called. */
 function stubRunner(resultText: string): { fn: StepRunner; get calls(): number } {
@@ -33,7 +33,7 @@ test('resolveTemplate replaces run input placeholders', () => {
 });
 
 test('validateRequires checks placeholder-resolved files', () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'ai-stepflow-requires-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'claudesteps-requires-'));
   try {
     const filePath = path.join(dir, 'docs', 'EPIC-1', 'brief.md');
     mkdirSync(path.dirname(filePath), { recursive: true });
@@ -47,7 +47,7 @@ test('validateRequires checks placeholder-resolved files', () => {
 });
 
 test('validateProduces checks placeholder-resolved files and markers', () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'ai-stepflow-produces-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'claudesteps-produces-'));
   try {
     const filePath = path.join(dir, 'docs', 'EPIC-1', 'plan.md');
     mkdirSync(path.dirname(filePath), { recursive: true });
@@ -62,7 +62,7 @@ test('validateProduces checks placeholder-resolved files and markers', () => {
 });
 
 test('validateProducesFiles checks existence only — ignores content markers', () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'ai-stepflow-produces-files-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'claudesteps-produces-files-'));
   try {
     const filePath = path.join(dir, 'docs', 'EPIC-1', 'plan.md');
     mkdirSync(path.dirname(filePath), { recursive: true });
@@ -77,7 +77,7 @@ test('validateProducesFiles checks existence only — ignores content markers', 
 });
 
 test('verifyProducesContent: verbatim markers pass for free (no LLM call)', async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'ai-stepflow-verify-fast-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'claudesteps-verify-fast-'));
   try {
     const filePath = path.join(dir, 'out', 'plan.md');
     mkdirSync(path.dirname(filePath), { recursive: true });
@@ -93,7 +93,7 @@ test('verifyProducesContent: verbatim markers pass for free (no LLM call)', asyn
 });
 
 test('verifyProducesContent: judge approves non-verbatim content semantically', async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'ai-stepflow-verify-pass-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'claudesteps-verify-pass-'));
   try {
     const filePath = path.join(dir, 'out', 'plan.md');
     mkdirSync(path.dirname(filePath), { recursive: true });
@@ -109,7 +109,7 @@ test('verifyProducesContent: judge approves non-verbatim content semantically', 
 });
 
 test('verifyProducesContent: judge rejects unmet requirements', async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'ai-stepflow-verify-fail-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'claudesteps-verify-fail-'));
   try {
     const filePath = path.join(dir, 'out', 'plan.md');
     mkdirSync(path.dirname(filePath), { recursive: true });
@@ -125,7 +125,7 @@ test('verifyProducesContent: judge rejects unmet requirements', async () => {
 });
 
 test('verifyProducesContent: lenient when the judge output is unparseable', async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'ai-stepflow-verify-lenient-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'claudesteps-verify-lenient-'));
   try {
     const filePath = path.join(dir, 'out', 'plan.md');
     mkdirSync(path.dirname(filePath), { recursive: true });
@@ -148,7 +148,7 @@ test('verifyProducesContent: no markers is a pass without reading anything', asy
 });
 
 test('validateProduces treats review.filePath as a required produced artifact', () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'ai-stepflow-review-file-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'claudesteps-review-file-'));
   try {
     const step = makeStep({ review: { required: true, type: 'ai', filePath: 'docs/{ticket}/review.md' } });
     assert.equal(validateProduces(step, dir, { ticket: 'EPIC-1' }).ok, false);

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Flow, FlowStep } from '@ai-stepflow/core/types';
+import { Flow, FlowStep } from '@claudesteps/core/types';
 import { SaveScope } from './types';
 
 export const useBuilderState = () => {

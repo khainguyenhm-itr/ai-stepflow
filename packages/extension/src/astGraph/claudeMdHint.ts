@@ -9,8 +9,8 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const MARKER_START = '<!-- ai-stepflow:ast-graph:start -->';
-const MARKER_END = '<!-- ai-stepflow:ast-graph:end -->';
+const MARKER_START = '<!-- claudesteps:ast-graph:start -->';
+const MARKER_END = '<!-- claudesteps:ast-graph:end -->';
 
 /** Ensure the ast-graph hint block exists in `<folder>/.claude/CLAUDE.md`. Returns the path. */
 export async function ensureClaudeMdHint(folder: vscode.WorkspaceFolder): Promise<string> {
@@ -75,10 +75,10 @@ function removeBlock(body: string): string {
 
 function buildBlock(): string {
   return `${MARKER_START}
-## ast-graph (managed by the AI StepFlow extension — do not edit by hand)
+## ast-graph (managed by the ClaudeSteps extension — do not edit by hand)
 
 This project has a pre-built AST graph at \`.ast-graph/graph.db\`, exposed via the
-\`ast-graph\` MCP server (auto-registered by the AI StepFlow VS Code extension). The
+\`ast-graph\` MCP server (auto-registered by the ClaudeSteps VS Code extension). The
 graph stores every function/class/method/import in the codebase plus their
 caller→callee edges, so structural questions can be answered without grepping.
 
@@ -100,7 +100,7 @@ Keep using grep/read/edit for:
 - editing or refactoring code
 - following intent, naming, or non-AST signals (config files, prose)
 
-If the graph looks stale, run \`AI StepFlow: Rescan AST Graph\`. The extension also
+If the graph looks stale, run \`ClaudeSteps: Rescan AST Graph\`. The extension also
 rescans automatically a few seconds after any source file save.
 ${MARKER_END}`;
 }

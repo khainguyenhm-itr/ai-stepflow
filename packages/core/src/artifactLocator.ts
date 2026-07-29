@@ -3,8 +3,8 @@
  * ACTUALLY landed on disk.
  *
  * A step declares a plain filename (e.g. `srs.md`), which resolves under the per-run output dir
- * `.ai-stepflow/output/{flow}/{run}/srs.md`. But an agent often nests its output one level deeper
- * (e.g. `.ai-stepflow/output/{flow}/{run}/artifact/srs.md`). The file is there, just at a different
+ * `.claudesteps/output/{flow}/{run}/srs.md`. But an agent often nests its output one level deeper
+ * (e.g. `.claudesteps/output/{flow}/{run}/artifact/srs.md`). The file is there, just at a different
  * depth than declared — which would break the produces gate, freshness check, and AI review.
  *
  * {@link locateProducedFile} closes that gap: it prefers the exact declared path, and only when
@@ -49,12 +49,21 @@ function findByBasename(dir: string, basename: string): string[] {
  * - Explicit/absolute path, or no match found → return the exact resolved path unchanged, so the
  *   caller still sees a consistent "expected" location to report as missing.
  */
-export function locateProducedFile(declaredPath: string, flowName: string, workspaceRoot: string, runSlug: string): string {
+export function locateProducedFile(declaredPath: string, flowName: string, workspaceRoot: string, runSlug: string, legacyRunSlug = ''): string {
   const exact = resolveFlowPath(declaredPath, flowName, workspaceRoot, runSlug);
   if (fs.existsSync(exact)) return exact;
   // Only plain filenames live under the per-run output dir; explicit/absolute paths are literal.
   if (declaredPath.includes('/') || declaredPath.includes('\\') || path.isAbsolute(declaredPath)) return exact;
   const base = flowOutputDir(flowName, workspaceRoot, runSlug);
   const matches = findByBasename(base, path.basename(exact));
-  return matches[0] ?? exact;
+  if (matches[0]) return matches[0];
+  // Backward compat: a run created before the runId fingerprint was added to the slug stored its
+  // artifacts under the legacy (name-only) folder. Fall back to it so old runs still resolve.
+  if (legacyRunSlug) {
+    const legacyExact = resolveFlowPath(declaredPath, flowName, workspaceRoot, legacyRunSlug);
+    if (fs.existsSync(legacyExact)) return legacyExact;
+    const legacyMatches = findByBasename(flowOutputDir(flowName, workspaceRoot, legacyRunSlug), path.basename(exact));
+    if (legacyMatches[0]) return legacyMatches[0];
+  }
+  return exact;
 }

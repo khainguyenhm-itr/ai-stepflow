@@ -26,15 +26,15 @@ jobs:
         run: npm test
 
       - name: Build VSIX
-        run: npm run package:vsix
+        run: npm run build
 
       - name: Publish to VS Code Marketplace
         # vsce reads the token from the VSCE_PAT env var. Set it in repo Settings → Secrets.
-        run: npx @vscode/vsce publish --packagePath ai-stepflow.vsix
+        run: npx @vscode/vsce publish --packagePath claudesteps.vsix
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
       - name: Attach the VSIX to a GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ai-stepflow.vsix
+          files: claudesteps.vsix

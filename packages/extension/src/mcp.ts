@@ -64,7 +64,7 @@ export function listMcpServers(cwd?: string): Promise<McpServer[]> {
       { timeout: 15000, cwd: cwd || undefined },
       (error, stdout) => {
         if (error && !stdout) {
-          console.warn('AI StepFlow: unable to inspect MCP servers', error);
+          console.warn('ClaudeSteps: unable to inspect MCP servers', error);
           resolve([]);
           return;
         }
@@ -110,7 +110,7 @@ export function addRemoteMcpServer(opts: {
       (error, stdout, stderr) => {
         if (error) {
           const detail = (stderr || stdout || error.message || '').trim();
-          console.error('AI StepFlow: failed to add remote MCP server', detail);
+          console.error('ClaudeSteps: failed to add remote MCP server', detail);
           resolve({ ok: false, error: detail });
           return;
         }
@@ -139,7 +139,7 @@ export function reconnectRemoteMcpServer(opts: {
       (removeError, removeStdout, removeStderr) => {
         if (removeError) {
           const detail = (removeStderr || removeStdout || removeError.message || '').trim();
-          console.error('AI StepFlow: failed to remove MCP server before reconnect', detail);
+          console.error('ClaudeSteps: failed to remove MCP server before reconnect', detail);
           resolve({ ok: false, error: detail });
           return;
         }
@@ -179,7 +179,7 @@ export function addMcpServer(opts: {
       { timeout: 30000, cwd: opts.cwd || undefined },
       (error, _stdout, stderr) => {
         if (error) {
-          console.error('AI StepFlow: failed to add MCP server', error, stderr);
+          console.error('ClaudeSteps: failed to add MCP server', error, stderr);
           resolve({ ok: false, error: stderr || error.message });
           return;
         }
@@ -187,4 +187,28 @@ export function addMcpServer(opts: {
       }
     );
   });
+}
+
+/**
+ * Registers the GitNexus MCP server with Claude Code at user scope via `npx gitnexus mcp` (no
+ * global install needed — the server serves every indexed repo, so one user-scoped registration
+ * covers all projects). If a stale `gitnexus` registration already exists it is removed and
+ * re-added. Resolves `{ ok, error }`; never rejects.
+ */
+export function connectGitnexusMcp(): Promise<{ ok: boolean; error?: string }> {
+  const ADD = ['mcp', 'add', 'gitnexus', '--scope', 'user', '--', 'npx', '-y', 'gitnexus', 'mcp'];
+  const run = (args: string[]) => new Promise<{ error: Error | null; stderr: string }>(res =>
+    execFile('claude', args, { timeout: 30000 }, (error, _stdout, stderr) => res({ error, stderr: stderr || '' })));
+  return (async () => {
+    let r = await run(ADD);
+    if (r.error && /already exists/i.test(r.stderr || r.error.message)) {
+      await run(['mcp', 'remove', 'gitnexus', '--scope', 'user']); // best-effort clear, then re-add
+      r = await run(ADD);
+    }
+    if (r.error) {
+      console.error('ClaudeSteps: failed to connect GitNexus MCP', r.error, r.stderr);
+      return { ok: false, error: r.stderr || r.error.message };
+    }
+    return { ok: true };
+  })();
 }

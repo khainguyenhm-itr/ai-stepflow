@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { runValidator } from '@ai-stepflow/core';
-import { FlowRunState, FlowStep } from '@ai-stepflow/core';
+import { runValidator } from '@claudesteps/core';
+import { FlowRunState, FlowStep } from '@claudesteps/core';
 
 function makeStep(reviewPatch: Partial<FlowStep['review']>): FlowStep {
   return {
@@ -30,7 +30,7 @@ function makeRunState(): FlowRunState {
 }
 
 test('runValidator executes validator module and returns its verdict', async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'ai-stepflow-validator-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'claudesteps-validator-'));
   try {
     const validatorPath = path.join(dir, 'validate.mjs');
     mkdirSync(path.join(dir, 'docs', 'EPIC-1'), { recursive: true });
@@ -48,7 +48,7 @@ test('runValidator executes validator module and returns its verdict', async () 
 });
 
 test('runValidator rejects malformed or missing validator exports', async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'ai-stepflow-validator-bad-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'claudesteps-validator-bad-'));
   try {
     writeFileSync(path.join(dir, 'bad.mjs'), "export const nope = true;", 'utf8');
     const verdict = await runValidator({

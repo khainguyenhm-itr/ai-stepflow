@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { StepMetrics } from '@ai-stepflow/core';
+import { StepMetrics } from '@claudesteps/core';
 
 /** Cost per million tokens by model prefix. Falls back to Sonnet 4.x rates. */
 const PRICING: Record<string, { input: number; output: number; cacheRead: number }> = {
@@ -44,6 +44,8 @@ export async function readInteractiveSessionStats(projectPath: string, startTime
     let totalCacheRead = 0;
     let lastModel: string | undefined;
     let found = false;
+    let firstTs: number | undefined;
+    let lastTs: number | undefined;
     const textParts: { ts: number; text: string }[] = [];
 
     // Pinned session → read exactly that file. Legacy runs → scan all .jsonl after startTime.
@@ -66,6 +68,16 @@ export async function readInteractiveSessionStats(projectPath: string, startTime
         if (!line.trim()) continue;
         let entry: any;
         try { entry = JSON.parse(line); } catch { continue; }
+
+        // Track the session's wall-clock span across every timestamped entry (user + assistant),
+        // so the run's execution time reflects the whole conversation, not just model turns.
+        if (entry.timestamp) {
+          const t = new Date(entry.timestamp).getTime();
+          if (!isNaN(t)) {
+            if (firstTs === undefined || t < firstTs) firstTs = t;
+            if (lastTs === undefined || t > lastTs) lastTs = t;
+          }
+        }
 
         if (entry.type !== 'assistant') continue;
         const ts = entry.timestamp ? new Date(entry.timestamp).getTime() : 0;
@@ -105,10 +117,15 @@ export async function readInteractiveSessionStats(projectPath: string, startTime
     const costUsd = (totalInput * pricing.input + totalOutput * pricing.output + totalCacheRead * pricing.cacheRead) / 1_000_000;
     const tokensUsed = totalInput + totalOutput + totalCacheRead;
 
+    const durationMs = firstTs !== undefined && lastTs !== undefined && lastTs > firstTs
+      ? lastTs - firstTs
+      : undefined;
+
     return {
       modelUsed: lastModel,
       tokensUsed,
       costUsd: Math.round(costUsd * 1_000_000) / 1_000_000,
+      ...(durationMs !== undefined ? { durationMs } : {}),
       ...(output ? { output } : {}),
     };
   } catch {

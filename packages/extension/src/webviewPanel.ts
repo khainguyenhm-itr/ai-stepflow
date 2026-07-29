@@ -7,12 +7,13 @@ import { StateManager, DayPoint } from './stateManager.js';
 import { TerminalManager } from './terminalManager.js';
 import { RunOrchestrator } from './runOrchestrator.js';
 import { validateMessage, WebviewMessage, HostMessage } from './messages.js';
-import { listConnectedMcpServers, addMcpServer } from './mcp.js';
-import { Agent, ClaudeStreamingRunResult, Flow, FlowStep, Skill, extractJsonObject } from '@ai-stepflow/core';
+import { listConnectedMcpServers, addMcpServer, connectGitnexusMcp } from './mcp.js';
+import { normalizeFlowInputs, normalizeGeneratedSteps } from './webviewGeneration.js';
+import { Agent, AdhocRun, ClaudeStreamingRunResult, Flow, FlowStep, Skill, extractJsonObject } from '@claudesteps/core';
 
 export class CockpitPanel {
   public static currentPanel: CockpitPanel | undefined;
-  private static readonly viewType = 'aiStepFlowCockpit';
+  private static readonly viewType = 'claudeStepsCockpit';
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
   private _disposables: vscode.Disposable[] = [];
@@ -37,7 +38,7 @@ export class CockpitPanel {
 
     const panel = vscode.window.createWebviewPanel(
       CockpitPanel.viewType,
-      'AI StepFlow',
+      'ClaudeSteps',
       vscode.ViewColumn.One,
       {
         enableScripts: true,
@@ -90,7 +91,7 @@ export class CockpitPanel {
     this._panel.webview.onDidReceiveMessage(
       message => this._handleMessage(message).catch(error => {
         const text = error instanceof Error ? error.message : String(error);
-        vscode.window.showErrorMessage(`AI StepFlow: ${text}`);
+        vscode.window.showErrorMessage(`ClaudeSteps: ${text}`);
       }),
       null,
       this._disposables
@@ -234,15 +235,15 @@ export class CockpitPanel {
           // Don't fail silently — the dropdown offered this run, so if it can't be opened the run
           // file is missing/corrupt or its workflow no longer exists. Tell the user why.
           const why = !flow ? 'its workflow could not be found' : 'the run file is missing or corrupt';
-          vscode.window.showWarningMessage(`AI StepFlow: could not open that run — ${why}.`);
+          vscode.window.showWarningMessage(`ClaudeSteps: could not open that run — ${why}.`);
         }
         return;
       }
       case 'runStep':
-        await this._runner.runStep(message.stepId, { flow: message.flow, runState: message.runState, description: message.description });
+        await this._runner.runStep(message.stepId, { flow: message.flow, runState: message.runState, description: message.description, runId: message.runId });
         return;
       case 'cancelStep':
-        this._runner.cancelStep(message.stepId);
+        this._runner.cancelStep(message.stepId, message.runId);
         return;
       case 'runAgent':
         await this._handleRunAgent(message.agent, message.description);
@@ -250,12 +251,24 @@ export class CockpitPanel {
       case 'runSkill':
         await this._handleRunSkill(message.skill, message.description);
         return;
+      case 'getAdhocRuns': {
+        const runs = await this.stateManager.listAdhocRuns(message.kind, message.name)
+          .catch(e => { console.error('ClaudeSteps: listAdhocRuns failed', e); return [] as AdhocRun[]; });
+        this.postMessage({ type: 'adhocRuns', kind: message.kind, name: message.name, runs });
+        return;
+      }
+      case 'resumeSession':
+        await this._terminals.resumeSession(message.sessionId, message.projectPath, message.name, message.kind ?? 'agent');
+        return;
       case 'reviewStep':
-        this._runner.reviewStep(message.stepId, message.decision);
+        this._runner.reviewStep(message.stepId, message.decision, message.runId);
         break;
 
       case 'setAutoReview':
-        await this._runner.setAutoReview(message.enabled);
+        await this._runner.setAutoReview(message.enabled, message.runId);
+        return;
+      case 'editRun':
+        await this._runner.editRunMeta(message.runName, message.inputs, message.runId);
         return;
       case 'resetRun': {
         const choice = await vscode.window.showWarningMessage(
@@ -264,7 +277,7 @@ export class CockpitPanel {
           'Reset All'
         );
         if (choice !== 'Reset All') return;
-        await this._runner.resetRun();
+        await this._runner.resetRun(message.runId);
         return;
       }
       case 'resetStep': {
@@ -276,11 +289,11 @@ export class CockpitPanel {
           'Reset Step'
         );
         if (choice !== 'Reset Step') return;
-        await this._runner.resetStep(message.stepId);
+        await this._runner.resetStep(message.stepId, message.runId);
         return;
       }
       case 'closeRun':
-        await this._runner.closeRun(message.finalize);
+        await this._runner.closeRun(message.finalize, message.runId);
         await this._sendAllData();
         return;
       case 'deleteRun': {
@@ -293,16 +306,16 @@ export class CockpitPanel {
           'Delete'
         );
         if (choice !== 'Delete') return;
-        await this._runner.deleteRun();
+        await this._runner.deleteRun(message.runId);
         await this._sendAllData();
-        void vscode.commands.executeCommand('ai-stepflow.refreshAll');
+        void vscode.commands.executeCommand('claudesteps.refreshAll');
         return;
       }
       case 'verifyRun':
-        await this._runner.verify();
+        await this._runner.verify(message.runId);
         return;
       case 'exportRunReport':
-        await this._runner.exportReport();
+        await this._runner.exportReport(message.runId);
         return;
       case 'importAgentFile':
         await this._handleImportFile('agent');
@@ -331,6 +344,9 @@ export class CockpitPanel {
       case 'generateFlow':
         await this._handleGenerateFlow(message.description, message.flow, message.history);
         return;
+      case 'cancelGenerate':
+        this._runner.cancelGeneration();
+        return;
       case 'connectMcpServer':
         try {
           const res = await addMcpServer({
@@ -338,44 +354,55 @@ export class CockpitPanel {
             cwd: this.configManager.getProjectPath()
           });
           if (res.ok) {
-            vscode.window.showInformationMessage(`AI StepFlow: MCP server '${message.config.name}' connected.`);
+            vscode.window.showInformationMessage(`ClaudeSteps: MCP server '${message.config.name}' connected.`);
             const connectedMcpServers = await listConnectedMcpServers(this.configManager.getProjectPath());
             this.postMessage({ type: 'mcpServers', connectedMcpServers });
           } else {
-            vscode.window.showErrorMessage(`AI StepFlow: failed to connect MCP server. ${res.error}`);
+            vscode.window.showErrorMessage(`ClaudeSteps: failed to connect MCP server. ${res.error}`);
           }
         } catch (e) {
-          vscode.window.showErrorMessage(`AI StepFlow: failed to connect MCP server. ${e instanceof Error ? e.message : String(e)}`);
+          vscode.window.showErrorMessage(`ClaudeSteps: failed to connect MCP server. ${e instanceof Error ? e.message : String(e)}`);
         }
         return;
       case 'runCommand':
         try {
-          const arg = message.command === 'workbench.action.openSettings' ? 'ai-stepflow' : undefined;
+          const arg = message.command === 'workbench.action.openSettings' ? 'claudesteps' : undefined;
           await vscode.commands.executeCommand(message.command, arg);
         } catch (e) {
-          vscode.window.showErrorMessage(`AI StepFlow: command '${message.command}' failed. ${e instanceof Error ? e.message : String(e)}`);
+          vscode.window.showErrorMessage(`ClaudeSteps: command '${message.command}' failed. ${e instanceof Error ? e.message : String(e)}`);
         }
         return;
       case 'openWorkspace':
         try {
-          await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(message.path), { forceNewWindow: false });
+          await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(message.path), { forceNewWindow: true });
         } catch (e) {
-          vscode.window.showErrorMessage(`AI StepFlow: failed to open '${message.path}'. ${e instanceof Error ? e.message : String(e)}`);
+          vscode.window.showErrorMessage(`ClaudeSteps: failed to open '${message.path}'. ${e instanceof Error ? e.message : String(e)}`);
         }
         return;
       case 'revealPath':
         try {
           await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(message.path));
         } catch (e) {
-          vscode.window.showErrorMessage(`AI StepFlow: failed to open '${message.path}'. ${e instanceof Error ? e.message : String(e)}`);
+          vscode.window.showErrorMessage(`ClaudeSteps: failed to open '${message.path}'. ${e instanceof Error ? e.message : String(e)}`);
         }
         return;
-      case 'installGitnexus': {
-        const terminal = vscode.window.createTerminal({ name: 'Install GitNexus' });
-        terminal.show();
-        terminal.sendText('npm install -g gitnexus', true);
+      case 'connectGitnexus':
+        await vscode.window.withProgress(
+          { location: vscode.ProgressLocation.Notification, title: 'Connecting GitNexus to Claude Code…' },
+          async () => {
+            const res = await connectGitnexusMcp();
+            if (res.ok) {
+              vscode.window.showInformationMessage('ClaudeSteps: GitNexus connected to Claude Code.');
+              const connectedMcpServers = await listConnectedMcpServers(this.configManager.getProjectPath());
+              this.postMessage({ type: 'mcpServers', connectedMcpServers });
+              // Re-probe the sidebar so its GitNexus row (gated on the connection) appears.
+              await vscode.commands.executeCommand('claudesteps.refreshSidebarMcp');
+            } else {
+              vscode.window.showErrorMessage(`ClaudeSteps: failed to connect GitNexus. ${res.error}`);
+            }
+          }
+        );
         return;
-      }
       case 'alert':
         vscode.window.showErrorMessage(message.text);
         return;
@@ -426,7 +453,7 @@ export class CockpitPanel {
 
     let outcome = await attempt();
     if (!outcome.result.success && !outcome.result.timedOut) {
-      console.error('AI StepFlow: generation attempt failed, retrying once —', `claude exited ${outcome.result.exitCode}`, outcome.text.slice(-500));
+      console.error('ClaudeSteps: generation attempt failed, retrying once —', `claude exited ${outcome.result.exitCode}`, outcome.text.slice(-500));
       outcome = await attempt();
     }
 
@@ -470,7 +497,7 @@ export class CockpitPanel {
     await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Generating ${kind}...` }, async () => {
       const { result, text, why } = await this._runGenerationPrompt(projectPath, metaPrompt);
       if (why) {
-        console.error('AI StepFlow: draft generation failed —', why);
+        console.error('ClaudeSteps: draft generation failed —', why);
         this.postMessage({ type: 'draftGenerated', kind, error: why });
         return;
       }
@@ -492,7 +519,7 @@ export class CockpitPanel {
       } catch (error) {
         const why = error instanceof Error ? error.message : String(error);
         const raw = (result.resultText || text).trim();
-        console.error('AI StepFlow: draft generation parse failed —', why, '\nraw output (first 500 chars):', raw.slice(0, 500));
+        console.error('ClaudeSteps: draft generation parse failed —', why, '\nraw output (first 500 chars):', raw.slice(0, 500));
         this.postMessage({ type: 'draftGenerated', kind, error: `invalid AI response: ${why}` });
       }
     });
@@ -507,7 +534,7 @@ export class CockpitPanel {
     const agentNames = new Set(agents.map(agent => agent.name));
     const skillNames = new Set(skills.map(skill => skill.name));
     const metaPrompt = [
-      'Generate an AI StepFlow workflow from the user request.',
+      'Generate an ClaudeSteps workflow from the user request.',
       'Do NOT ask clarifying questions. Make a reasonable interpretation and return the JSON immediately.',
       '',
       'Available agents:',
@@ -530,13 +557,13 @@ export class CockpitPanel {
       '- Keep step ids stable, lowercase, and unique.',
       '- Each non-first step should usually depend on the previous step.',
       '- Leave inputs empty unless the workflow genuinely needs run-time variables.',
-      '- For "produces" and "requires", use plain filenames only — no directory prefix (e.g. "design.md", "review-report.md"). The system automatically places them in .ai-stepflow/output/{flowName}/. Only use a path with "/" if you specifically need a different location.'
+      '- For "produces" and "requires", use plain filenames only — no directory prefix (e.g. "design.md", "review-report.md"). The system automatically places them in .claudesteps/output/{flowName}/. Only use a path with "/" if you specifically need a different location.'
     ].filter(Boolean).join('\n');
 
     await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Generating workflow...' }, async () => {
       const { result, text, why } = await this._runGenerationPrompt(projectPath, metaPrompt);
       if (why) {
-        console.error('AI StepFlow: flow generation failed —', why);
+        console.error('ClaudeSteps: flow generation failed —', why);
         this.postMessage({ type: 'flowGenerated', error: why });
         return;
       }
@@ -559,56 +586,18 @@ export class CockpitPanel {
         this.postMessage({ type: 'flowGenerated', flow, reply: aiReply });
       } catch (error) {
         const why = error instanceof Error ? error.message : String(error);
-        console.error('AI StepFlow: flow generation parse failed —', why);
+        console.error('ClaudeSteps: flow generation parse failed —', why);
         this.postMessage({ type: 'flowGenerated', error: `invalid AI response: ${why}` });
       }
     });
   }
 
   private _normalizeFlowInputs(inputs: unknown): Flow['inputs'] {
-    if (!inputs || typeof inputs !== 'object') return {};
-    const normalized: Flow['inputs'] = {};
-    for (const [name, raw] of Object.entries(inputs as Record<string, unknown>)) {
-      if (!name.trim()) continue;
-      const input = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
-      normalized[name.trim()] = {
-        type: typeof input.type === 'string' ? input.type : 'string',
-        required: typeof input.required === 'boolean' ? input.required : true,
-        label: typeof input.label === 'string' ? input.label : ''
-      };
-    }
-    return normalized;
+    return normalizeFlowInputs(inputs);
   }
 
   private _normalizeGeneratedSteps(steps: unknown[], agentNames: Set<string>, skillNames: Set<string>): FlowStep[] {
-    const usedIds = new Set<string>();
-    const normalizedIds: string[] = [];
-    return steps.map((raw, index) => {
-      const item = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
-      const fallbackId = `step-${index + 1}`;
-      let id = typeof item.id === 'string' && item.id.trim() ? item.id.trim() : fallbackId;
-      id = id.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || fallbackId;
-      while (usedIds.has(id)) id = `${id}-${index + 1}`;
-      usedIds.add(id);
-      normalizedIds.push(id);
-
-      const rawSkills = Array.isArray(item.skills) ? item.skills : (typeof item.skill === 'string' ? [item.skill] : []);
-      const skills = rawSkills.filter((name): name is string => typeof name === 'string' && skillNames.has(name));
-      const agent = typeof item.agent === 'string' && agentNames.has(item.agent) ? item.agent : '';
-      const review = item.review && typeof item.review === 'object' ? item.review as Record<string, unknown> : {};
-      return {
-        id,
-        title: typeof item.title === 'string' ? item.title : id,
-        agent,
-        skill: skills[0] || '',
-        skills,
-        dependsOn: Array.isArray(item.dependsOn) ? item.dependsOn.filter((value): value is string => typeof value === 'string') : (index > 0 ? [normalizedIds[index - 1]] : []),
-        requires: Array.isArray(item.requires) ? item.requires.filter((value): value is string => typeof value === 'string') : undefined,
-        produces: Array.isArray(item.produces) ? item.produces.filter((value): value is string => typeof value === 'string') : undefined,
-        producesContains: Array.isArray(item.producesContains) ? item.producesContains.filter((value): value is string => typeof value === 'string') : undefined,
-        review: { required: true, type: review.type === 'human' ? 'human' : 'ai' }
-      };
-    });
+    return normalizeGeneratedSteps(steps, agentNames, skillNames);
   }
 
   public async refreshData(): Promise<void> {
@@ -618,11 +607,11 @@ export class CockpitPanel {
   private async _sendAllData() {
     try {
       const [flows, agents, skills, reviewKits, runSummaries] = await Promise.all([
-        this.configManager.loadFlows().catch(e => { console.error('AI StepFlow: loadFlows failed', e); return []; }),
-        this.configManager.loadAgents().catch(e => { console.error('AI StepFlow: loadAgents failed', e); return []; }),
-        this.configManager.loadSkills().catch(e => { console.error('AI StepFlow: loadSkills failed', e); return []; }),
-        this.configManager.loadReviewKits().catch(e => { console.error('AI StepFlow: loadReviewKits failed', e); return []; }),
-        this.stateManager.listRunFiles().catch(e => { console.error('AI StepFlow: listRunFiles failed', e); return []; })
+        this.configManager.loadFlows().catch(e => { console.error('ClaudeSteps: loadFlows failed', e); return []; }),
+        this.configManager.loadAgents().catch(e => { console.error('ClaudeSteps: loadAgents failed', e); return []; }),
+        this.configManager.loadSkills().catch(e => { console.error('ClaudeSteps: loadSkills failed', e); return []; }),
+        this.configManager.loadReviewKits().catch(e => { console.error('ClaudeSteps: loadReviewKits failed', e); return []; }),
+        this.stateManager.listRunFiles().catch(e => { console.error('ClaudeSteps: listRunFiles failed', e); return []; })
       ]);
 
       const auditLogs: Record<string, any[]> = {};
@@ -663,11 +652,11 @@ export class CockpitPanel {
         void listConnectedMcpServers(projectPath).then(connectedMcpServers => {
           this.postMessage({ type: 'mcpServers', connectedMcpServers });
         }).catch(err => {
-          console.error('AI StepFlow: MCP probe failed', err);
+          console.error('ClaudeSteps: MCP probe failed', err);
         });
       }
     } catch (err) {
-      console.error('AI StepFlow: _sendAllData critical failure', err);
+      console.error('ClaudeSteps: _sendAllData critical failure', err);
       this.postMessage({
         type: 'loadData',
         flows: [], agents: [], skills: [], reviewKits: [],
@@ -687,18 +676,55 @@ export class CockpitPanel {
 
   private async _handleOpenFile(filePath: string | undefined) {
     if (!filePath) return;
-    const absPath = path.isAbsolute(filePath) ? filePath : path.join(this.configManager.getProjectPath() || '', filePath);
-    if (!fs.existsSync(absPath)) return;
+    let absPath = path.isAbsolute(filePath) ? filePath : path.join(this.configManager.getProjectPath() || '', filePath);
+    if (!fs.existsSync(absPath)) {
+      // requires/produces are declared as plain filenames that live under the per-run output dir
+      // (`.claudesteps/output/{flow}/{run}/…`, possibly nested), not at the project root — resolve
+      // them through the runner before giving up.
+      const resolved = this._runner.resolveArtifactPath(filePath);
+      if (resolved && fs.existsSync(resolved)) {
+        absPath = resolved;
+      } else {
+        vscode.window.showInformationMessage(`ClaudeSteps: file not found yet — ${filePath}`);
+        return;
+      }
+    }
     const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(absPath));
     await vscode.window.showTextDocument(doc, { preview: false });
   }
 
   private async _handleRunAgent(agent: Agent | undefined, description?: string) {
-    if (agent) await this._terminals.runInTerminal(description?.trim() || '', this.configManager.getProjectPath() || '', agent);
+    if (!agent) return;
+    const projectPath = this.configManager.getProjectPath() || '';
+    // Pin a session id so this ad-hoc run's metrics are readable and the run is resumable later.
+    const sessionId = crypto.randomUUID();
+    await this._terminals.runInTerminal(description?.trim() || '', projectPath, agent, true, undefined, sessionId);
+    await this._recordAdhocRun('agent', agent.name, sessionId, projectPath, description);
   }
 
   private async _handleRunSkill(skill: Skill | undefined, description?: string) {
-    if (skill) await this._terminals.runInTerminal(this._buildCommandPrompt(skill.name, description), this.configManager.getProjectPath() || '');
+    if (!skill) return;
+    const projectPath = this.configManager.getProjectPath() || '';
+    const sessionId = crypto.randomUUID();
+    await this._terminals.runInTerminal(this._buildCommandPrompt(skill.name, description), projectPath, undefined, true, undefined, sessionId, undefined, skill.name);
+    await this._recordAdhocRun('skill', skill.name, sessionId, projectPath, description);
+  }
+
+  /** Best-effort: persist an ad-hoc run to the global history. Never blocks the launch on failure. */
+  private async _recordAdhocRun(kind: 'agent' | 'skill', name: string, sessionId: string, projectPath: string, prompt?: string) {
+    try {
+      await this.stateManager.saveAdhocRun({
+        id: crypto.randomUUID(),
+        kind,
+        name,
+        sessionId,
+        projectPath,
+        prompt: prompt?.trim() || undefined,
+        startedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error('ClaudeSteps: saveAdhocRun failed', e);
+    }
   }
 
   private _buildCommandPrompt(commandName: string, description?: string): string {
@@ -723,6 +749,8 @@ export class CockpitPanel {
       this._runner.setFlowAndRunState(flow, run);
       this.postMessage({ type: 'restoreRun', flow, runState: run });
       this.postMessage({ type: 'navigateToTab', tab: 'flows' });
+      // Sidebar-only: expand the flow's runs list and scroll its run detail into view.
+      this.postMessage({ type: 'revealRun', flowId, runId });
     }
   }
 

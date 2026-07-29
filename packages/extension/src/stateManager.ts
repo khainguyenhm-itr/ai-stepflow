@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { promises as fs } from 'fs';
-import { FlowRunState } from '@ai-stepflow/core';
+import { FlowRunState, AdhocRun, shortRunId } from '@claudesteps/core';
+import { readInteractiveSessionStats } from './sessionStats.js';
 
 /** Lightweight per-run summary with aggregated metrics, listed for the run picker and Overview stats. */
 export interface RunSummary {
@@ -12,6 +13,10 @@ export interface RunSummary {
   completedSteps: number;
   /** Steps whose execution failed. */
   failedSteps: number;
+  /** Steps that have started but aren't done yet (running or under review). */
+  inProgressSteps: number;
+  /** True while a step is awaiting review (AI review running or waiting for a human). */
+  reviewing: boolean;
   totalSteps: number;
   mtimeMs: number;
   isClosed: boolean;
@@ -67,22 +72,79 @@ export class StateManager {
     return dir;
   }
 
+  /** Absolute path of the ad-hoc run history file in the extension's machine-global storage. */
+  private async adhocRunsFile(): Promise<string | undefined> {
+    if (!this.context?.globalStorageUri) return undefined;
+    const dir = this.context.globalStorageUri.fsPath;
+    await fs.mkdir(dir, { recursive: true });
+    return path.join(dir, 'adhoc-runs.json');
+  }
+
+  /** Read the raw ad-hoc run records (newest first). Returns [] on any failure. */
+  private async readAdhocRuns(): Promise<AdhocRun[]> {
+    const file = await this.adhocRunsFile();
+    if (!file) return [];
+    try {
+      const arr = JSON.parse(await fs.readFile(file, 'utf8'));
+      return Array.isArray(arr) ? arr as AdhocRun[] : [];
+    } catch { return []; }
+  }
+
+  /** Cap on stored ad-hoc records so the history file can't grow without bound. */
+  private static readonly ADHOC_CAP = 500;
+
+  /** Persist one ad-hoc run, newest first, capped at {@link ADHOC_CAP}. Metrics are NOT stored. */
+  public async saveAdhocRun(run: AdhocRun): Promise<void> {
+    const file = await this.adhocRunsFile();
+    if (!file) return;
+    const runs = [run, ...(await this.readAdhocRuns())].slice(0, StateManager.ADHOC_CAP);
+    const tmp = `${file}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify(runs, null, 2), 'utf8');
+    await fs.rename(tmp, file);
+  }
+
+  /**
+   * List ad-hoc runs for one agent/skill (newest first), each enriched with token/cost/model read
+   * lazily from its pinned session `.jsonl`. Missing/rotated session files just leave metrics blank.
+   */
+  public async listAdhocRuns(kind: 'agent' | 'skill', name: string): Promise<AdhocRun[]> {
+    const matches = (await this.readAdhocRuns()).filter(r => r.kind === kind && r.name === name);
+    return Promise.all(matches.map(async run => {
+      const metrics = await readInteractiveSessionStats(run.projectPath, new Date(run.startedAt), run.sessionId);
+      return { ...run, tokensUsed: metrics.tokensUsed, costUsd: metrics.costUsd, modelUsed: metrics.modelUsed, durationMs: metrics.durationMs };
+    }));
+  }
+
   /** Lowercase slug: spaces/punctuation → '-', collapsed, trimmed. Empty input → ''. */
   private slugify(value: string): string {
     return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   }
 
-  /** Readable run filename base: <flowName-slug>-<runName-slug>, falling back to ids when names are missing. */
+  /**
+   * Readable run filename base: `<flowName-slug>-<runName-slug>-<runId-fingerprint>`. The runId
+   * fingerprint makes the name unique so two runs of the same flow with the same run name never
+   * share a file — matching the per-run output slug ({@link runOutputSlug}). A nameless run already
+   * has a unique runId slug, so it gets no extra suffix.
+   */
   private runFileBase(run: FlowRunState): string {
     const flow = this.slugify(run.flowName || run.flowId) || this.slugify(run.flowId);
-    const name = this.slugify(run.runName || '') || this.slugify(run.runId);
+    const named = this.slugify(run.runName || '');
+    const name = named ? `${named}-${shortRunId(run.runId)}` : this.slugify(run.runId);
     return `${flow}-${name}`;
+  }
+
+  /** Pre-fingerprint filename base, used only as a READ/delete fallback for runs written before the runId suffix. '' when it equals {@link runFileBase}. */
+  private legacyRunFileBase(run: FlowRunState): string {
+    const flow = this.slugify(run.flowName || run.flowId) || this.slugify(run.flowId);
+    const name = this.slugify(run.runName || '') || this.slugify(run.runId);
+    const legacy = `${flow}-${name}`;
+    return legacy === this.runFileBase(run) ? '' : legacy;
   }
 
   public async saveRun(run: FlowRunState): Promise<void> {
     if (!this.projectPath) return;
 
-    const runsDir = path.join(this.projectPath, '.ai-stepflow', 'runs');
+    const runsDir = path.join(this.projectPath, '.claudesteps', 'runs');
     await fs.mkdir(runsDir, { recursive: true });
 
     const filePath = path.join(runsDir, `${this.runFileBase(run)}.json`);
@@ -98,7 +160,7 @@ export class StateManager {
   /** Save a generated markdown report inside the repo so it can be shared or committed. */
   public async saveReport(run: FlowRunState, content: string): Promise<string | undefined> {
     if (!this.projectPath) return undefined;
-    const reportsDir = path.join(this.projectPath, '.ai-stepflow', 'reports');
+    const reportsDir = path.join(this.projectPath, '.claudesteps', 'reports');
     await fs.mkdir(reportsDir, { recursive: true });
     const filePath = path.join(reportsDir, `${this.runFileBase(run)}.md`);
     await fs.writeFile(filePath, content, 'utf8');
@@ -108,7 +170,7 @@ export class StateManager {
   /** Save a per-step AI review report inside the repo. Returns the absolute path written. */
   public async saveReviewReport(run: FlowRunState, stepId: string, content: string): Promise<string | undefined> {
     if (!this.projectPath) return undefined;
-    const dir = path.join(this.projectPath, '.ai-stepflow', 'reports', 'reviews');
+    const dir = path.join(this.projectPath, '.claudesteps', 'reports', 'reviews');
     await fs.mkdir(dir, { recursive: true });
     const filePath = path.join(dir, `${this.runFileBase(run)}-${this.slugify(stepId)}.md`);
     await fs.writeFile(filePath, content, 'utf8');
@@ -118,15 +180,36 @@ export class StateManager {
   /** Delete the persisted run JSON. Reconstructs the slug filename from the run itself. */
   public async deleteRunFile(run: FlowRunState): Promise<void> {
     if (!this.projectPath) return;
-    const filePath = path.join(this.projectPath, '.ai-stepflow', 'runs', `${this.runFileBase(run)}.json`);
-    try { await fs.unlink(filePath); } catch { /* ignore if not found */ }
+    const dir = path.join(this.projectPath, '.claudesteps', 'runs');
+    for (const base of [this.runFileBase(run), this.legacyRunFileBase(run)]) {
+      if (!base) continue;
+      try { await fs.unlink(path.join(dir, `${base}.json`)); } catch { /* ignore if not found */ }
+    }
   }
 
   /** Delete the generated markdown report. Reconstructs the slug filename from the run itself. */
   public async deleteReportFile(run: FlowRunState): Promise<void> {
     if (!this.projectPath) return;
-    const filePath = path.join(this.projectPath, '.ai-stepflow', 'reports', `${this.runFileBase(run)}.md`);
-    try { await fs.unlink(filePath); } catch { /* ignore if not found */ }
+    const dir = path.join(this.projectPath, '.claudesteps', 'reports');
+    for (const base of [this.runFileBase(run), this.legacyRunFileBase(run)]) {
+      if (!base) continue;
+      try { await fs.unlink(path.join(dir, `${base}.md`)); } catch { /* ignore if not found */ }
+    }
+  }
+
+  /**
+   * Delete the per-step AI review reports (written by {@link saveReviewReport} when a step is
+   * approved or rejected) for the given steps of a run. Exact per-step filenames — not a prefix glob — so a run
+   * whose slug is a prefix of another's never has its reports deleted by mistake. No-op if absent.
+   */
+  public async deleteReviewReports(run: FlowRunState, stepIds: string[]): Promise<void> {
+    if (!this.projectPath) return;
+    const dir = path.join(this.projectPath, '.claudesteps', 'reports', 'reviews');
+    const bases = [this.runFileBase(run), this.legacyRunFileBase(run)].filter(Boolean);
+    await Promise.all(stepIds.flatMap(stepId => bases.map(async base => {
+      const filePath = path.join(dir, `${base}-${this.slugify(stepId)}.md`);
+      try { await fs.unlink(filePath); } catch { /* ignore if not found */ }
+    })));
   }
 
   /** Saves an event to a local audit log that is never committed to the repo. */
@@ -206,7 +289,7 @@ export class StateManager {
   public async loadLatestRun(): Promise<FlowRunState | undefined> {
     if (!this.projectPath) return undefined;
 
-    const runsDir = path.join(this.projectPath, '.ai-stepflow', 'runs');
+    const runsDir = path.join(this.projectPath, '.claudesteps', 'runs');
     let files: string[];
     try {
       files = (await fs.readdir(runsDir)).filter(f => f.endsWith('.json'));
@@ -248,10 +331,10 @@ export class StateManager {
    */
   public async listRunFiles(): Promise<RunSummary[]> {
     if (!this.projectPath) return [];
-    return this.readRunsFromDir(path.join(this.projectPath, '.ai-stepflow', 'runs'));
+    return this.readRunsFromDir(path.join(this.projectPath, '.claudesteps', 'runs'));
   }
 
-  /** Read every run file under one `.ai-stepflow/runs` dir into summaries with aggregated metrics. Missing/unreadable dir → []. */
+  /** Read every run file under one `.claudesteps/runs` dir into summaries with aggregated metrics. Missing/unreadable dir → []. */
   private async readRunsFromDir(runsDir: string): Promise<RunSummary[]> {
     let files: string[];
     try {
@@ -297,6 +380,8 @@ export class StateManager {
           filePath,
           completedSteps: steps.filter(step => step.completionStatus === 'done').length,
           failedSteps: steps.filter(step => step.executionStatus === 'failed').length,
+          inProgressSteps: steps.filter(step => step.executionStatus === 'running' || step.reviewStatus === 'ai_review_running' || step.reviewStatus === 'waiting_human').length,
+          reviewing: steps.some(step => step.reviewStatus === 'ai_review_running' || step.reviewStatus === 'waiting_human'),
           totalSteps: steps.length,
           mtimeMs: stat.mtimeMs,
           isClosed: !!run.isClosed,
@@ -317,7 +402,7 @@ export class StateManager {
   }
 
   /**
-   * Sum run metrics across many workspace roots (each `<root>/.ai-stepflow/runs`), deduped,
+   * Sum run metrics across many workspace roots (each `<root>/.claudesteps/runs`), deduped,
    * plus a daily trend for the last {@link trendDays} days. Used for the Overview "All" scope.
    */
   public async computeRunStats(workspaceRoots: string[], trendDays = 90): Promise<{ totals: RunTotals; trend: DayPoint[] }> {
@@ -334,7 +419,7 @@ export class StateManager {
 
     const roots = [...new Set(workspaceRoots.filter(Boolean))];
     for (const root of roots) {
-      const runs = await this.readRunsFromDir(path.join(root, '.ai-stepflow', 'runs'));
+      const runs = await this.readRunsFromDir(path.join(root, '.claudesteps', 'runs'));
       for (const r of runs) {
         const completed = r.totalSteps > 0 && r.completedSteps >= r.totalSteps;
         const inProgress = !completed && !r.isClosed;
@@ -364,7 +449,7 @@ export class StateManager {
   public async loadRuns(): Promise<FlowRunState[]> {
     if (!this.projectPath) return [];
 
-    const runsDir = path.join(this.projectPath, '.ai-stepflow', 'runs');
+    const runsDir = path.join(this.projectPath, '.claudesteps', 'runs');
     let files: string[];
     try {
       files = (await fs.readdir(runsDir)).filter(f => f.endsWith('.json'));

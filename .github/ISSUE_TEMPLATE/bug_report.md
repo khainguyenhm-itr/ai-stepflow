@@ -17,7 +17,7 @@ Steps to reproduce the behavior (include the flow YAML or step config if relevan
 What you expected to happen.
 
 **Environment**
-- AI StepFlow version:
+- ClaudeSteps version:
 - VS Code version:
 - OS:
 - Node version (`node -v`):

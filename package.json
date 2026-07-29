@@ -1,5 +1,5 @@
 {
-  "name": "ai-stepflow-monorepo",
+  "name": "claudesteps-monorepo",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -13,35 +13,37 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/khainguyenhm-itr/ai-stepflow"
+    "url": "https://github.com/khainguyenhm-itr/claudesteps"
   },
   "scripts": {
-    "clean": "rm -rf packages/*/out packages/*/out-itest packages/*/out-test packages/*/tsconfig.tsbuildinfo",
+    "preview": "npm run build-webview && node scripts/serve-webview.mjs",
+    "build": "npm run clean && npm run compile && npm run build-webview && node scripts/package-vsix.mjs",
+    "test": "npm run test:unit && npm run test:unit-ext && npm run test:webview",
+
+    "clean": "rm -rf packages/*/out packages/*/out-itest packages/*/out-test packages/*/out-unit packages/*/tsconfig.tsbuildinfo",
     "compile": "npm run compile --workspaces && node scripts/bundle-extension.mjs",
-    "compile-all": "npm run compile && npm run build-webview",
-    "package": "npm run package:vsix",
-    "package:vsix": "npm run clean && npm run compile-all && node scripts/package-vsix.mjs",
-    "publish:marketplace": "npm run package:vsix && vsce publish --packagePath ai-stepflow.vsix",
-    "watch": "npm run watch --workspaces & node scripts/bundle-extension.mjs --watch",
     "build-webview": "node scripts/build-webview.mjs",
-    "preview:webview": "npm run build-webview && node scripts/serve-webview.mjs",
-    "watch-webview": "node scripts/build-webview.mjs --watch",
-    "cli": "node packages/extension/out/cli.js",
+    "lint": "eslint packages/*/src packages/core/test packages/extension/test packages/webview/test --ext ts",
     "pretest": "npm run compile && npm run lint",
-    "lint": "eslint packages/*/src packages/core/test packages/webview/test --ext ts",
+
     "compile:test": "rm -rf packages/core/out/test && tsc -p packages/core/test/tsconfig.json",
-    "compile:itest": "rm -rf packages/extension/out-itest && tsc -p packages/extension/test/tsconfig.json",
-    "test:unit": "npm run compile && npm run compile:test && node --test packages/core/out/test/test/*.test.js",
+    "compile:unit-ext": "rm -rf packages/extension/out-unit && tsc -p packages/extension/test/unit/tsconfig.json && node scripts/link-vscode-stub.mjs",
     "compile:webview-test": "rm -rf packages/webview/out-test && tsc -p packages/webview/test/tsconfig.json",
+    "compile:itest": "rm -rf packages/extension/out-itest && tsc -p packages/extension/test/tsconfig.json",
+
+    "test:unit": "npm run compile && npm run compile:test && node --test packages/core/out/test/test/*.test.js",
+    "test:unit-ext": "npm run compile && npm run compile:unit-ext && node --test packages/extension/out-unit/test/unit/*.test.js",
     "test:webview": "npm run compile && npm run compile:webview-test && node --test packages/webview/out-test/test/*.test.js",
-    "test:integration": "npm run compile-all && npm run compile:itest && node packages/extension/out-itest/test/runIntegration.js",
-    "test": "npm run test:unit && npm run test:webview",
-    "test:coverage": "npm run compile && npm run compile:test && c8 node --test packages/core/out/test/test/*.test.js"
+    "test:integration": "npm run compile && npm run build-webview && npm run compile:itest && node packages/extension/out-itest/test/runIntegration.js",
+
+    "test:coverage": "npm run compile && npm run compile:test && c8 node --test packages/core/out/test/test/*.test.js",
+    "test:coverage-ext": "npm run compile && npm run compile:unit-ext && c8 --config .c8rc.extension.json node --test packages/extension/out-unit/test/unit/*.test.js",
+    "test:coverage-webview": "npm run compile && npm run compile:webview-test && c8 --config .c8rc.webview.json node --test packages/webview/out-test/test/*.test.js"
   },
   "devDependencies": {
     "@types/glob": "^8.1.0",
     "@types/mocha": "^10.0.6",
-    "@types/node": "18.x",
+    "@types/node": "20.x",
     "@types/vscode": "~1.93.0",
     "@typescript-eslint/eslint-plugin": "^6.15.0",
     "@typescript-eslint/parser": "^6.15.0",

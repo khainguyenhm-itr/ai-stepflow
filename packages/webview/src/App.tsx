@@ -1,5 +1,5 @@
 import React from 'react';
-import { FlowStep, } from '@ai-stepflow/core/types';
+import { Flow, FlowStep, } from '@claudesteps/core/types';
 import './App.css';
 import { isVSCodeWebview, sendToVSCode } from './vscode';
 import { getStepSkills } from './flowUtils';
@@ -20,6 +20,8 @@ import { RunInputsModal } from './modals/RunInputsModal';
 import { FlowBuilderModal } from './modals/FlowBuilderModal';
 import { StepModal } from './modals/StepModal';
 import { StandaloneRunModal } from './modals/StandaloneRunModal';
+import { HistoryModal } from './modals/HistoryModal';
+import { ConfirmDialog } from './components/primitives';
 
 const App: React.FC = () => {
   const logic = useAppLogic();
@@ -32,9 +34,12 @@ const App: React.FC = () => {
     runState,
     activeStepId, setActiveStepId,
     runnerVisible,
+    revealRun,
+    openRuns, openStepIds, setOpenStepId,
     commandCopied, setCommandCopied,
     standaloneRun, setStandaloneRun,
     standaloneRunDescription, setStandaloneRunDescription,
+    historyTarget, adhocRuns, openHistory, closeHistory,
     editingFlow, setEditingFlow,
     editingFlowScope, setEditingFlowScope,
     editingStep, setEditingStep,
@@ -47,6 +52,7 @@ const App: React.FC = () => {
     flowAiMessages, setFlowAiMessages,
     flowAiLoading, setFlowAiLoading,
     runInputsTarget, setRunInputsTarget,
+    runInputsEditing, setRunInputsEditing,
     runName, setRunName,
     runInputValues, setRunInputValues,
     runInputsError,
@@ -81,10 +87,34 @@ const App: React.FC = () => {
     submitAgentModal, openAgentEditor, submitSkillModal, openSkillEditor,
     submitReviewModal, openReviewEditor,
     submitConnectMcp,
-    submitRunInputs, runActiveStep, saveEditingFlow, saveStepEdit
+    submitRunInputs, openRunEditor, runActiveStep, collapseRun, saveEditingFlow, saveStepEdit
   } = logic;
 
   useVsCodeBridge(handleHostMessage, seedPreview);
+
+  // Closing an AI-generate modal mid-generation is gated by a confirm popup that,
+  // on confirm, cancels all related generation processes on the host.
+  const [pendingCancelGen, setPendingCancelGen] = React.useState<null | 'agent' | 'skill' | 'flow'>(null);
+  const closeAgentModal = () => { setAgentModalOpen(false); setEditingAgentSource(null); };
+  const closeSkillModal = () => { setSkillModalOpen(false); setEditingSkillSource(null); };
+  const closeFlowModal = () => setEditingFlow(null);
+  const requestClose = (which: 'agent' | 'skill' | 'flow', close: () => void) => () => {
+    const generating = which === 'flow' ? flowAiLoading : draftLoading === which;
+    if (generating) setPendingCancelGen(which);
+    else close();
+  };
+
+  // Suggest a run name as `<workflow-slug>-<n>`, where n is the next number after the
+  // highest existing `<slug>-N` run for this flow, so repeated clicks never collide.
+  const generateRunName = () => {
+    if (!runInputsTarget) return;
+    const base = runInputsTarget.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'run';
+    const re = new RegExp(`^${base}-(\\d+)$`);
+    const max = runSummaries
+      .filter(s => s.flowId === runInputsTarget.id)
+      .reduce((m, s) => { const mt = s.runName?.match(re); return mt ? Math.max(m, parseInt(mt[1], 10)) : m; }, 0);
+    setRunName(`${base}-${max + 1}`);
+  };
 
   const getScope = (sourcePath: string) => {
     if (globalPath && sourcePath.startsWith(globalPath)) return 'Global';
@@ -140,7 +170,7 @@ const App: React.FC = () => {
           onRunCommand={command => sendToVSCode('runCommand', { command })}
           onOpenWorkspace={path => sendToVSCode('openWorkspace', { path })}
           onRevealPath={path => sendToVSCode('revealPath', { path })}
-          onInstallGitnexus={() => sendToVSCode('installGitnexus', {})}
+          onConnectGitnexus={() => sendToVSCode('connectGitnexus', {})}
         />
       )}
 
@@ -151,16 +181,14 @@ const App: React.FC = () => {
           skills={skills}
           auditLogs={auditLogs}
           runSummaries={runSummaries}
-          activeFlow={activeFlow}
-          runState={runState}
-          runnerVisible={runnerVisible}
-          activeStepId={activeStepId}
-          completedSteps={completedSteps}
-          activeProgress={activeProgress}
+          revealRun={revealRun}
+          openRuns={openRuns}
+          openStepIds={openStepIds}
           commandCopied={commandCopied}
           globalPath={globalPath}
           projectPath={projectPath}
           onRun={startFreshRun}
+          onEditRun={openRunEditor}
           onEdit={flow => {
             setEditingFlow(JSON.parse(JSON.stringify(flow)));
             setEditingFlowScope(getFlowScope(flow));
@@ -168,6 +196,18 @@ const App: React.FC = () => {
             setNewInputName('');
             setFlowAiPrompt('');
             setFlowAiMessages(flow.aiConversation || []);
+          }}
+          onClone={flow => {
+            const clone: Flow = JSON.parse(JSON.stringify(flow));
+            clone.id = `flow-${Date.now()}`;
+            clone.name = `${flow.name} (copy)`;
+            clone.sourcePath = '';
+            setEditingFlow(clone);
+            setEditingFlowScope(getFlowScope(flow));
+            setBuilderError(null);
+            setNewInputName('');
+            setFlowAiPrompt('');
+            setFlowAiMessages(clone.aiConversation || []);
           }}
           onDetail={flow => setDetailItem({
             type: 'Flow',
@@ -223,11 +263,12 @@ const App: React.FC = () => {
             };
             sendToVSCode('saveFlow', { flow: newFlow, isGlobal: getFlowScope(flow) === 'global' });
           }}
-          onSetActiveStep={setActiveStepId}
+          onSetActiveStep={setOpenStepId}
           onRunStep={runActiveStep}
+          onCollapseRun={collapseRun}
           onOpenFile={path => sendToVSCode('openFile', { path })}
           onCopyCommand={() => {
-            const step = activeFlow?.steps.find(s => s.id === activeStepId);
+            const step = activeFlow?.steps.find((s: FlowStep) => s.id === activeStepId);
             if (!step) return;
             const skills = getStepSkills(step);
             const cmd = skills.map(s => `/${s}`).join(' ');
@@ -235,7 +276,6 @@ const App: React.FC = () => {
             setCommandCopied(true);
             window.setTimeout(() => setCommandCopied(false), 1200);
           }}
-          outputEndRef={outputEndRef}
           initialFilter={scopeFilters.flows}
           onScopeFilterChange={v => sendToVSCode('savePref', { key: 'scopeFilter:flows', value: v })}
           initialViewFilter={viewFilters.flows}
@@ -263,6 +303,7 @@ const App: React.FC = () => {
             setStandaloneRun({ type: 'agent', agent });
             setStandaloneRunDescription('');
           }}
+          onHistory={agent => openHistory('agent', agent.name)}
           onDetail={agent => setDetailItem({
             type: 'Agent',
             title: agent.name,
@@ -293,6 +334,7 @@ const App: React.FC = () => {
             setStandaloneRun({ type: 'skill', skill });
             setStandaloneRunDescription('');
           }}
+          onHistory={skill => openHistory('skill', skill.name)}
           onDetail={skill => setDetailItem({
             type: 'Skill',
             title: skill.name,
@@ -340,7 +382,7 @@ const App: React.FC = () => {
         connectedMcpServers={connectedMcpServers}
         aiPrompt={agentAiPrompt}
         aiMessages={agentAiMessages}
-        onClose={() => { setAgentModalOpen(false); setEditingAgentSource(null); }}
+        onClose={requestClose('agent', closeAgentModal)}
         onConnectMcp={() => setConnectMcpModalOpen(true)}
         onChange={patch => setAgentForm(prev => ({ ...prev, ...patch }))}
         onSubmit={submitAgentModal}
@@ -373,7 +415,7 @@ const App: React.FC = () => {
         draftLoading={draftLoading === 'skill'}
         aiPrompt={skillAiPrompt}
         aiMessages={skillAiMessages}
-        onClose={() => { setSkillModalOpen(false); setEditingSkillSource(null); }}
+        onClose={requestClose('skill', closeSkillModal)}
         onChange={patch => setSkillForm(prev => ({ ...prev, ...patch }))}
         onSubmit={submitSkillModal}
         onAiPromptChange={setSkillAiPrompt}
@@ -427,13 +469,22 @@ const App: React.FC = () => {
         }}
       />
 
+      <HistoryModal
+        target={historyTarget}
+        runs={adhocRuns}
+        onResume={run => sendToVSCode('resumeSession', { sessionId: run.sessionId, projectPath: run.projectPath, name: run.name, kind: run.kind })}
+        onClose={closeHistory}
+      />
+
       <RunInputsModal
         target={runInputsTarget}
+        editing={runInputsEditing}
         runName={runName}
         values={runInputValues}
         error={runInputsError}
-        onClose={() => setRunInputsTarget(null)}
+        onClose={() => { setRunInputsTarget(null); setRunInputsEditing(false); }}
         onRunNameChange={setRunName}
+        onGenerateName={generateRunName}
         onValueChange={(k, v) => setRunInputValues(prev => ({ ...prev, [k]: v }))}
         onSubmit={submitRunInputs}
       />
@@ -449,7 +500,7 @@ const App: React.FC = () => {
         aiPrompt={flowAiPrompt}
         aiMessages={flowAiMessages}
         aiLoading={flowAiLoading}
-        onClose={() => setEditingFlow(null)}
+        onClose={requestClose('flow', closeFlowModal)}
         onSave={saveEditingFlow}
         onChange={patch => setEditingFlow(prev => prev ? ({ ...prev, ...patch }) : null)}
         onChangeScope={setEditingFlowScope}
@@ -559,6 +610,24 @@ const App: React.FC = () => {
         onSave={saveStepEdit}
         onChange={patch => setEditingStep(prev => prev ? ({ ...prev, step: { ...prev.step, ...patch } }) : null)}
         getItemScope={getItemScope}
+      />
+
+      <ConfirmDialog
+        open={pendingCancelGen !== null}
+        title="Cancel AI generation?"
+        message="Generation is still in progress. Closing will cancel all related generation processes."
+        confirmLabel="Cancel & close"
+        cancelLabel="Keep generating"
+        danger
+        onConfirm={() => {
+          const which = pendingCancelGen;
+          sendToVSCode('cancelGenerate');
+          if (which === 'flow') { setFlowAiLoading(false); closeFlowModal(); }
+          else if (which === 'agent') { setDraftLoading(null); closeAgentModal(); }
+          else if (which === 'skill') { setDraftLoading(null); closeSkillModal(); }
+          setPendingCancelGen(null);
+        }}
+        onCancel={() => setPendingCancelGen(null)}
       />
     </div>
   );

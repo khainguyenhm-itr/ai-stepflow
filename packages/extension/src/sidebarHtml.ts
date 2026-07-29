@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as crypto from 'node:crypto';
+import { renderPaletteVars } from './uiPalette.js';
 
 /**
  * Generates the full HTML for the sidebar webview.
@@ -23,41 +24,35 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     :root {
       --r: 3px;
       --r-sm: 2px;
-      /* Pinned "GitHub Dark" palette — identical to the webview (packages/webview/src/App.css)
-         so the sidebar and the main cockpit read as one product regardless of VS Code theme. */
-      --bg: #0d1117;
-      --border: #30363d;
-      --panel: #161b22;
-      --panel-2: #1c2128;
-      --hover: #1c2128;
-      --focus: #388bfd;
-      --btn: #1f6feb;
-      --btn-fg: #ffffff;
-      --btn-h: #388bfd;
-      --error: #f85149;
-      --badge: #30363d;
-      --badge-fg: #c9d1d9;
-      --muted: #8b949e;
-      --success: #3fb950;
-      --fg: #c9d1d9;
+      /* Match the cockpit (packages/webview/src/App.css): follow the VS Code UI
+         font size and shrink the whole view uniformly so both read as one product. */
+      --font-size: var(--vscode-font-size, 13px);
+      --ui-zoom: 0.95;
+      /* Pinned "GitHub Dark" palette — identical to the webview (packages/webview/src/App.css) so
+         the sidebar and the main cockpit read as one product regardless of VS Code theme. Values
+         live in uiPalette.ts and a unit test diffs them against App.css, so the two cannot drift
+         silently. */
+${renderPaletteVars()}
     }
     *, *::before, *::after { box-sizing: border-box; }
     html, body { height: 100%; overflow: hidden; margin: 0; padding: 0; }
-    body { color: var(--fg); background: var(--panel); font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif); font-size: var(--vscode-font-size, 13px); line-height: 1.4; }
+    /* Anchor rem to the VS Code base so every font-size (rem = px / 13) scales with it. */
+    html { font-size: var(--font-size); }
+    body { color: var(--fg); background: var(--panel); font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif); font-size: var(--font-size); line-height: 1.4; zoom: var(--ui-zoom); height: calc(100vh / var(--ui-zoom)); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
     button { font-family: inherit; cursor: pointer; }
 
     /* ── shell layout ── */
-    .shell { display: flex; flex-direction: column; height: 100vh; }
+    .shell { display: flex; flex-direction: column; height: 100%; }
 
     /* header row */
     .hdr { display: flex; align-items: center; gap: 7px; padding: 10px 12px 0; flex: 0 0 auto; }
-    .mark { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: var(--r); background: var(--btn); color: var(--btn-fg); font-size: 9px; font-weight: 700; flex: 0 0 auto; letter-spacing: .02em; }
-    .brand-name { flex: 1; font-size: 12.5px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .ver { color: var(--muted); font-size: 10px; flex: 0 0 auto; }
-    .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 13px; line-height: 1; }
+    .mark { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: var(--r); background: var(--btn); color: var(--btn-fg); font-size: 0.6923rem; font-weight: 700; flex: 0 0 auto; letter-spacing: .02em; }
+    .brand-name { flex: 1; font-size: 0.9615rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ver { color: var(--muted); font-size: 0.7692rem; flex: 0 0 auto; }
+    .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 1rem; line-height: 1; }
     .icon-btn:hover { color: var(--fg); background: var(--hover); }
     #refresh.spinning { animation: spin .65s linear infinite; pointer-events: none; color: var(--focus); }
-    #refresh-status { font-size: 10px; font-weight: 600; color: var(--success); flex: 0 0 auto; white-space: nowrap; opacity: 0; transition: opacity .2s; }
+    #refresh-status { font-size: 0.7692rem; font-weight: 600; color: var(--success); flex: 0 0 auto; white-space: nowrap; opacity: 0; transition: opacity .2s; }
     #refresh-status.show { opacity: 1; }
 
     /* scrollable content area — flex column so expanded accordion section can grow */
@@ -66,7 +61,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     /* ── accordion: expanded section fills remaining sidebar height ── */
     .sec.expanded { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
     .sec.expanded > .sec-hdr { flex: 0 0 auto; }
-    .sec.expanded > .box { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+    .sec.expanded > .box { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; margin-top: 5px; }
     .sec.expanded > .box > .box-tabs,
     .sec.expanded > .box > .box-search { flex: 0 0 auto; }
     .sec.expanded > .box > #mcp,
@@ -76,7 +71,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     .sec.expanded > .box > #plugins::-webkit-scrollbar,
     .sec.expanded > .box > #runs::-webkit-scrollbar { display: none; }
     /* Default Library expanded */
-    .sec.expanded > #defaults-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    .sec.expanded > #defaults-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; margin-top: 3px; }
     .sec.expanded .lib-panel { flex: 1; min-height: 0; max-height: none; overflow-y: auto; }
 
     /* ── run cards ── */
@@ -89,33 +84,36 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     .run-card.run-done:hover { border-color: var(--success); }
     .run-card-head { display: flex; align-items: flex-start; gap: 5px; min-width: 0; }
     .run-card-titles { flex: 1; min-width: 0; overflow: hidden; }
-    .run-card-title { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); line-height: 1.3; }
-    .run-card-sub { font-size: 10px; color: var(--muted); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .run-card-title { font-size: 0.9231rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); line-height: 1.3; }
+    .run-card-sub { font-size: 0.7692rem; color: var(--muted); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .run-card-bar { height: 3px; border-radius: 2px; background: rgba(127,127,127,.15); overflow: hidden; margin: 6px 0 5px; }
     .run-card-bar-fill { height: 100%; border-radius: 2px; background: var(--vscode-progressBar-background, #0e70c0); transition: width .3s ease; }
     .run-card.run-active .run-card-bar-fill { background: var(--btn); }
     .run-card.run-done .run-card-bar-fill { background: var(--success); }
+    .run-card.run-reviewing::before { background: var(--vscode-charts-yellow, #d7ba7d); }
+    .run-card.run-reviewing .run-card-bar-fill { background: var(--vscode-charts-yellow, #d7ba7d); }
     .run-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-    .run-card-meta { font-size: 10px; color: var(--muted); }
+    .run-card-meta { font-size: 0.7692rem; color: var(--muted); }
     .run-card-acts { flex-shrink: 0; opacity: 1; }
     .run-card:hover .run-card-acts, .run-card.run-active .run-card-acts { opacity: 1; }
-    .run-sbadge { display: inline-flex; align-items: center; height: 14px; padding: 0 5px; border-radius: 9px; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; white-space: nowrap; flex-shrink: 0; margin-top: 1px; }
+    .run-sbadge { display: inline-flex; align-items: center; height: 14px; padding: 0 5px; border-radius: 9px; font-size: 0.6923rem; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; white-space: nowrap; flex-shrink: 0; margin-top: 1px; }
     .run-sbadge.running { background: var(--vscode-charts-blue, var(--focus)); color: #fff; }
+    .run-sbadge.reviewing { background: var(--vscode-charts-yellow, #d7ba7d); color: #1e1e1e; }
     .run-sbadge.done { background: var(--success); color: #fff; }
     .run-sbadge.partial { background: rgba(215,160,0,.18); color: var(--vscode-charts-yellow, #d7ba7d); }
     .run-step-row { display: flex; align-items: center; gap: 4px; overflow: hidden; }
-    .run-step-name { font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .run-step-name { font-size: 0.7692rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     /* badge */
-    .badge { display: inline-flex; align-items: center; height: 16px; padding: 0 6px; border-radius: 9px; font-size: 9px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--badge-fg); background: var(--badge); white-space: nowrap; flex: 0 0 auto; }
+    .badge { display: inline-flex; align-items: center; height: 16px; padding: 0 6px; border-radius: 9px; font-size: 0.6923rem; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--badge-fg); background: var(--badge); white-space: nowrap; flex: 0 0 auto; }
     .badge.running { background: var(--vscode-charts-blue, var(--focus)); }
     .badge.completed { background: var(--success); }
 
     /* ── settings ── */
     .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; }
     .setting-row + .setting-row { border-top: 1px solid rgba(127,127,127,.07); }
-    .setting-label { font-size: 11px; color: var(--fg); font-weight: 500; }
-    .setting-desc { font-size: 10px; color: var(--muted); margin-top: 1px; }
+    .setting-label { font-size: 0.8462rem; color: var(--fg); font-weight: 500; }
+    .setting-desc { font-size: 0.7692rem; color: var(--muted); margin-top: 1px; }
     .gx-dot { display: none; width: 6px; height: 6px; border-radius: 50%; margin-right: 5px; vertical-align: middle; background: var(--muted); }
     /* GitNexus row stacks vertically: status line (with ··· menu) on top, controls on a second line. */
     .gx-row { flex-direction: column; align-items: stretch; gap: 8px; }
@@ -126,8 +124,8 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     .sec { margin-top: 8px; }
     .stats-sec { margin-bottom: 4px; }
     .sec-hdr { display: flex; align-items: center; gap: 6px; margin-bottom: 0px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
-    .sec-label { flex: 1; font-size: 12px; font-weight: 700; color: var(--fg); }
-    .sec-count { display: inline-flex; align-items: center; height: 15px; padding: 0 5px; border-radius: 9px; font-size: 9px; font-weight: 700; color: var(--badge-fg); background: var(--badge); }
+    .sec-label { flex: 1; font-size: 0.9231rem; font-weight: 700; color: var(--fg); }
+    .sec-count { display: inline-flex; align-items: center; height: 15px; padding: 0 5px; border-radius: 9px; font-size: 0.6923rem; font-weight: 700; color: var(--badge-fg); background: var(--badge); }
     .sec-count:empty { display: none; }
     .sec-toggle { display: flex; align-items: center; gap: 7px; width: 100%; padding: 9px 8px; border: 0; background: transparent; color: inherit; text-align: left; font-family: inherit; transition: background .1s; }
     .sec-toggle:hover { background: var(--hover); }
@@ -136,16 +134,16 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     .stats { display: flex; gap: 5px; }
     .stat { flex: 1; min-width: 0; padding: 7px 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); cursor: pointer; text-align: center; transition: border-color .1s, background .1s; }
     .stat:hover { border-color: var(--focus); }
-    .stat-num { font-size: 18px; font-weight: 700; line-height: 1.1; }
-    .stat-lbl { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-top: 2px; }
+    .stat-num { font-size: 1.385rem; font-weight: 700; line-height: 1.1; }
+    .stat-lbl { font-size: 0.6923rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-top: 2px; }
 
     /* default library expandable */
-    .lib-toggle { display: flex; align-items: center; gap: 7px; margin-top: 6px; padding: 9px 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); cursor: pointer; width: 100%; text-align: left; font-family: inherit; color: var(--fg); transition: background .1s; }
+    .lib-toggle { display: flex; align-items: center; gap: 7px; padding: 9px 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); cursor: pointer; width: 100%; text-align: left; font-family: inherit; color: var(--fg); transition: background .1s; }
     .lib-toggle:hover { background: var(--hover); }
-    .lib-caret { font-size: 9px; color: var(--muted); transition: transform .15s; flex: 0 0 auto; }
+    .lib-caret { font-size: 0.6923rem; color: var(--muted); transition: transform .15s; flex: 0 0 auto; }
     .lib-caret.open { transform: rotate(90deg); }
-    .lib-toggle-label { flex: 1; font-size: 12px; font-weight: 700; color: var(--fg); }
-    .lib-toggle-badge { display: inline-flex; align-items: center; height: 15px; padding: 0 5px; border-radius: 9px; font-size: 9px; font-weight: 700; color: var(--badge-fg); background: var(--success); flex: 0 0 auto; }
+    .lib-toggle-label { flex: 1; font-size: 0.9231rem; font-weight: 700; color: var(--fg); }
+    .lib-toggle-badge { display: inline-flex; align-items: center; height: 15px; padding: 0 5px; border-radius: 9px; font-size: 0.6923rem; font-weight: 700; color: var(--badge-fg); background: var(--success); flex: 0 0 auto; }
     .lib-toggle-badge:empty { display: none; }
     .lib-panel { margin-top: 2px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
 
@@ -154,13 +152,13 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
 
     /* tabs inside box */
     .box-tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 8px; background: var(--panel); }
-    .tab { padding: 6px 8px 5px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 11.5px; font-weight: 600; cursor: pointer; line-height: 1.4; }
+    .tab { padding: 6px 8px 5px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 0.8846rem; font-weight: 600; cursor: pointer; line-height: 1.4; }
     .tab:hover { color: var(--fg); }
     .tab.active { color: var(--fg); border-bottom-color: var(--focus); }
 
     /* search row inside box */
     .box-search { padding: 5px 8px; border-bottom: 1px solid var(--border); background: var(--panel); }
-    .search { width: 100%; padding: 3px 7px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg); color: var(--fg); font-size: 11.5px; font-family: inherit; outline: none; }
+    .search { width: 100%; padding: 3px 7px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg); color: var(--fg); font-size: 0.8846rem; font-family: inherit; outline: none; }
     .search:focus { border-color: var(--focus); }
     .search::placeholder { color: var(--vscode-input-placeholderForeground, #818181); }
 
@@ -170,18 +168,18 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     .item:hover { background: var(--hover); }
     .item-dot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
     .item-body { min-width: 0; }
-    .item-name { display: block; font-size: 11.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
-    .item-sub { display: block; font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; margin-top: 1px; }
+    .item-name { display: block; font-size: 0.8846rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
+    .item-sub { display: block; font-size: 0.7692rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; margin-top: 1px; }
     /* action buttons: hidden until hover so narrow sidebars don't clip content */
     .item-acts { display: flex; align-items: center; gap: 3px; opacity: 0; transition: opacity .1s; }
     .item:hover .item-acts, .item.menu-open .item-acts { opacity: 1; }
     .item.has-update .item-acts { opacity: 1; }
     .update-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--vscode-charts-yellow, #d7ba7d); margin-left: 5px; flex-shrink: 0; vertical-align: middle; }
-    .icon-update { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1px solid transparent; border-radius: var(--r-sm); background: transparent; color: var(--vscode-charts-yellow, #d7ba7d); font-size: 14px; line-height: 1; cursor: pointer; font-family: inherit; }
+    .icon-update { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1px solid transparent; border-radius: var(--r-sm); background: transparent; color: var(--vscode-charts-yellow, #d7ba7d); font-size: 1.077rem; line-height: 1; cursor: pointer; font-family: inherit; }
     .icon-update:hover { border-color: var(--vscode-charts-yellow, #d7ba7d); background: var(--hover); }
 
     /* ── pill action buttons ── */
-    .pill { display: inline-flex; align-items: center; justify-content: center; height: 22px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--r-sm); background: transparent; color: var(--fg); font-size: 10.5px; font-weight: 600; cursor: pointer; white-space: nowrap; font-family: inherit; transition: background .1s, border-color .1s; }
+    .pill { display: inline-flex; align-items: center; justify-content: center; height: 22px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--r-sm); background: transparent; color: var(--fg); font-size: 0.8077rem; font-weight: 600; cursor: pointer; white-space: nowrap; font-family: inherit; transition: background .1s, border-color .1s; }
     .pill:hover { background: var(--hover); }
     .pill[disabled] { opacity: .4; cursor: default; }
     .pill.accent { border-color: var(--btn); background: var(--btn); color: var(--btn-fg); }
@@ -190,7 +188,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
 
     /* ── tag filter chips ── */
     .tag-filters { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 8px 2px; }
-    .tag-chip { display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border: 1px solid var(--border); border-radius: 9px; background: transparent; color: var(--muted); font-size: 10px; font-weight: 600; cursor: pointer; white-space: nowrap; font-family: inherit; transition: background .1s, color .1s, border-color .1s; }
+    .tag-chip { display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border: 1px solid var(--border); border-radius: 9px; background: transparent; color: var(--muted); font-size: 0.7692rem; font-weight: 600; cursor: pointer; white-space: nowrap; font-family: inherit; transition: background .1s, color .1s, border-color .1s; }
     .tag-chip:hover { background: var(--hover); color: var(--fg); }
     .tag-chip.active { background: var(--btn); border-color: var(--btn); color: var(--btn-fg); }
 
@@ -198,31 +196,34 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     .menu { position: relative; }
     .menu > summary { list-style: none; }
     .menu > summary::-webkit-details-marker { display: none; }
-    .menu-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1px solid transparent; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 14px; font-weight: 700; cursor: pointer; line-height: 1; font-family: inherit; }
+    .menu-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1px solid transparent; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 1.077rem; font-weight: 700; cursor: pointer; line-height: 1; font-family: inherit; }
     .menu-btn:hover, .menu[open] .menu-btn { color: var(--fg); background: var(--hover); border-color: var(--border); }
     .menu-pop { position: fixed; z-index: 9999; min-width: 130px; max-width: calc(100vw - 12px); padding: 3px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); box-shadow: 0 6px 20px rgba(0,0,0,.36); }
-    .menu-item { display: flex; align-items: center; width: 100%; min-height: 26px; border: 0; border-radius: var(--r-sm); padding: 4px 8px; background: transparent; color: var(--fg); font-size: 11.5px; font-family: inherit; text-align: left; cursor: pointer; }
+    .menu-item { display: flex; align-items: center; width: 100%; min-height: 26px; border: 0; border-radius: var(--r-sm); padding: 4px 8px; background: transparent; color: var(--fg); font-size: 0.8846rem; font-family: inherit; text-align: left; cursor: pointer; }
     .menu-item:hover { background: var(--hover); }
     .menu-item.danger { color: var(--error); }
     .menu-item[disabled] { opacity: .4; cursor: default; pointer-events: none; }
+    .menu-item .mi-check { width: 12px; margin-right: 4px; opacity: .9; flex: 0 0 auto; }
+    .menu-label { padding: 5px 8px 2px; font-size: 0.7308rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted, #888); }
+    .menu-sep { height: 1px; margin: 3px 4px; background: var(--border); }
 
     /* ── select dropdowns ── */
     .select-wrap { position: relative; display: inline-block; min-width: 90px; }
     .select-wrap.sm { min-width: 80px; }
     .gx-ctl .select-wrap { flex: 1 1 auto; min-width: 0; display: block; }
     .select-wrap::after { content: ''; position: absolute; right: 9px; top: 50%; transform: translateY(-50%); width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid #aaa; pointer-events: none; }
-    .input { width: 100%; height: 22px; padding: 0 24px 0 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); color: var(--fg); font-size: 12px; font-family: inherit; outline: none; appearance: none; -webkit-appearance: none; cursor: pointer; box-shadow: inset 0 1px 2px rgba(0,0,0,.2); }
-    .input.sm { font-size: 11px; }
+    .input { width: 100%; height: 22px; padding: 0 24px 0 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); color: var(--fg); font-size: 0.9231rem; font-family: inherit; outline: none; appearance: none; -webkit-appearance: none; cursor: pointer; box-shadow: inset 0 1px 2px rgba(0,0,0,.2); }
+    .input.sm { font-size: 0.8462rem; }
     .input:focus { border-color: var(--focus); outline: 1px solid var(--focus); }
     .input:hover { border-color: var(--focus); }
 
     /* list footer */
-    .list-more { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--muted); padding: 5px 8px 6px; border-top: 1px solid rgba(127,127,127,.08); }
+    .list-more { display: flex; align-items: center; gap: 6px; font-size: 0.8077rem; color: var(--muted); padding: 5px 8px 6px; border-top: 1px solid rgba(127,127,127,.08); }
     /* Default Library search bar: sticky so it stays visible while scrolling items */
     .lib-panel .box-search { position: sticky; top: 0; z-index: 1; background: var(--panel); border-bottom: 1px solid var(--border); }
 
     /* ── states ── */
-    .empty { display: block; color: var(--muted); font-size: 11.5px; padding: 8px; font-style: italic; }
+    .empty { display: block; color: var(--muted); font-size: 0.8846rem; padding: 8px; font-style: italic; }
     .skel { display: flex; flex-direction: column; gap: 7px; padding: 10px 8px; }
     .skel-line { height: 11px; border-radius: 2px; background: linear-gradient(90deg, rgba(127,127,127,.10) 25%, rgba(127,127,127,.18) 37%, rgba(127,127,127,.10) 63%); background-size: 400% 100%; animation: shimmer 1.4s ease infinite; }
     .skel-line:nth-child(2) { width: 68%; }
@@ -242,7 +243,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     /* ── loading overlay ── */
     .loading-overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: var(--panel); z-index: 100; }
     .loading-overlay .spin-lg { width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--focus); border-radius: 50%; animation: spin 0.8s linear infinite; }
-    .loading-overlay .load-txt { color: var(--muted); font-size: 11px; }
+    .loading-overlay .load-txt { color: var(--muted); font-size: 0.8462rem; }
   </style>
 </head>
 <body>
@@ -255,8 +256,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
 
   <!-- header: brand + version + refresh -->
   <div class="hdr">
-    <span class="mark">AI</span>
-    <span class="brand-name">AI StepFlow</span>
+    <span class="brand-name">CSF</span>
     <span id="refresh-status" aria-live="polite"></span>
     ${version ? `<span class="ver">v${version}</span>` : ''}
     <button class="icon-btn" id="refresh" title="Refresh" aria-label="Refresh">↻</button>
@@ -358,7 +358,6 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
             </details>
           </div>
           <div class="gx-ctl">
-            <span class="select-wrap" id="gitnexus-group-select-wrap" style="display:none"><select id="gitnexus-group-select" class="input"><option value="default">Default (no group)</option></select></span>
             <button id="gitnexus-analyze-btn" class="pill accent" type="button">Analyze</button>
           </div>
         </div>
@@ -384,7 +383,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
 
   </div><!-- /.body -->
 </div><!-- /.shell -->
-<footer>AI StepFlow</footer>
+<footer>ClaudeSteps</footer>
 
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
@@ -416,7 +415,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     }
   }
 
-  // ── Per-repo sidebar state persistence (via .ai-stepflow/ui-prefs.json) ──
+  // ── Per-repo sidebar state persistence (via .claudesteps/ui-prefs.json) ──
   function saveSidebarState() {
     vscode.postMessage({ type: 'savePref', key: 'sidebar:state', value: JSON.stringify({
       sectionOpen,
@@ -621,7 +620,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
   }
 
   function fmtDefaultName(name) {
-    return name.replace(/^aisf-(?:agent|skill|review|validator)?-?/, '').replace(/-/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());
+    return name.replace(/^csf-(?:agent|skill|review|validator)?-?/, '').replace(/-/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());
   }
 
   function renderDefaultsPanel() {
@@ -765,72 +764,83 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     return Math.round(h / 24) + 'd ago';
   }
 
-  // Single merged GitNexus row: status (dot+desc) on the left; contextual action button,
-  // group select, and a ··· menu (Analyze/Re-analyze, Open registry, Open group config) on the right.
+  // True while an analyze/group/clean run is in flight — set by 'gitnexusAnalyzeStarted', cleared
+  // when the next real status ('data'/'gitnexusStatus') arrives. Drives the transient "Analyzing…" row.
+  let gitnexusAnalyzing = false;
+
+  // Single merged GitNexus row. Shown ONLY once the GitNexus MCP server is connected — connecting
+  // is a one-time global setup handled in the Overview panel. Once connected, this row drives the
+  // per-repo index lifecycle: analyzing → not-indexed (Analyze) → stale (Re-analyze) → up to date.
   function updateGitnexusRow() {
     const row = document.getElementById('gitnexus-setting-row');
     const dot = document.getElementById('gitnexus-dot');
     const desc = document.getElementById('gitnexus-desc');
     const btn = document.getElementById('gitnexus-analyze-btn');
-    const sel = document.getElementById('gitnexus-group-select');
-    const selWrap = document.getElementById('gitnexus-group-select-wrap');
     const menuPop = document.getElementById('gitnexus-menu-pop');
-    if (!row || !dot || !desc || !btn || !sel || !selWrap || !menuPop) return;
+    if (!row || !dot || !desc || !btn || !menuPop) return;
+
+    // Gated on the MCP connection: until GitNexus is connected (set up in Overview) there's nothing
+    // to query, so the row stays hidden and Overview owns the "connect" step.
     row.style.display = gitnexusConnected ? '' : 'none';
     if (!gitnexusConnected) return;
 
     const indexed = gitnexusStatus.indexed;
     const stale = gitnexusStatus.stale;
+
+    // ---- Transient: a run is in flight ----
+    if (gitnexusAnalyzing) {
+      dot.style.display = 'none';
+      desc.textContent = 'Analyzing…';
+      btn.style.display = ''; btn.disabled = true; btn.textContent = 'Analyzing…';
+      menuPop.innerHTML = '';
+      return;
+    }
     btn.disabled = false;
 
-    // Status dot + description.
+    const parts = [];
+    if (gitnexusStatus.files) parts.push(gitnexusStatus.files + ' files');
+    const t = gxRelTime(gitnexusStatus.indexedAt);
+    if (t) parts.push('indexed ' + t);
+    const grp = gitnexusStatus.currentGroup ? ' · group: ' + gitnexusStatus.currentGroup : '';
+    const meta = (parts.length ? ' · ' + parts.join(' · ') : '') + grp;
+    const AMBER = 'var(--vscode-charts-yellow, #d7a000)';
+
     if (!indexed) {
+      // Never analyzed → Analyze is the primary action; group choice lives in the ··· menu.
       dot.style.display = 'none';
-      desc.textContent = 'Not indexed — pick group (optional), then Analyze';
+      desc.textContent = 'Not indexed — click Analyze (or pick a group from ···)';
+      btn.style.display = ''; btn.textContent = 'Analyze';
     } else if (stale) {
-      dot.style.display = 'inline-block';
-      dot.style.background = 'var(--vscode-charts-yellow, #d7a000)';
-      desc.textContent = 'Out of date — re-analyze recommended';
-    } else {
-      dot.style.display = 'inline-block';
-      dot.style.background = 'var(--success)';
-      const parts = [];
-      if (gitnexusStatus.files) parts.push(gitnexusStatus.files + ' files');
-      const t = gxRelTime(gitnexusStatus.indexedAt);
-      if (t) parts.push('indexed ' + t);
-      const grp = gitnexusStatus.currentGroup ? ' · group: ' + gitnexusStatus.currentGroup : '';
-      desc.textContent = 'Up to date' + (parts.length ? ' · ' + parts.join(' · ') : '') + grp;
-    }
-
-    // Group select is always shown — picking a group before the first analyze runs
-    // analyze + join in one flow, so the user chooses the group up front (no re-analyze).
-    selWrap.style.display = '';
-    const current = gitnexusStatus.currentGroup || 'default';
-    const groups = gitnexusStatus.groups || [];
-    sel.innerHTML = '<option value="default">Default (no group)</option>' +
-      groups.map(g => '<option value="' + esc(g) + '">' + esc(g) + '</option>').join('') +
-      '<option value="__create__">＋ Create new group…</option>';
-    sel.value = current;
-
-    // Inline action button: shown when not indexed or stale. Label reflects the pending group choice
-    // when not yet indexed, so the user sees exactly what clicking Analyze will do.
-    if (!indexed) {
-      btn.style.display = '';
-      const pendingGroup = sel.value;
-      btn.textContent = (pendingGroup && pendingGroup !== 'default' && pendingGroup !== '__create__')
-        ? 'Analyze into ' + pendingGroup : 'Analyze';
-    } else if (stale) {
+      // Indexed but code moved on (new commit, branch switch, or an edit since analyze) → re-analyze.
+      dot.style.display = 'inline-block'; dot.style.background = AMBER;
+      desc.textContent = 'Out of date — re-analyze recommended' + meta;
       btn.style.display = ''; btn.textContent = 'Re-analyze';
     } else {
+      // Indexed and fresh → nothing to do; re-analyze still available from the ··· menu.
+      dot.style.display = 'inline-block'; dot.style.background = 'var(--success)';
+      desc.textContent = 'Up to date' + meta;
       btn.style.display = 'none';
     }
 
-    // ··· menu: Re-analyze always available when indexed (as button when stale, here always for discovery).
+    // ··· menu: Re-analyze + the full Group picker (join/switch/leave/create) + file/clean actions.
+    // Group management lives here (not on the row) so Analyze stays the single primary action outside.
+    const current = gitnexusStatus.currentGroup || 'default';
+    const groups = gitnexusStatus.groups || [];
+    // Built as raw HTML (not menuItem, which escapes its label) so the ✓ marker renders.
+    const groupItem = (value, label) =>
+      '<button class="menu-item" type="button" data-act="group" data-group="' + esc(value) + '">' +
+        '<span class="mi-check">' + (value === current ? '✓' : '') + '</span>' + esc(label) + '</button>';
+
     const items = [];
     if (indexed) items.push(menuItem('Re-analyze', 'data-act="analyze"'));
+    items.push('<div class="menu-label">Group</div>');
+    items.push(groupItem('default', 'Default (no group)'));
+    groups.forEach(g => items.push(groupItem(g, g)));
+    items.push(menuItem('＋ Create new group…', 'data-act="createGroup"'));
+    items.push('<div class="menu-sep"></div>');
     items.push(menuItem('Open registry file', 'data-act="openRegistry"'));
     if (indexed && gitnexusStatus.currentGroup) items.push(menuItem('Open group config', 'data-act="openGroup"'));
-    if (indexed) items.push(menuItem('Remove analyze', 'data-act="clean"'));
+    if (indexed) items.push(menuItem('Remove analyze', 'data-act="clean"', true));
     menuPop.innerHTML = items.join('');
   }
 
@@ -1028,12 +1038,16 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     el.innerHTML = filteredFiles.map(f => {
       const isActive = !!f.isActive;
       const isFinalized = !!f.isClosed;
+      const reviewing = !!f.reviewing;
       const isDone = f.completed === f.total && f.total > 0;
+      // Count the in-flight step (running or under review) toward the tally so a step in progress
+      // shows its own position, e.g. "2/5" while step 2 is running/being reviewed.
+      const shown = Math.min(f.completed + (f.inProgress || 0), f.total);
       const isPartial = f.completed > 0 && !isDone;
-      const percent = f.total > 0 ? Math.round((f.completed / f.total) * 100) : 0;
-      const cardCls = isActive ? ' run-active' : (isDone ? ' run-done' : '');
-      const badgeCls = isActive ? 'running' : isFinalized ? 'done' : isDone ? 'done' : isPartial ? 'partial' : '';
-      const badgeLabel = isActive ? 'Active' : isFinalized ? '✓ Finalized' : isDone ? '✓ Done' : f.completed + '/' + f.total;
+      const percent = f.total > 0 ? Math.round((shown / f.total) * 100) : 0;
+      const cardCls = reviewing ? ' run-reviewing' : isActive ? ' run-active' : (isDone ? ' run-done' : '');
+      const badgeCls = isFinalized ? 'done' : isDone ? 'done' : reviewing ? 'reviewing' : isActive ? 'running' : isPartial ? 'partial' : '';
+      const badgeLabel = isFinalized ? '✓ Finalized' : isDone ? '✓ Done' : reviewing ? 'Reviewing' : isActive ? 'Active' : shown + '/' + f.total;
       return '<div class="run-card' + cardCls + '">' +
         '<div class="run-card-head">' +
           '<div class="run-card-titles">' +
@@ -1043,7 +1057,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
           (badgeCls ? '<span class="run-sbadge ' + badgeCls + '">' + badgeLabel + '</span>' : '') +
           '<span class="run-card-acts">' +
             actionMenu([
-              menuItem('Open cockpit', 'data-act="openRun" data-flow-id="' + esc(f.flowId) + '" data-run-id="' + esc(f.runId) + '"'),
+              menuItem('Open runs', 'data-act="openRun" data-flow-id="' + esc(f.flowId) + '" data-run-id="' + esc(f.runId) + '"'),
               menuItem('View run file', 'data-act="openFile" data-path="' + esc(f.filePath) + '"'),
               menuItem('Delete run', 'data-act="deleteRun" data-path="' + esc(f.filePath) + '"', true)
             ]) +
@@ -1052,7 +1066,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
         '<div class="run-card-bar"><div class="run-card-bar-fill" style="width:' + percent + '%"></div></div>' +
         '<div class="run-card-foot">' +
           '<span class="run-card-meta">' + fmtDate(f.runId) + '</span>' +
-          '<span class="run-card-meta">' + f.completed + '/' + f.total + ' steps</span>' +
+          '<span class="run-card-meta">' + shown + '/' + f.total + ' steps</span>' +
         '</div>' +
       '</div>';
     }).join('');
@@ -1075,6 +1089,7 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
         mcpReceived = true;
         pluginsReceived = true;
         if (m.gitnexus) gitnexusStatus = m.gitnexus;
+        gitnexusAnalyzing = false; // a full refresh means any in-flight run has finished
         setMcpData(m.mcp);
         setPluginData(m.plugins, m.pluginsAvailable);
         renderRuns(m.runFiles, m.totalRunFiles);
@@ -1088,13 +1103,15 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
         pluginsReceived = true;
         setPluginData(m.plugins, m.pluginsAvailable);
       } else if (m.type === 'gitnexusAnalyzeStarted') {
+        gitnexusAnalyzing = true;
         updateGitnexusRow();
       } else if (m.type === 'gitnexusStatus') {
         // Lightweight status push — used to reset the select after a cancelled group switch.
+        gitnexusAnalyzing = false;
         if (m.status) { gitnexusStatus = m.status; updateGitnexusRow(); }
       }
     } catch (err) {
-      console.error('AI StepFlow sidebar render failed', err);
+      console.error('ClaudeSteps sidebar render failed', err);
       renderPanelError('mcp', 'Connections');
       renderPanelError('plugins', 'Plugins');
     }
@@ -1120,29 +1137,9 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
   });
 
   document.getElementById('gitnexus-analyze-btn').addEventListener('click', function() {
-    const sel = document.getElementById('gitnexus-group-select');
-    const group = sel ? sel.value : 'default'; // pre-index: apply the up-front group choice
-    this.disabled = true;
-    this.textContent = 'Analyzing…';
-    vscode.postMessage({ type: 'gitnexusAnalyze', group });
-  });
-
-  document.getElementById('gitnexus-group-select').addEventListener('change', function() {
-    const current = gitnexusStatus.currentGroup || 'default';
-    if (this.value === '__create__') {
-      this.value = current; // the create action is async; keep the select on its real value
-      vscode.postMessage({ type: 'gitnexusCreateGroup' });
-      return;
-    }
-    // Before the first analyze the select is a pending choice — update the button to reflect it.
-    if (!gitnexusStatus.indexed) {
-      const btn = document.getElementById('gitnexus-analyze-btn');
-      if (btn) btn.textContent = (this.value && this.value !== 'default')
-        ? 'Analyze into ' + this.value : 'Analyze';
-      return;
-    }
-    if (this.value === current) return;
-    vscode.postMessage({ type: 'gitnexusSelectGroup', group: this.value });
+    gitnexusAnalyzing = true; // immediate feedback; the extension also posts gitnexusAnalyzeStarted
+    updateGitnexusRow();
+    vscode.postMessage({ type: 'gitnexusAnalyze' }); // plain analyze; group is chosen from the ··· menu
   });
 
   document.getElementById('gitnexus-menu-pop').addEventListener('click', function(e) {
@@ -1151,7 +1148,21 @@ export function getSidebarHtml(webview: vscode.Webview, _extensionUri: vscode.Ur
     const menu = document.getElementById('gitnexus-menu');
     if (menu) menu.open = false;
     const act = item.getAttribute('data-act');
-    if (act === 'analyze') vscode.postMessage({ type: 'gitnexusAnalyze' });
+    if (act === 'analyze') { gitnexusAnalyzing = true; updateGitnexusRow(); vscode.postMessage({ type: 'gitnexusAnalyze' }); }
+    else if (act === 'createGroup') vscode.postMessage({ type: 'gitnexusCreateGroup' });
+    else if (act === 'group') {
+      const group = item.getAttribute('data-group') || 'default';
+      const current = gitnexusStatus.currentGroup || 'default';
+      if (group === current) return; // already in this group — no-op
+      if (!gitnexusStatus.indexed) {
+        // Pre-index: analyze straight into the chosen group in one pass (analyze + join).
+        gitnexusAnalyzing = true; updateGitnexusRow();
+        vscode.postMessage({ type: 'gitnexusAnalyze', group });
+      } else {
+        // Indexed: switch/leave group (confirms in the extension; re-analyzes only if stale).
+        vscode.postMessage({ type: 'gitnexusSelectGroup', group });
+      }
+    }
     else if (act === 'openRegistry') vscode.postMessage({ type: 'gitnexusOpenRegistry' });
     else if (act === 'openGroup') vscode.postMessage({ type: 'gitnexusOpenGroup' });
     else if (act === 'clean') vscode.postMessage({ type: 'gitnexusClean' });

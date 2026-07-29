@@ -1,7 +1,7 @@
 {
-  "name": "@ai-stepflow/core",
+  "name": "@claudesteps/core",
   "version": "0.1.0",
-  "description": "Core engine for AI StepFlow - State machine, runners, and library loader.",
+  "description": "Core engine for ClaudeSteps - State machine, runners, and library loader.",
   "main": "./out/index.js",
   "types": "./out/index.d.ts",
   "exports": {

@@ -1,4 +1,5 @@
-import { Flow, FlowRunState, StepRunState, Agent, Skill, ReviewKit } from '@ai-stepflow/core/types';
+import { useState } from 'react';
+import { Flow, FlowRunState, StepRunState, Agent, Skill, ReviewKit, AdhocRun } from '@claudesteps/core/types';
 import { isVSCodeWebview, sendToVSCode } from '../vscode';
 import {
   getStepSkills,
@@ -6,23 +7,38 @@ import {
   getDefaultActiveStepId,
   hasDependencyCycle
 } from '../flowUtils';
-import { previewFlow, previewAgents, previewSkills } from '../previewData';
+import { previewFlow, previewAgents, previewSkills, previewRunState, previewAuditLogs, previewRunSummaries } from '../previewData';
 
 import { useLibraryState } from './appState/useLibraryState';
 import { useRunState } from './appState/useRunState';
 import { useBuilderState } from './appState/useBuilderState';
 import { useChatState } from './appState/useChatState';
-import { ScopeFilter, ViewFilter, ViewFilterItem, SortOrder, SaveScope } from './appState/types';
-
-const VALID_FILTERS: ScopeFilter[] = ['all', 'project', 'global'];
-const parseFilter = (v: string | undefined): ScopeFilter =>
-  VALID_FILTERS.includes(v as ScopeFilter) ? (v as ScopeFilter) : 'all';
+import { SaveScope } from './appState/types';
+import {
+  parseScopeFilter as parseFilter,
+  parseViewFilter,
+  parseSortOrder,
+  parseGroupBy,
+  dropKey,
+  appendOutput,
+  computeRunAggregate
+} from './appState/hostMessageReducers';
 
 export const useAppLogic = () => {
   const libState = useLibraryState();
   const runState = useRunState();
   const buildState = useBuilderState();
   const chatState = useChatState();
+
+  // Per-agent/skill ad-hoc run history (loaded on demand from the host).
+  const [historyTarget, setHistoryTarget] = useState<{ kind: 'agent' | 'skill'; name: string } | null>(null);
+  const [adhocRuns, setAdhocRuns] = useState<AdhocRun[] | null>(null);
+  const openHistory = (kind: 'agent' | 'skill', name: string) => {
+    setHistoryTarget({ kind, name });
+    setAdhocRuns(null); // null = loading; the host replies with an 'adhocRuns' message.
+    sendToVSCode('getAdhocRuns', { kind, name });
+  };
+  const closeHistory = () => setHistoryTarget(null);
 
   const updateRunState = (stepId: string, updates: Partial<StepRunState> | ((prev: StepRunState | undefined) => Partial<StepRunState>)) => {
     runState.shouldPersistRun.current = true;
@@ -59,7 +75,13 @@ export const useAppLogic = () => {
       steps: applyDependencyLocks(flow, initialSteps)
     };
     runState.setRunState(newRunState);
+    // Set the focus ref eagerly (the effect only syncs after render) so the first runStateChanged
+    // for this new run is recognized as focused and not gated out.
+    runState.activeRunIdRef.current = newRunState.runId;
     runState.setActiveStepId(flow.steps[0]?.id || null);
+    // Open this run's drawer (single-expand: only one drawer shows at a time).
+    runState.setOpenRuns({ [newRunState.runId]: newRunState });
+    runState.setOpenStepIds({ [newRunState.runId]: flow.steps[0]?.id || null });
     libState.setRunSummaries(prev => [{
       flowId: newRunState.flowId,
       runId: newRunState.runId,
@@ -78,6 +100,25 @@ export const useAppLogic = () => {
     runState.setRunInputValues(Object.fromEntries(inputNames.map(name => [name, ''])));
     runState.setRunName('');
     runState.setRunInputsError(null);
+    runState.setRunInputsEditing(false);
+    runState.setRunInputsTarget(flow);
+  };
+
+  /**
+   * Open the run-inputs modal in EDIT mode for the active run, prefilled with its current name and
+   * inputs. Only meaningful while the run is pristine (the backend re-checks and no-ops otherwise);
+   * the FlowBoard menu only surfaces the entry point when no step has started.
+   */
+  const openRunEditor = (runId: string) => {
+    const rs = runState.openRuns[runId];
+    const flow = rs ? libState.flows.find((f: Flow) => f.id === rs.flowId) : null;
+    if (!flow || !rs) return;
+    const inputNames = Object.keys(flow.inputs || {});
+    runState.setRunInputValues(Object.fromEntries(inputNames.map(name => [name, (rs.inputs || {})[name] || ''])));
+    runState.setRunName(rs.runName || '');
+    runState.setRunInputsError(null);
+    runState.setRunInputsEditing(true);
+    runState.setRunEditRunId(runId);
     runState.setRunInputsTarget(flow);
   };
 
@@ -114,13 +155,6 @@ export const useAppLogic = () => {
             reviews: parseFilter(message.uiPrefs['scopeFilter:reviews']),
           });
           libState.setOverviewScope(parseFilter(message.uiPrefs['overviewScope']));
-          const parseViewFilter = (v: unknown): ViewFilter => {
-            if (Array.isArray(v)) return (v as string[]).filter((x): x is ViewFilterItem => x === 'built-in');
-            if (v === 'built-in') return [v]; // migrate old persisted string
-            return [];
-          };
-          const parseSortOrder = (v: string | undefined): SortOrder =>
-            v === 'desc' || v === 'asc' || v === 'newest' || v === 'oldest' ? v : 'activity';
           libState.setViewFilters({
             flows: parseViewFilter(message.uiPrefs['viewFilter:flows']),
             agents: parseViewFilter(message.uiPrefs['viewFilter:agents']),
@@ -133,7 +167,6 @@ export const useAppLogic = () => {
             skills: parseSortOrder(message.uiPrefs['sortOrder:skills']),
             reviews: parseSortOrder(message.uiPrefs['sortOrder:reviews']),
           });
-          const parseGroupBy = (v: string | undefined): 'list' | 'tag' => (v === 'tag' ? 'tag' : 'list');
           libState.setGroupBys({
             agents: parseGroupBy(message.uiPrefs['groupBy:agents']),
             skills: parseGroupBy(message.uiPrefs['groupBy:skills']),
@@ -154,11 +187,33 @@ export const useAppLogic = () => {
           libState.setActiveTab(message.tab);
         }
         break;
+      case 'revealRun':
+        runState.setRevealRun(prev => ({ flowId: message.flowId, runId: message.runId, nonce: (prev?.nonce ?? 0) + 1 }));
+        break;
       case 'restoreRun':
+        // A reset mints a new runId; remap the old summary row to it (progress cleared) so the row
+        // matches the restored run and its detail drawer stays openable.
+        if (message.previousRunId) {
+          const prevRunId = message.previousRunId;
+          const next = message.runState;
+          libState.setRunSummaries(prev => prev.map(s =>
+            s.flowId === next.flowId && s.runId === prevRunId
+              ? { flowId: s.flowId, runId: next.runId, runName: next.runName, completedSteps: 0, totalSteps: s.totalSteps, mtimeMs: Date.now(), isClosed: false }
+              : s
+          ));
+          // Reset mints a new runId — move the open drawer from the old runId to the new one.
+          runState.setOpenRuns(prev => dropKey(prev, prevRunId));
+          runState.setOpenStepIds(prev => dropKey(prev, prevRunId));
+        }
         runState.setActiveFlow(message.flow);
         runState.setRunState(message.runState);
+        // Eagerly focus this run (see initRunState) so its stream isn't gated out before the effect syncs.
+        runState.activeRunIdRef.current = message.runState.runId;
         runState.setRunnerVisible(true);
         runState.setActiveStepId(getDefaultActiveStepId(message.flow, message.runState));
+        // Open this run's drawer (single-expand: replace any other open drawer, keep this run's step).
+        runState.setOpenRuns({ [message.runState.runId]: message.runState });
+        runState.setOpenStepIds(prev => ({ [message.runState.runId]: prev[message.runState.runId] ?? getDefaultActiveStepId(message.flow, message.runState) }));
         break;
       case 'runDeleted': {
         const { flowId, runId } = message;
@@ -168,10 +223,16 @@ export const useAppLogic = () => {
           const filtered = prev[flowId].filter((e: any) => e.runId !== runId);
           return { ...prev, [flowId]: filtered };
         });
-        runState.setRunState(null);
-        runState.setActiveFlow(null);
-        runState.setActiveStepId(null);
-        runState.setRunnerVisible(false);
+        // Close this run's drawer.
+        runState.setOpenRuns(prev => dropKey(prev, runId));
+        runState.setOpenStepIds(prev => dropKey(prev, runId));
+        // Only clear the focused facade if the deleted run was the focused one.
+        if (!runId || runState.activeRunIdRef.current === runId) {
+          runState.setRunState(null);
+          runState.setActiveFlow(null);
+          runState.setActiveStepId(null);
+          runState.setRunnerVisible(false);
+        }
         break;
       }
       case 'runClosed':
@@ -182,10 +243,19 @@ export const useAppLogic = () => {
               : s
           ));
         }
-        runState.setRunState(null);
-        runState.setActiveFlow(null);
-        runState.setActiveStepId(null);
-        runState.setRunnerVisible(false);
+        // Close this run's drawer (if the message carried a runId).
+        if (message.runId) {
+          const cid = message.runId;
+          runState.setOpenRuns(prev => dropKey(prev, cid));
+          runState.setOpenStepIds(prev => dropKey(prev, cid));
+        }
+        // Only clear the focused facade if the closed run was the focused one (or legacy: no runId).
+        if (!message.runId || runState.activeRunIdRef.current === message.runId) {
+          runState.setRunState(null);
+          runState.setActiveFlow(null);
+          runState.setActiveStepId(null);
+          runState.setRunnerVisible(false);
+        }
         break;
       case 'resetAuditLog':
         runState.setRunState(currentRun => {
@@ -208,30 +278,69 @@ export const useAppLogic = () => {
           return currentRun;
         });
         break;
-      case 'stepUpdate':
-        runState.setRunState(prev => {
-          if (!prev) return prev;
-          const ps = prev.steps[message.stepId];
-          const output = message.append ? `${ps?.output || ''}${message.output || ''}` : (message.output || '');
-          return { ...prev, steps: { ...prev.steps, [message.stepId]: { ...ps, output } } };
+      case 'stepUpdate': {
+        // Route to the drawer that owns this run. Each open drawer renders from its own openRuns
+        // entry, so a background run's stream lands on ITS drawer, never the focused one.
+        const rid = message.runId ?? runState.activeRunIdRef.current;
+        if (!rid) break;
+        runState.setOpenRuns(prev => {
+          const rs = prev[rid];
+          if (!rs) return prev; // drawer not open — output is shown from persisted state on open
+          const ps = rs.steps[message.stepId];
+          const output = appendOutput(ps?.output, message.output, message.append);
+          return { ...prev, [rid]: { ...rs, steps: { ...rs.steps, [message.stepId]: { ...ps, output } } } };
         });
         break;
-      case 'aiReviewUpdate':
-        runState.setRunState(prev => {
-          if (!prev) return prev;
-          const ps = prev.steps[message.stepId];
-          const aiReviewOutput = message.append ? `${ps?.aiReviewOutput || ''}${message.output || ''}` : (message.output || '');
-          return { ...prev, steps: { ...prev.steps, [message.stepId]: { ...ps, aiReviewOutput } } };
+      }
+      case 'aiReviewUpdate': {
+        const rid = message.runId ?? runState.activeRunIdRef.current;
+        if (!rid) break;
+        runState.setOpenRuns(prev => {
+          const rs = prev[rid];
+          if (!rs) return prev;
+          const ps = rs.steps[message.stepId];
+          const aiReviewOutput = appendOutput(ps?.aiReviewOutput, message.output, message.append);
+          return { ...prev, [rid]: { ...rs, steps: { ...rs.steps, [message.stepId]: { ...ps, aiReviewOutput } } } };
         });
         break;
-      case 'runStateChanged':
-        runState.setRunState(message.runState);
-        if (message.historyEvent && runState.activeFlowRef.current) {
-          const flowId = runState.activeFlowRef.current.id;
-          const newEvent = { ...message.historyEvent, runId: message.runState.runId };
+      }
+      case 'runStateChanged': {
+        const changed = message.runState;
+        // Only the focused run drives the open runner view; a background (concurrent) run's state is
+        // persisted server-side and loaded fresh when the user switches to it. The summary-row and
+        // audit updates below still run for ANY run (matched by id), so background runs stay live in
+        // the runs table without corrupting the focused view.
+        const isFocused = runState.activeRunIdRef.current === changed.runId;
+        if (isFocused) runState.setRunState(changed);
+        // Refresh the changed run's OPEN drawer (works for any open run, not only the focused one).
+        runState.setOpenRuns(prev => prev[changed.runId] ? { ...prev, [changed.runId]: changed } : prev);
+        // Advance that drawer's selected step when its current step just finished.
+        const changedFlow = libState.flows.find((f: Flow) => f.id === changed.flowId) ?? runState.activeFlowRef.current;
+        if (changedFlow) {
+          runState.setOpenStepIds(prev => {
+            if (!(changed.runId in prev)) return prev;
+            const curr = prev[changed.runId];
+            if (!curr || changed.steps[curr]?.completionStatus === 'done') {
+              return { ...prev, [changed.runId]: getDefaultActiveStepId(changedFlow, changed) };
+            }
+            return prev;
+          });
+        }
+        // Keep the outer run table row in sync with the live run — otherwise steps/cost/tokens
+        // only refresh on a full reload, so the detail drawer updates but the table lags behind.
+        const agg = computeRunAggregate(changed);
+        libState.setRunSummaries(prev => prev.map(s =>
+          s.flowId === changed.flowId && s.runId === changed.runId
+            ? { ...s, ...agg, runName: changed.runName, isClosed: !!changed.isClosed, mtimeMs: Date.now() }
+            : s
+        ));
+        if (message.historyEvent) {
+          // The event belongs to the CHANGED run's flow, which may differ from the focused flow.
+          const flowId = changed.flowId;
+          const newEvent = { ...message.historyEvent, runId: changed.runId };
           libState.setAuditLogs(prev => ({ ...prev, [flowId]: [...(prev[flowId] || []), newEvent] }));
         }
-        if (runState.activeFlowRef.current) {
+        if (isFocused && runState.activeFlowRef.current) {
           const flow = runState.activeFlowRef.current;
           runState.setActiveStepId(curr => {
             // No step selected yet → pick the default.
@@ -244,6 +353,7 @@ export const useAppLogic = () => {
           });
         }
         break;
+      }
       case 'fileImported':
         if (message.kind === 'agent') {
           buildState.setAgentForm(prev => ({ ...prev, ...message.item, scope: 'project' }));
@@ -306,6 +416,9 @@ export const useAppLogic = () => {
         if (message.reply) {
           chatState.setFlowAiMessages(prev => [...prev, { role: 'assistant', content: message.reply }]);
         }
+        break;
+      case 'adhocRuns':
+        setAdhocRuns(message.runs || []);
         break;
     }
   };
@@ -497,19 +610,50 @@ export const useAppLogic = () => {
 
   const submitRunInputs = () => {
     if (!runState.runInputsTarget) return;
+    if (runState.runInputsEditing) {
+      // Edit mode: patch the targeted run's name + inputs in place (backend enforces the pristine gate).
+      sendToVSCode('editRun', { runName: runState.runName.trim() || undefined, inputs: runState.runInputValues, runId: runState.runEditRunId ?? undefined });
+      runState.setRunInputsTarget(null);
+      runState.setRunInputsEditing(false);
+      runState.setRunEditRunId(null);
+      return;
+    }
     initRunState(runState.runInputsTarget, runState.runName.trim() || undefined, runState.runInputValues);
     runState.setRunInputsTarget(null);
     runState.setRunnerVisible(true);
   };
 
-  const runActiveStep = (stepId: string, description?: string) => {
-    if (!runState.activeFlow) return;
+  /** Run a step for a specific open run (multi-drawer): resolves the run + its flow by runId. */
+  const runActiveStep = (runId: string, stepId: string, description?: string) => {
+    const rs = runState.openRuns[runId];
+    const flow = rs ? libState.flows.find((f: Flow) => f.id === rs.flowId) ?? runState.activeFlow : runState.activeFlow;
+    if (!flow || !rs) return;
     const historyEvent = { timestamp: new Date().toISOString(), status: 'running', message: 'Started run' };
     if (!isVSCodeWebview()) {
       seedPreviewRun(stepId, description);
       return;
     }
-    sendToVSCode('runStep', { flow: runState.activeFlow, runState: runState.runState, stepId, description, historyEvent });
+    sendToVSCode('runStep', { flow, runState: rs, stepId, description, runId, historyEvent });
+  };
+
+  /** Select a step within one open run's drawer. */
+  const setOpenStepId = (runId: string, id: string) => {
+    runState.setOpenStepIds(prev => ({ ...prev, [runId]: id }));
+  };
+
+  /**
+   * Collapse a run's drawer — a LOCAL UI action only. It must NOT tell the backend to close/forget
+   * the run (the run may still be executing in its own terminal); the backend RunCtx stays alive and
+   * the run can be reopened later via switchRun.
+   */
+  const collapseRun = (runId: string) => {
+    runState.setOpenRuns(prev => dropKey(prev, runId));
+    runState.setOpenStepIds(prev => dropKey(prev, runId));
+    if (runState.activeRunIdRef.current === runId) {
+      runState.activeRunIdRef.current = null;
+      runState.setRunState(null);
+      runState.setRunnerVisible(false);
+    }
   };
 
   const seedPreview = () => {
@@ -518,6 +662,14 @@ export const useAppLogic = () => {
     libState.setSkills(previewSkills);
     libState.setGlobalPath('/preview/global');
     libState.setProjectPath('/preview/project');
+    // Open straight into the finished sample run so the runner sub-tabs (Console / Files /
+    // Cost / History) have real content to inspect without a VS Code host.
+    libState.setAuditLogs(previewAuditLogs);
+    libState.setRunSummaries(previewRunSummaries);
+    runState.setActiveFlow(previewFlow);
+    runState.setRunState(previewRunState);
+    runState.setActiveStepId('write-docs');
+    runState.setRunnerVisible(true);
   };
 
   const seedPreviewRun = (stepId: string, runDescription?: string) => {
@@ -621,12 +773,13 @@ export const useAppLogic = () => {
     ...buildState,
     ...chatState,
     completedSteps, activeProgress,
+    historyTarget, adhocRuns, openHistory, closeHistory,
     handleHostMessage, seedPreview,
     startOrResumeRun,
     startFreshRun,
     submitAgentModal, openAgentEditor, submitSkillModal, openSkillEditor,
     submitReviewModal, openReviewEditor,
     submitConnectMcp,
-    submitRunInputs, runActiveStep, saveEditingFlow, saveStepEdit
+    submitRunInputs, openRunEditor, runActiveStep, setOpenStepId, collapseRun, saveEditingFlow, saveStepEdit
   };
 };

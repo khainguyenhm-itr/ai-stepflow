@@ -1,6 +1,6 @@
-# Contributing to AI StepFlow
+# Contributing to ClaudeSteps
 
-Thanks for your interest in improving AI StepFlow. This is a VS Code extension
+Thanks for your interest in improving ClaudeSteps. This is a VS Code extension
 monorepo (`packages/core`, `packages/extension`, `packages/webview`) built with
 TypeScript and esbuild.
 

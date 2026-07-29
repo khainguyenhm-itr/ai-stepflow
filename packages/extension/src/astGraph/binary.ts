@@ -53,6 +53,28 @@ export interface BinaryResolution {
   version: string;
 }
 
+/** A pinned SHA256: exactly 64 hex digits. Anything else is not a usable integrity check. */
+const SHA256_HEX = /^[0-9a-f]{64}$/i;
+
+/**
+ * Refuse to install a target whose checksum is missing or malformed. Exported so a unit test can
+ * assert every entry in {@link TARGETS} is verifiable — the check that would have caught the
+ * original fail-open at the source rather than at download time.
+ */
+export function assertPinnedChecksum(spec: { asset: string; sha256: string }): void {
+  if (!SHA256_HEX.test(spec.sha256)) {
+    throw new Error(
+      `ast-graph: no valid pinned SHA256 for ${spec.asset} — refusing to install an unverifiable binary. ` +
+      `Fill in the checksum for this target in binary.ts, or set claudesteps.astGraph.binaryPath to a locally-installed ast-graph.`
+    );
+  }
+}
+
+/** Every download target, exposed for the checksum-coverage test. */
+export function astGraphTargets(): Readonly<Record<string, TargetSpec>> {
+  return TARGETS;
+}
+
 export class UnsupportedPlatformError extends Error {
   constructor(public platform: string, public arch: string) {
     super(`ast-graph: no prebuilt binary for ${platform}/${arch}. Supported: macOS (arm64/x64), Linux (x64), Windows (x64).`);
@@ -103,6 +125,12 @@ export async function ensureAstGraphBinary(
     return { path: exePath, version: AST_GRAPH_VERSION };
   }
 
+  // Fail closed before touching the network: a target with no pinned checksum cannot be verified,
+  // and fetching the expected hash from the same host that serves the archive would verify nothing.
+  // Bumping AST_GRAPH_VERSION without filling in the checksums must break loudly, not silently
+  // install an unverified executable.
+  assertPinnedChecksum(spec);
+
   await fs.promises.mkdir(dir, { recursive: true });
   const archivePath = uniqueArchivePath(dir, spec.asset);
   const url = `${RELEASE_BASE}/${spec.asset}`;
@@ -111,10 +139,9 @@ export async function ensureAstGraphBinary(
   await downloadFile(url, archivePath);
 
   const actual = await sha256OfFile(archivePath);
-  const expected = spec.sha256 || (await fetchExpectedSha(`${url}.sha256`));
-  if (expected && actual.toLowerCase() !== expected.toLowerCase()) {
+  if (actual.toLowerCase() !== spec.sha256.toLowerCase()) {
     await fs.promises.unlink(archivePath).catch(() => {});
-    throw new Error(`ast-graph: checksum mismatch for ${spec.asset} (got ${actual}, expected ${expected})`);
+    throw new Error(`ast-graph: checksum mismatch for ${spec.asset} (got ${actual}, expected ${spec.sha256})`);
   }
   output.appendLine(`ast-graph: checksum OK (${actual.slice(0, 12)}…)`);
 
@@ -170,7 +197,7 @@ function downloadFile(url: string, dst: string, hops = 0): Promise<void> {
       return;
     }
     const tmp = `${dst}.${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.part`;
-    https.get(url, { headers: { 'User-Agent': 'ai-stepflow-vscode' } }, (res) => {
+    https.get(url, { headers: { 'User-Agent': 'claudesteps-vscode' } }, (res) => {
       if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         const next = new URL(res.headers.location, url).toString();
         downloadFile(next, dst, hops + 1).then(resolve, reject);
@@ -203,25 +230,6 @@ function downloadFile(url: string, dst: string, hops = 0): Promise<void> {
       });
       res.on('error', fail);
     }).on('error', reject);
-  });
-}
-
-async function fetchExpectedSha(url: string): Promise<string> {
-  return new Promise((resolve) => {
-    https.get(url, { headers: { 'User-Agent': 'ai-stepflow-vscode' } }, (res) => {
-      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        fetchExpectedSha(new URL(res.headers.location, url).toString()).then(resolve);
-        return;
-      }
-      if (res.statusCode !== 200) { resolve(''); return; }
-      let body = '';
-      res.setEncoding('utf8');
-      res.on('data', (c) => { body += c; });
-      res.on('end', () => {
-        const first = body.trim().split(/\s+/)[0] ?? '';
-        resolve(first);
-      });
-    }).on('error', () => resolve(''));
   });
 }
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Flow, FlowRunState } from '@ai-stepflow/core/types';
+import { Flow, FlowRunState } from '@claudesteps/core/types';
 import { Icon, Modal } from '../components/primitives';
 import { getFlowColumns } from '../flowUtils';
 import { sendToVSCode } from '../vscode';
@@ -10,32 +10,34 @@ type RunSummary = {
   flowId: string; runId: string; runName?: string;
   completedSteps: number; totalSteps: number; mtimeMs: number; isClosed: boolean;
   costUsd?: number; tokensUsed?: number; taskTimeMs?: number; failedSteps?: number;
+  inProgressSteps?: number; reviewing?: boolean;
 };
 
 interface FlowBoardProps {
   flow: Flow;
-  activeFlow: Flow | null;
-  runState: FlowRunState | null;
   auditLogs: Record<string, any[]>;
   runSummaries: RunSummary[];
-  runnerVisible: boolean;
-  activeStepId: string | null;
-  completedSteps: number;
-  activeProgress: number;
+  revealRun: { flowId: string; runId: string; nonce: number } | null;
+  /** Live state for every run currently expanded in a drawer, keyed by runId (multi-drawer). */
+  openRuns: Record<string, FlowRunState>;
+  /** Per-open-run selected step id. */
+  openStepIds: Record<string, string | null>;
   commandCopied: boolean;
   globalPath: string;
   projectPath: string;
   onRun: (flow: Flow) => void;
+  onEditRun: (runId: string) => void;
   onEdit: (flow: Flow) => void;
+  onClone: (flow: Flow) => void;
   onDetail: (flow: Flow) => void;
   onBoardStepEditor: (flow: Flow, index: number) => void;
   onBoardStepAdder: (flow: Flow) => void;
   onRemoveStep: (flow: Flow, index: number) => void;
-  onSetActiveStep: (id: string) => void;
-  onRunStep: (stepId: string, description: string) => void;
+  onSetActiveStep: (runId: string, id: string) => void;
+  onRunStep: (runId: string, stepId: string, description: string) => void;
+  onCollapseRun: (runId: string) => void;
   onOpenFile: (path: string) => void;
   onCopyCommand: () => void;
-  outputEndRef: React.RefObject<HTMLDivElement | null>;
   scopeBadge: React.ReactNode;
 }
 
@@ -60,58 +62,62 @@ const fmtDur = (ms?: number): string => {
 
 export const FlowBoard: React.FC<FlowBoardProps> = ({
   flow,
-  activeFlow,
-  runState,
   auditLogs,
   runSummaries,
-  runnerVisible,
-  activeStepId,
-  completedSteps,
-  activeProgress,
+  revealRun,
+  openRuns,
+  openStepIds,
   commandCopied,
   onRun,
+  onEditRun,
   onEdit,
+  onClone,
   onDetail,
   onBoardStepEditor,
   onBoardStepAdder,
   onRemoveStep,
   onSetActiveStep,
   onRunStep,
+  onCollapseRun,
   onOpenFile,
   onCopyCommand,
-  outputEndRef,
   scopeBadge,
 }) => {
   const columns = getFlowColumns(flow);
-  const runnerOpen = activeFlow?.id === flow.id && !!runState && runnerVisible;
+  // A run's drawer is open iff it has a live entry in openRuns.
+  const isRunOpen = (runId: string) => !!openRuns[runId];
+  const anyOpen = Object.keys(openRuns).some(rid => runSummaries.some(s => s.runId === rid));
   const [graphOpen, setGraphOpen] = useState(false);
   const [runsOpen, setRunsOpen] = useState(false);
   const [runsTab, setRunsTab] = useState<'running' | 'done'>('running');
   const [confirmRemoveIndex, setConfirmRemoveIndex] = useState<number | null>(null);
-  const [runMenuOpen, setRunMenuOpen] = useState(false);
+  // Which row's "more actions" menu is open (by runId), so each drawer has its own menu.
+  const [openMenuRunId, setOpenMenuRunId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const runMenuRef = useRef<HTMLDivElement>(null);
+  const revealRowRef = useRef<HTMLTableRowElement>(null);
 
   useEffect(() => {
-    if (!runnerOpen) return;
-    // Surface the open run: switch to the tab that contains it.
-    const s = runSummaries.find(r => r.runId === runState?.runId);
-    if (s) setRunsTab(isFinished(s) ? 'done' : 'running');
-  }, [runnerOpen, runState?.runId]);
-  useEffect(() => {
-    if (!runMenuOpen) return;
+    if (!openMenuRunId) return;
     const onDocClick = (e: MouseEvent) => {
-      if (runMenuRef.current && !runMenuRef.current.contains(e.target as Node)) setRunMenuOpen(false);
+      if (runMenuRef.current && !runMenuRef.current.contains(e.target as Node)) setOpenMenuRunId(null);
     };
     document.addEventListener('mousedown', onDocClick);
     return () => document.removeEventListener('mousedown', onDocClick);
-  }, [runMenuOpen]);
-
-  // Run-level actions target the currently-open run, so they render on that row only.
-  const activeSteps = runnerOpen && runState ? Object.values(runState.steps) : [];
-  const runFinalized = !!runState?.isClosed;
-  const runFlowDone = activeSteps.length > 0 && activeSteps.every(s => s.completionStatus === 'done');
-  const runCanReset = !runFinalized && activeSteps.some(s => s.executionStatus !== 'ready' && s.executionStatus !== 'locked');
+  }, [openMenuRunId]);
+  // Sidebar "Open runs": expand this flow's runs list on the tab holding the target run.
+  useEffect(() => {
+    if (!revealRun || revealRun.flowId !== flow.id) return;
+    const s = runSummaries.find(r => r.runId === revealRun.runId);
+    if (s) setRunsTab(isFinished(s) ? 'done' : 'running');
+    setRunsOpen(true);
+  }, [revealRun?.nonce]);
+  // Once the target's detail drawer is rendered, scroll it into view.
+  useEffect(() => {
+    if (!revealRun || revealRun.flowId !== flow.id || !runsOpen || !isRunOpen(revealRun.runId)) return;
+    const id = requestAnimationFrame(() => revealRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+    return () => cancelAnimationFrame(id);
+  }, [revealRun?.nonce, runsOpen, openRuns]);
 
   const activeRuns = runSummaries.filter(s => !s.isClosed);
   // A run is "finished" once finalized or all its steps completed; everything else is still running.
@@ -123,13 +129,13 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
   // Flow-level status reflects only whether a run is active — "Done" is a per-run state, not a flow state.
   let statusKey: 'run' | 'idle' = 'idle';
   let statusLabel = 'Ready';
-  if (runnerOpen && runState) { statusKey = 'run'; statusLabel = 'Running'; }
+  if (anyOpen) { statusKey = 'run'; statusLabel = 'Running'; }
   else if (activeRuns.length > 0) { statusKey = 'run'; statusLabel = 'In progress'; }
 
   const toggleRuns = () => {
     setRunsOpen(prev => {
       const next = !prev;
-      if (next && !runnerOpen && activeRuns.length > 0) {
+      if (next && !anyOpen && activeRuns.length > 0) {
         const mostRecent = [...activeRuns].sort((a, b) => b.mtimeMs - a.mtimeMs)[0];
         sendToVSCode('switchRun', { flowId: flow.id, runId: mostRecent.runId });
       }
@@ -138,21 +144,34 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
   };
 
   const renderRunRow = (s: RunSummary) => {
-    const isActive = runnerOpen && runState?.runId === s.runId;
+    const isActive = isRunOpen(s.runId);
+    const rowRun = openRuns[s.runId];
+    // Run-level action gating, computed per row from that run's own live state.
+    const rowSteps = rowRun ? Object.values(rowRun.steps) : [];
+    const runFinalized = !!rowRun?.isClosed;
+    const runFlowDone = rowSteps.length > 0 && rowSteps.every(st => st.completionStatus === 'done');
+    const runCanReset = !runFinalized && rowSteps.some(st => st.executionStatus !== 'ready' && st.executionStatus !== 'locked');
+    // Editing name/inputs is only safe before any step has started (mirrors the backend pristine guard).
+    const runCanEdit = !runFinalized && rowSteps.length > 0
+      && rowSteps.every(st => (st.executionStatus === 'ready' || st.executionStatus === 'locked') && !(st.history?.length));
+    const runMenuOpen = openMenuRunId === s.runId;
     const done = s.completedSteps >= s.totalSteps;
     const failed = (s.failedSteps ?? 0) > 0;
-    const statusKey = s.isClosed ? 'done' : failed ? 'fail' : done ? 'ok' : 'run';
-    const statusLabel = s.isClosed ? 'Finalized' : failed ? 'Failed' : done ? 'Done' : 'Running';
+    const reviewing = !!s.reviewing;
+    // Count the in-flight step toward the tally so a running/reviewing step shows its own
+    // position (e.g. step 2 of 5 → "2/5"), capped at the total.
+    const shownSteps = Math.min(s.completedSteps + (s.inProgressSteps ?? 0), s.totalSteps);
+    const statusKey = s.isClosed ? 'done' : failed ? 'fail' : reviewing ? 'review' : done ? 'ok' : 'run';
+    const statusLabel = s.isClosed ? 'Finalized' : failed ? 'Failed' : reviewing ? 'Reviewing' : done ? 'Done' : 'Running';
     return (
       <React.Fragment key={s.runId}>
         <tr
-          className={`run-row ${isActive ? 'open' : ''}`}
+          ref={isActive ? revealRowRef : undefined}
+          className={`run-row ${isActive ? 'open' : ''} ${statusKey === 'run' ? 'live' : ''} ${statusKey === 'review' ? 'reviewing' : ''}`}
           title={new Date(s.mtimeMs).toLocaleString()}
-          onClick={() => sendToVSCode(isActive ? 'closeRun' : 'switchRun', isActive ? { finalize: false } : { flowId: flow.id, runId: s.runId })}
         >
-          <td className="rt-chev"><span className="rt-chevron"><Icon.ChevronRight size={14} /></span></td>
           <td className="rt-status">
-            <span className={`run-status ${statusKey === 'run' || statusKey === 'fail' ? '' : 'muted'}`}>
+            <span className={`run-status ${statusKey === 'run' || statusKey === 'fail' || statusKey === 'review' ? '' : 'muted'}`}>
               <span className={`ddot ${statusKey}`} />
               <span>{statusLabel}</span>
             </span>
@@ -169,68 +188,83 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
               {Array.from({ length: s.totalSteps }).map((_, i) => {
                 const cls = i < s.completedSteps ? 'done'
                   : i === s.completedSteps && failed && !s.isClosed ? 'fail'
+                  : i === s.completedSteps && reviewing && !s.isClosed ? 'review'
                   : i === s.completedSteps && !done && !s.isClosed ? 'active'
                   : '';
                 return <span key={i} className={`seg ${cls}`} />;
               })}
-              <span className="pipe-num">{s.completedSteps}/{s.totalSteps}</span>
+              <span className="pipe-num">{shownSteps}/{s.totalSteps}</span>
             </span>
           </td>
           <td className="rt-started">{fmtAgo(s.mtimeMs)}</td>
           <td className="rt-actions" onClick={e => e.stopPropagation()}>
-            {isActive && !runFinalized && (
-              <div className="run-row-actions">
+            <div className="run-row-actions">
+              <button
+                className="icon-btn"
+                title={isActive ? 'Close run details' : 'Open run details'}
+                aria-label={isActive ? 'Close run details' : 'Open run details'}
+                aria-expanded={isActive}
+                onClick={() => isActive ? onCollapseRun(s.runId) : sendToVSCode('switchRun', { flowId: flow.id, runId: s.runId })}
+              >
+                {isActive ? <Icon.ChevronDown size={16} /> : <Icon.ChevronRight size={16} />}
+              </button>
+              {isActive && !runFinalized && (
+                <>
                 {runFlowDone && (
-                  <button className="btn success" title="Finalize run — mark it done and clear the active status" onClick={() => sendToVSCode('closeRun', { finalize: true })}>
+                  <button className="btn success" title="Finalize run — mark it done and clear the active status" onClick={() => sendToVSCode('closeRun', { finalize: true, runId: s.runId })}>
                     <Icon.Check size={14} />Done
                   </button>
                 )}
-                <div className="more-menu" ref={runMenuRef}>
-                  <button className="icon-btn" title="More actions" aria-haspopup="menu" aria-expanded={runMenuOpen} onClick={() => setRunMenuOpen(o => !o)}>
+                <div className="more-menu" ref={runMenuOpen ? runMenuRef : undefined}>
+                  <button className="icon-btn" title="More actions" aria-haspopup="menu" aria-expanded={runMenuOpen} onClick={() => setOpenMenuRunId(o => o === s.runId ? null : s.runId)}>
                     <Icon.More size={16} />
                   </button>
                   {runMenuOpen && (
                     <div className="more-menu-list" role="menu">
+                      {runCanEdit && (
+                        <button className="more-menu-item" role="menuitem" title="Edit this run's name and inputs (only before any step has started)" onClick={() => { setOpenMenuRunId(null); onEditRun(s.runId); }}>
+                          <Icon.Pencil size={14} />Edit name & inputs
+                        </button>
+                      )}
                       {!runFlowDone && runCanReset && (
-                        <button className="more-menu-item" role="menuitem" onClick={() => { setRunMenuOpen(false); sendToVSCode('resetRun', {}); }}>
+                        <button className="more-menu-item" role="menuitem" onClick={() => { setOpenMenuRunId(null); sendToVSCode('resetRun', { runId: s.runId }); }}>
                           <Icon.RotateCw size={14} />Reset all steps
                         </button>
                       )}
-                      <button className="more-menu-item" role="menuitem" onClick={() => { setRunMenuOpen(false); sendToVSCode('verifyRun', {}); }}>
+                      <button className="more-menu-item" role="menuitem" onClick={() => { setOpenMenuRunId(null); sendToVSCode('verifyRun', { runId: s.runId }); }}>
                         <Icon.Check size={14} />Verify
                       </button>
-                      <button className="more-menu-item" role="menuitem" onClick={() => { setRunMenuOpen(false); sendToVSCode('exportRunReport', {}); }}>
+                      <button className="more-menu-item" role="menuitem" onClick={() => { setOpenMenuRunId(null); sendToVSCode('exportRunReport', { runId: s.runId }); }}>
                         <Icon.Copy size={14} />Report
                       </button>
                       <div className="more-menu-sep" />
-                      <button className="more-menu-item danger" role="menuitem" onClick={() => { setRunMenuOpen(false); sendToVSCode('deleteRun', {}); }}>
+                      <button className="more-menu-item danger" role="menuitem" onClick={() => { setOpenMenuRunId(null); sendToVSCode('deleteRun', { runId: s.runId }); }}>
                         <Icon.Trash2 size={14} />Delete run
                       </button>
                     </div>
                   )}
                 </div>
-              </div>
-            )}
+                </>
+              )}
+            </div>
           </td>
         </tr>
 
-        {isActive && runState && (
+        {isActive && rowRun && (
           <tr className="run-detail">
-            <td colSpan={9}>
+            <td colSpan={8}>
               <div className="run-drawer">
                 <InlineRunner
+                  runId={s.runId}
                   flow={flow}
-                  runState={runState}
+                  runState={rowRun}
                   auditLogs={auditLogs}
-                  activeStepId={activeStepId}
-                  completedSteps={completedSteps}
-                  activeProgress={activeProgress}
+                  activeStepId={openStepIds[s.runId] ?? null}
                   commandCopied={commandCopied}
-                  onSetActiveStep={onSetActiveStep}
-                  onRunStep={onRunStep}
+                  onSetActiveStep={id => onSetActiveStep(s.runId, id)}
+                  onRunStep={(stepId, description) => onRunStep(s.runId, stepId, description)}
                   onOpenFile={onOpenFile}
                   onCopyCommand={onCopyCommand}
-                  outputEndRef={outputEndRef}
                 />
               </div>
             </td>
@@ -261,12 +295,14 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
         <td className="mono muted">{runSummaries.length} {runSummaries.length === 1 ? 'run' : 'runs'}</td>
         <td>{scopeBadge}</td>
         <td className="mono muted">{total} {total === 1 ? 'step' : 'steps'}</td>
+        <td className="mono muted">{fmtAgo(runSummaries.reduce((m, s) => Math.max(m, s.mtimeMs), 0))}</td>
         <td className="drow-actions-cell">
           <span className="drow-actions">
-            <button className={`icon-btn ${graphOpen ? 'active' : ''}`} title="Flow graph" onClick={() => setGraphOpen(o => !o)}><Icon.GitBranch size={14} /></button>
-            <button className={`icon-btn ${runsOpen ? 'active' : ''}`} title="Runs" onClick={toggleRuns}><Icon.List size={14} /></button>
+            <button className={`icon-btn ${runsOpen ? 'active' : ''}`} title="Runs" onClick={toggleRuns}>{runsOpen ? <Icon.Terminal size={14} /> : <Icon.List size={14} />}</button>
+            <button className={`icon-btn ${graphOpen ? 'active' : ''}`} title="Flow graph" onClick={() => setGraphOpen(o => !o)}>{graphOpen ? <Icon.GitBranchMinus size={14} /> : <Icon.GitBranch size={14} />}</button>
 
             <button className="icon-btn pencil" title="Edit flow" onClick={() => onEdit(flow)}><Icon.Pencil size={14} /></button>
+            <button className="icon-btn" title="Clone flow" onClick={() => onClone(flow)}><Icon.Copy size={14} /></button>
             <button className="icon-btn" title="Details" onClick={() => onDetail(flow)}><Icon.Info size={14} /></button>
             {flow.sourcePath && (
               <button className="icon-btn danger" title="Delete flow" onClick={() => sendToVSCode('deleteFlow', { flow })}><Icon.Trash2 size={14} /></button>
@@ -278,7 +314,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
       {/* graph expand */}
       {graphOpen && (
         <tr className="detail-row graph-dr">
-          <td colSpan={6}>
+          <td colSpan={7}>
             <div className="detail">
               <div className="detail-subhead">
                 <h4>Flow graph</h4>
@@ -324,7 +360,7 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
       {/* runs expand */}
       {runsOpen && (
         <tr className="detail-row runs-dr">
-          <td colSpan={6}>
+          <td colSpan={7}>
             <div className="detail">
               <div className="detail-subhead">
                 <div className="ov-scope-switch" role="tablist" aria-label="Runs filter">
@@ -342,7 +378,6 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
                 <table className="runs-table">
                   <thead>
                     <tr>
-                      <th className="rt-chev"></th>
                       <th className="rt-status">Status</th>
                       <th className="rt-run">Run</th>
                       <th className="rt-cost">Cost</th>
@@ -353,10 +388,10 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
                       <th className="rt-actions"></th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className={rows.some(s => isRunOpen(s.runId)) ? 'has-open' : ''}>
                     {rows.length === 0 ? (
                       <tr className="run-empty-row">
-                        <td colSpan={9}>Không có data hiển thị</td>
+                        <td colSpan={8}>Không có data hiển thị</td>
                       </tr>
                     ) : (
                       rows.map(renderRunRow)

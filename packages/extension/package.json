@@ -1,6 +1,6 @@
 {
-  "name": "ai-stepflow",
-  "displayName": "AI StepFlow",
+  "name": "claudesteps",
+  "displayName": "ClaudeSteps",
   "publisher": "khainguyen",
   "version": "0.1.0",
   "description": "Orchestrate Claude agents, skills & workflows for structured AI development.",
@@ -8,11 +8,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/khainguyenhm-itr/ai-stepflow"
+    "url": "https://github.com/khainguyenhm-itr/claudesteps"
   },
-  "homepage": "https://github.com/khainguyenhm-itr/ai-stepflow#readme",
+  "homepage": "https://github.com/khainguyenhm-itr/claudesteps#readme",
   "bugs": {
-    "url": "https://github.com/khainguyenhm-itr/ai-stepflow/issues"
+    "url": "https://github.com/khainguyenhm-itr/claudesteps/issues"
   },
   "galleryBanner": {
     "color": "#1e1e2e",
@@ -20,8 +20,8 @@
   },
   "badges": [
     {
-      "url": "https://github.com/khainguyenhm-itr/ai-stepflow/actions/workflows/ci.yml/badge.svg",
-      "href": "https://github.com/khainguyenhm-itr/ai-stepflow/actions/workflows/ci.yml",
+      "url": "https://github.com/khainguyenhm-itr/claudesteps/actions/workflows/ci.yml/badge.svg",
+      "href": "https://github.com/khainguyenhm-itr/claudesteps/actions/workflows/ci.yml",
       "description": "CI status"
     }
   ],
@@ -43,30 +43,30 @@
   ],
   "activationEvents": [
     "onStartupFinished",
-    "onView:ai-stepflow-home",
-    "onCommand:ai-stepflow.openOverview",
-    "onCommand:ai-stepflow.refreshAll",
-    "onCommand:ai-stepflow.installDefaults",
-    "onWebviewPanel:aiStepFlowCockpit"
+    "onView:claudesteps-home",
+    "onCommand:claudesteps.openOverview",
+    "onCommand:claudesteps.refreshAll",
+    "onCommand:claudesteps.installDefaults",
+    "onWebviewPanel:claudeStepsCockpit"
   ],
   "main": "./out/extension.js",
   "bin": {
-    "ai-stepflow": "./out/cli.js"
+    "claudesteps": "./out/cli.js"
   },
   "contributes": {
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "ai-stepflow",
-          "title": "AI StepFlow",
+          "id": "claudesteps",
+          "title": "ClaudeSteps",
           "icon": "resources/icon.svg"
         }
       ]
     },
     "views": {
-      "ai-stepflow": [
+      "claudesteps": [
         {
-          "id": "ai-stepflow-home",
+          "id": "claudesteps-home",
           "name": "Overview",
           "type": "webview"
         }
@@ -74,67 +74,73 @@
     },
     "commands": [
       {
-        "command": "ai-stepflow.openOverview",
+        "command": "claudesteps.openOverview",
         "title": "Open Cockpit",
-        "category": "AI StepFlow",
+        "category": "ClaudeSteps",
         "icon": "$(rocket)"
       },
       {
-        "command": "ai-stepflow.refreshAll",
+        "command": "claudesteps.refreshAll",
         "title": "Refresh All",
-        "category": "AI StepFlow",
+        "category": "ClaudeSteps",
         "icon": "$(refresh)"
       },
       {
-        "command": "ai-stepflow.installDefaults",
+        "command": "claudesteps.installDefaults",
         "title": "Install Default Agents & Skills",
-        "category": "AI StepFlow",
+        "category": "ClaudeSteps",
         "icon": "$(cloud-download)"
       },
       {
-        "command": "ai-stepflow.astGraph.rescan",
+        "command": "claudesteps.astGraph.install",
+        "title": "Install AST Graph",
+        "category": "ClaudeSteps",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "claudesteps.astGraph.rescan",
         "title": "Rescan AST Graph",
-        "category": "AI StepFlow",
+        "category": "ClaudeSteps",
         "icon": "$(type-hierarchy)"
       },
       {
-        "command": "ai-stepflow.astGraph.reregisterMcp",
+        "command": "claudesteps.astGraph.reregisterMcp",
         "title": "Re-register AST Graph MCP Server",
-        "category": "AI StepFlow"
+        "category": "ClaudeSteps"
       }
     ],
     "configuration": {
-      "title": "AI StepFlow",
+      "title": "ClaudeSteps",
       "properties": {
-        "ai-stepflow.astGraph.enabled": {
+        "claudesteps.astGraph.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Index the workspace with ast-graph and expose it to Claude as an MCP server, so step runs answer structural code questions with a cheap graph query instead of grep+read."
         },
-        "ai-stepflow.astGraph.autoRescanDebounceSeconds": {
+        "claudesteps.astGraph.autoRescanDebounceSeconds": {
           "type": "number",
           "default": 5,
           "minimum": 1,
           "description": "How long to wait after a source file save before re-indexing the AST graph."
         },
-        "ai-stepflow.astGraph.binaryPath": {
+        "claudesteps.astGraph.binaryPath": {
           "type": "string",
           "default": "",
           "description": "Absolute path to an ast-graph executable to use instead of downloading the bundled build. Set this on platforms with no prebuilt binary (e.g. Linux arm64) after installing ast-graph yourself. When set, the download and checksum verification are skipped."
         },
-        "ai-stepflow.run.timeoutSeconds": {
+        "claudesteps.run.timeoutSeconds": {
           "type": "number",
           "default": 600,
           "minimum": 0,
           "description": "Kill a headless step/AI-review run that exceeds this many seconds (it is marked failed). Set to 0 to disable the timeout."
         },
-        "ai-stepflow.run.maxTurns": {
+        "claudesteps.run.maxTurns": {
           "type": "number",
           "default": 6,
           "minimum": 0,
           "description": "Maximum number of agentic turns per headless step run. Prevents runaway multi-turn execution from consuming excessive tokens. Set to 0 to disable the limit. Individual agents can override this via their maxTurns field."
         },
-        "ai-stepflow.run.headlessMcpServers": {
+        "claudesteps.run.headlessMcpServers": {
           "type": "array",
           "items": { "type": "string" },
           "default": [],
@@ -144,29 +150,29 @@
     },
     "walkthroughs": [
       {
-        "id": "ai-stepflow.getStarted",
-        "title": "Get started with AI StepFlow",
+        "id": "claudesteps.getStarted",
+        "title": "Get started with ClaudeSteps",
         "description": "Run your Claude agents, skills, and multi-step flows without leaving VS Code.",
         "steps": [
           {
             "id": "installCli",
             "title": "Install the Claude Code CLI",
-            "description": "AI StepFlow drives the local `claude` CLI. Install it globally and make sure `claude` is on your PATH:\n```\nnpm install -g @anthropic-ai/claude-code\n```",
+            "description": "ClaudeSteps drives the local `claude` CLI. Install it globally and make sure `claude` is on your PATH:\n```\nnpm install -g @anthropic-ai/claude-code\n```",
             "media": { "markdown": "resources/walkthrough/install-cli.md" }
           },
           {
             "id": "installDefaults",
             "title": "Install default agents & skills",
-            "description": "Add the bundled SDLC agents and skills (plus the project's engineering rules) to your global `~/.claude`.\n[Install Default Agents & Skills](command:ai-stepflow.installDefaults)",
+            "description": "Add the bundled SDLC agents and skills (plus the project's engineering rules) to your global `~/.claude`.\n[Install Default Agents & Skills](command:claudesteps.installDefaults)",
             "media": { "markdown": "resources/walkthrough/install-defaults.md" },
-            "completionEvents": ["onCommand:ai-stepflow.installDefaults"]
+            "completionEvents": ["onCommand:claudesteps.installDefaults"]
           },
           {
             "id": "openCockpit",
             "title": "Open the cockpit",
-            "description": "Browse global and project agents, skills, and flows side by side.\n[Open Cockpit](command:ai-stepflow.openOverview)",
-            "media": { "image": "resources/walkthrough/cockpit.png", "altText": "The AI StepFlow cockpit showing the Workflows board" },
-            "completionEvents": ["onCommand:ai-stepflow.openOverview"]
+            "description": "Browse global and project agents, skills, and flows side by side.\n[Open Cockpit](command:claudesteps.openOverview)",
+            "media": { "image": "resources/walkthrough/cockpit.png", "altText": "The ClaudeSteps cockpit showing the Workflows board" },
+            "completionEvents": ["onCommand:claudesteps.openOverview"]
           },
           {
             "id": "runFlow",
@@ -179,7 +185,7 @@
     ]
   },
   "dependencies": {
-    "@ai-stepflow/core": "^0.1.0"
+    "@claudesteps/core": "^0.1.0"
   },
   "scripts": {
     "compile": "tsc -p ./",

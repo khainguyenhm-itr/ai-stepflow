@@ -2,7 +2,7 @@ import { readdirSync, unlinkSync, mkdirSync, copyFileSync, rmSync, existsSync, s
 import { spawnSync } from 'child_process';
 import { join, dirname } from 'path';
 
-const outputFile = 'ai-stepflow.vsix';
+const outputFile = 'claudesteps.vsix';
 const rootDir = process.cwd();
 const pkgDir = join(rootDir, 'packages/extension');
 const tempDir = join(rootDir, 'out/package-temp');

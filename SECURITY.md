@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-AI StepFlow is pre-1.0; only the latest released version on the VS Code
+ClaudeSteps is pre-1.0; only the latest released version on the VS Code
 Marketplace receives security fixes.
 
 ## Reporting a vulnerability
@@ -10,7 +10,7 @@ Marketplace receives security fixes.
 **Please do not open a public GitHub issue for security vulnerabilities.**
 
 Instead, report privately via GitHub's
-[private vulnerability reporting](https://github.com/khainguyenhm-itr/ai-stepflow/security/advisories/new)
+[private vulnerability reporting](https://github.com/khainguyenhm-itr/claudesteps/security/advisories/new)
 (Security → Report a vulnerability). Include:
 
 - a description of the issue and its impact,
@@ -22,7 +22,7 @@ timeline after triage.
 
 ## Scope notes
 
-AI StepFlow runs the local `claude` CLI on your behalf and can create or modify
+ClaudeSteps runs the local `claude` CLI on your behalf and can create or modify
 files in your workspace. Be aware of the trust model:
 
 - **Trusted flows** run Claude with your normal interactive permissions — only run

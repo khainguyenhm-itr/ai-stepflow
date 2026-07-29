@@ -16,19 +16,29 @@ import { FlowRunState, FlowStep } from './types.js';
 import { StepRunner } from './claudeRunner.js';
 import { runValidator } from './validatorRunner.js';
 import { parseVerdict, parseReviewFindings } from './runUtils.js';
-import { resolveTemplates, runOutputSlug } from './pathTemplates.js';
+import { resolveTemplates, runOutputSlug, legacyRunOutputSlug } from './pathTemplates.js';
 import { locateProducedFile } from './artifactLocator.js';
 
 /** Layer-1 validator applied to AI reviews that don't name their own `validatorPath`. */
-export const DEFAULT_REVIEW_VALIDATOR = 'aisf-produces-complete.mjs';
+export const DEFAULT_REVIEW_VALIDATOR = 'csf-produces-complete.mjs';
 /** Layer-2 LLM review prompt (adapts to the produced artifact's type). */
-export const DEFAULT_REVIEW_KIT = 'aisf-review-default.md';
-/** Verifying an artifact is light work — default the reviewer to a small, cheap model. */
-export const DEFAULT_REVIEW_MODEL = 'haiku';
-/** Cap per-file content fed to the LLM reviewer so a large artifact can't blow up the prompt. */
-export const REVIEW_ARTIFACT_CHAR_CAP = 3000;
+export const DEFAULT_REVIEW_KIT = 'csf-review-default.md';
+/**
+ * Default reviewer model. A verdict is only as good as the model that reads the artifact, so the
+ * review defaults to Opus — it catches subtle correctness/completeness gaps a small model misses.
+ * The call is a single non-agentic turn (`maxTurns: 1`) reading a capped payload, so it stays fast
+ * despite the larger model. Override per-step via an AI reviewer agent's `model`.
+ */
+export const DEFAULT_REVIEW_MODEL = 'opus';
+/**
+ * Per-file / combined caps on the content fed to the LLM reviewer. Generous on purpose — Opus has
+ * a large context window and the review is a single turn, so we'd rather give the reviewer the full
+ * artifact than a truncated view. The caps only exist as a backstop against a pathologically huge
+ * file blowing up the prompt; normal artifacts pass through whole.
+ */
+export const REVIEW_ARTIFACT_CHAR_CAP = 60000;
 /** Cap the combined review payload across all produced files. */
-export const REVIEW_TOTAL_CHAR_CAP = 12000;
+export const REVIEW_TOTAL_CHAR_CAP = 200000;
 
 /**
  * Truncate `content` to `maxChars` while preserving both the head and the tail of the
@@ -66,11 +76,12 @@ export function readProducedArtifacts(
   workspaceRoot: string,
   inputs: Record<string, string>,
   flowName = '',
-  runSlug = ''
+  runSlug = '',
+  legacyRunSlug = ''
 ): { text: string; count: number } {
   const reviewPath = step.review.filePath ? [step.review.filePath] : [];
   const paths = resolveTemplates([...reviewPath, ...(step.produces ?? [])], inputs)
-    .map(p => locateProducedFile(p, flowName, workspaceRoot, runSlug));
+    .map(p => locateProducedFile(p, flowName, workspaceRoot, runSlug, legacyRunSlug));
   const seen = new Set<string>();
   const parts: string[] = [];
   let total = 0;
@@ -138,19 +149,50 @@ export function findStaleProducedFile(
   inputs: Record<string, string>,
   startedAtIso?: string,
   flowName = '',
-  runSlug = ''
+  runSlug = '',
+  legacyRunSlug = ''
 ): string | null {
   const produces = step.produces ?? [];
   if (produces.length === 0 || !startedAtIso) return null;
   const startedMs = new Date(startedAtIso).getTime();
   if (!Number.isFinite(startedMs)) return null;
-  const paths = resolveTemplates(produces, inputs).map(p => locateProducedFile(p, flowName, workspaceRoot, runSlug));
+  const paths = resolveTemplates(produces, inputs).map(p => locateProducedFile(p, flowName, workspaceRoot, runSlug, legacyRunSlug));
   for (const filePath of paths) {
     let mtimeMs: number;
     try { mtimeMs = statSync(filePath).mtimeMs; } catch { continue; } // missing → validator reports it
     if (mtimeMs < startedMs - FRESHNESS_TOLERANCE_MS) return filePath;
   }
   return null;
+}
+
+/**
+ * A change-signature over a step's declared artifacts (review.filePath + produces): the newest
+ * mtime and total size across the files, or `null` if ANY declared file is missing. Two calls that
+ * return the same non-null string mean nothing was written in between — the caller can treat the
+ * artifact as quiescent (the agent stopped writing), which mtime-freshness alone can't tell: a file
+ * created early and appended to for minutes stays "fresh" the whole time. Used to avoid reviewing a
+ * half-written artifact when the real process-exit signal is unavailable.
+ */
+export function producedArtifactsSignature(
+  step: FlowStep,
+  workspaceRoot: string,
+  inputs: Record<string, string>,
+  flowName = '',
+  runSlug = '',
+  legacyRunSlug = ''
+): string | null {
+  const declared = [...(step.review.filePath ? [step.review.filePath] : []), ...(step.produces ?? [])];
+  if (declared.length === 0) return null;
+  const paths = resolveTemplates(declared, inputs).map(p => locateProducedFile(p, flowName, workspaceRoot, runSlug, legacyRunSlug));
+  let newestMtime = 0;
+  let totalSize = 0;
+  for (const filePath of paths) {
+    let st;
+    try { st = statSync(filePath); } catch { return null; } // any missing → not ready
+    newestMtime = Math.max(newestMtime, st.mtimeMs);
+    totalSize += st.size;
+  }
+  return `${newestMtime}:${totalSize}`;
 }
 
 /**
@@ -168,7 +210,8 @@ export async function reviewStepArtifacts(opts: ReviewOptions): Promise<ReviewRe
   const stale = findStaleProducedFile(
     step, workspaceRoot, runState.inputs || {},
     runState.steps[step.id]?.startedAt, runState.flowName || '',
-    runOutputSlug(runState.runName, runState.runId)
+    runOutputSlug(runState.runName, runState.runId),
+    legacyRunOutputSlug(runState.runName, runState.runId)
   );
   if (stale) {
     return { status: 'rejected', note: `Produced file was not regenerated by this run (stale): ${stale}`, source: 'freshness' };
@@ -194,13 +237,23 @@ export async function reviewStepArtifacts(opts: ReviewOptions): Promise<ReviewRe
 
   // Layer 2 — deep LLM review.
   const reviewKit = opts.reviewKit ?? loadReviewKit(workspaceRoot);
-  const artifacts = opts.artifacts ?? readProducedArtifacts(step, workspaceRoot, runState.inputs || {}, runState.flowName || '', runOutputSlug(runState.runName, runState.runId));
+  const artifacts = opts.artifacts ?? readProducedArtifacts(step, workspaceRoot, runState.inputs || {}, runState.flowName || '', runOutputSlug(runState.runName, runState.runId), legacyRunOutputSlug(runState.runName, runState.runId));
   if (!reviewKit || artifacts.count === 0) {
     const reason = !reviewKit ? 'review kit not installed' : 'no produced artifacts to read';
     return { status: 'waiting_human', note: `Deep review could not run: ${reason}.`, source: 'review-setup' };
   }
 
-  const systemPrompt = `${reviewKit}\n\nRespond with ONLY a single-line minified JSON object with these keys:\n{"decision":"pass"|"reject","reason":"<one-line summary>","correct":["<what the artifact gets right>"],"issues":["<what is wrong or missing>"],"suggestions":["<concrete fix for each issue>"]}.\nThe arrays may be empty but must always be present.`;
+  const systemPrompt = `${reviewKit}\n\n` +
+    `You are a pragmatic reviewer. PASS the artifact whenever it is correct and captures the ` +
+    `step's intent — do NOT nitpick style, wording, formatting, or minor/non-blocking gaps. ` +
+    `REJECT only for a genuine blocking defect: it is wrong, or it misses something essential to ` +
+    `the step's purpose. When in doubt, pass. Decide quickly and do not over-analyze. Ignore any ` +
+    `truncation markers ("…[truncated]…") — judge what is present.\n\n` +
+    `Respond with ONLY a single-line minified JSON object with these keys:\n` +
+    `{"decision":"pass"|"reject","reason":"<one concise line — the deciding factor>",` +
+    `"correct":["<what the artifact gets right>"],"issues":["<only blocking problems, most severe first>"],` +
+    `"suggestions":["<one concrete fix per blocking issue>"]}.\n` +
+    `Keep every string to one short line. The arrays may be empty but must always be present. No prose outside the JSON.`;
   const userMessage = `Review the artifact(s) produced by step "${step.title || step.id}".\n\n${artifacts.text}`;
   const result = await opts.runner({
     systemPrompt,
@@ -261,9 +314,11 @@ export interface ReviewReportInput {
   flowName?: string;
   runName?: string;
   runId: string;
+  /** Approved or rejected — drives the verdict badge and the reason heading. */
+  verdict: 'approved' | 'rejected';
   /** Which review layer produced the verdict. */
   source: string;
-  /** One-line reason the step was rejected. */
+  /** One-line reason for the verdict. */
   reason: string;
   correct?: string[];
   issues?: string[];
@@ -277,11 +332,13 @@ export interface ReviewReportInput {
 }
 
 /**
- * Render a human-readable Markdown AI-review report for a rejected step: a summary table (step,
+ * Render a human-readable Markdown review report for a reviewed step: a summary table (step,
  * timing, model, token/cost) followed by "what's correct", "issues", and "suggested fixes" tables.
- * Pure — the caller persists the returned string wherever it wants.
+ * The verdict badge and reason heading adapt to approved vs rejected. Pure — the caller persists
+ * the returned string wherever it wants.
  */
 export function renderReviewReport(input: ReviewReportInput): string {
+  const approved = input.verdict === 'approved';
   const title = input.step.title || input.step.id;
   const taskMs = reviewSpanMs(input.startedAt, input.completedAt);
   const reviewMs = reviewSpanMs(input.completedAt, input.reviewCompletedAt);
@@ -289,7 +346,7 @@ export function renderReviewReport(input: ReviewReportInput): string {
     ['Step', `${reviewCell(title)} (\`${input.step.id}\`)`],
     ['Flow', reviewCell(input.flowName || '—')],
     ['Run', reviewCell(input.runName || input.runId)],
-    ['Verdict', '❌ Rejected'],
+    ['Verdict', approved ? '✅ Approved' : '❌ Rejected'],
     ['Review source', reviewCell(input.source)],
     ['Model', reviewCell(input.modelUsed || '—')],
     ['Started', reviewCell(input.startedAt || '—')],
@@ -308,7 +365,7 @@ export function renderReviewReport(input: ReviewReportInput): string {
     '| --- | --- |',
     summary,
     '',
-    '## Why it was rejected',
+    approved ? '## Why it was approved' : '## Why it was rejected',
     '',
     reviewCell(input.reason) || '_No reason provided._',
     '',

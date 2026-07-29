@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFlow, formatFlowError, isFlowShape, isFlowRunStateShape, isAgentInputShape, isSkillInputShape } from '@ai-stepflow/core';
+import { parseFlow, formatFlowError, isFlowShape, isFlowRunStateShape, isAgentInputShape, isSkillInputShape } from '@claudesteps/core';
 
 test('parseFlow fills defaults for a minimal hand-written flow', () => {
   const flow = parseFlow({ id: 'f1', steps: [{ id: 's1', agent: 'po', skills: ['prd'] }] }, 'fallback', '/x/f1.yaml');

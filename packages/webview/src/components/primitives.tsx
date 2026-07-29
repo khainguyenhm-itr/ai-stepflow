@@ -14,6 +14,7 @@ import {
   Plus,
   Copy,
   Upload,
+  Download,
   RotateCw,
   Sparkles,
   Bookmark,
@@ -21,6 +22,7 @@ import {
   User,
   Trash2,
   GitBranch,
+  GitBranchMinus,
   Zap,
   AlertTriangle,
   Terminal,
@@ -29,8 +31,10 @@ import {
   Search,
   MoreHorizontal,
   FolderOpen,
+  FileText,
   List,
   SlidersHorizontal,
+  History,
 } from 'lucide-react';
 
 /* Small native UI primitives styled after VS Code. */
@@ -44,8 +48,9 @@ export const Modal: React.FC<{
   children?: React.ReactNode;
 }> = ({ title, open, onClose, footer, width = 520, children }) => {
   if (!open) return null;
+  // Intentionally no overlay-click close: popups only close via the X or a footer button.
   return (
-    <div className="modal-overlay" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="modal-overlay">
       <div className="modal" style={{ width, maxWidth: 'calc(100vw - 32px)' }}>
         <div className="modal-head">
           <span className="modal-title">{title}</span>
@@ -55,6 +60,37 @@ export const Modal: React.FC<{
         </div>
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-foot">{footer}</div>}
+      </div>
+    </div>
+  );
+};
+
+/** Small confirmation popup layered above other modals. Closes only via its buttons or X. */
+export const ConfirmDialog: React.FC<{
+  open: boolean;
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  danger?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}> = ({ open, title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', danger, onConfirm, onCancel }) => {
+  if (!open) return null;
+  return (
+    <div className="modal-overlay" style={{ zIndex: 300 }}>
+      <div className="modal" style={{ width: 380, maxWidth: 'calc(100vw - 32px)' }}>
+        <div className="modal-head">
+          <span className="modal-title">{title}</span>
+          <button className="icon-btn" title="Close" onClick={onCancel}>
+            <X size={16} />
+          </button>
+        </div>
+        <div className="modal-body"><p>{message}</p></div>
+        <div className="modal-foot">
+          <button className={`btn ${danger ? 'danger' : 'primary'}`} onClick={onConfirm}>{confirmLabel}</button>
+          <button className="btn" onClick={onCancel}>{cancelLabel}</button>
+        </div>
       </div>
     </div>
   );
@@ -81,6 +117,20 @@ export const ProgressBar: React.FC<{ percent: number }> = ({ percent }) => (
   </div>
 );
 
+/** Tiny inline line chart for stat cards (used by Workflows + Overview). */
+export const Sparkline: React.FC<{ data: number[]; color: string }> = ({ data, color }) => {
+  const w = 76, h = 26, pad = 3;
+  const max = Math.max(1, ...data);
+  const n = data.length;
+  // Keep the baseline off the bottom edge so a flat/no-data series still shows a visible line.
+  const pts = data.map((v, i) => `${n <= 1 ? w : (i / (n - 1)) * w},${(h - pad) - (v / max) * (h - pad * 2)}`).join(' ');
+  return (
+    <svg className="flow-spark" viewBox={`0 0 ${w} ${h}`} width={w} height={h} preserveAspectRatio="none" aria-hidden="true">
+      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+};
+
 /** Meta value cell; missing values show a descriptive muted placeholder instead of a bare dash. */
 export const metaValue = (value: string | undefined, placeholder: string, mono = false) =>
   value
@@ -103,6 +153,7 @@ export const Icon = {
   Plus,
   Copy,
   Upload,
+  Download,
   RotateCw,
   Sparkles,
   Bookmark,
@@ -110,6 +161,7 @@ export const Icon = {
   User,
   Trash2,
   GitBranch,
+  GitBranchMinus,
   Zap,
   Alert: AlertTriangle,
   Terminal,
@@ -118,6 +170,8 @@ export const Icon = {
   Search,
   More: MoreHorizontal,
   FolderOpen,
+  FileText,
   List,
   Sliders: SlidersHorizontal,
+  History,
 };

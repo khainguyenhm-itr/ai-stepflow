@@ -1,4 +1,4 @@
-import { Agent, AgentInput, Flow, FlowRunState, Skill, SkillInput, ReviewKit, ReviewKitInput, isFlowShape, isFlowRunStateShape, isAgentInputShape, isSkillInputShape } from '@ai-stepflow/core';
+import { Agent, AgentInput, AdhocRun, Flow, FlowRunState, Skill, SkillInput, ReviewKit, ReviewKitInput, isFlowShape, isFlowRunStateShape, isAgentInputShape, isSkillInputShape } from '@claudesteps/core';
 
 export interface HumanReview {
   decision: 'approved' | 'rejected';
@@ -47,9 +47,9 @@ export type HostMessage =
       runTrendAll: { date: string; runs: number; completed: number; inProgress: number; costUsd: number; tokensUsed: number; taskTimeMs: number }[];
     }
   | { type: 'mcpServers'; connectedMcpServers: string[] }
-  | { type: 'restoreRun'; flow: Flow; runState: FlowRunState }
-  | { type: 'stepUpdate'; stepId: string; output: string; append?: boolean }
-  | { type: 'aiReviewUpdate'; stepId: string; output: string; append?: boolean }
+  | { type: 'restoreRun'; flow: Flow; runState: FlowRunState; previousRunId?: string }
+  | { type: 'stepUpdate'; stepId: string; output: string; append?: boolean; runId?: string }
+  | { type: 'aiReviewUpdate'; stepId: string; output: string; append?: boolean; runId?: string }
   | { type: 'runStateChanged'; runState: FlowRunState; historyEvent?: HistoryEvent }
   | { type: 'resetAuditLog'; flowId: string; runId?: string; stepIds?: string[] }
   | { type: 'runDeleted'; flowId: string; runId: string }
@@ -59,6 +59,8 @@ export type HostMessage =
   | { type: 'draftGenerated'; kind: 'agent' | 'skill'; name?: string; description?: string; content?: string; reply?: string; error?: string }
   | { type: 'flowGenerated'; flow?: Flow; reply?: string; error?: string }
   | { type: 'navigateToTab'; tab: 'flows' | 'agents' | 'skills' | 'reviews' | 'overview' }
+  | { type: 'revealRun'; flowId: string; runId: string }
+  | { type: 'adhocRuns'; kind: 'agent' | 'skill'; name: string; runs: AdhocRun[] }
   | { type: 'runClosed'; flowId?: string; runId?: string; finalized?: boolean };
 
 /** Every message the webview is allowed to send to the extension host. */
@@ -79,18 +81,21 @@ export type WebviewMessage =
   | { type: 'deleteReviewKit'; review: ReviewKit }
   | { type: 'updateRunState'; runState: FlowRunState; historyEvent?: { timestamp: string; status: string; message?: string; stepId: string } }
   | { type: 'switchRun'; flowId: string; runId: string }
-  | { type: 'runStep'; stepId: string; flow?: Flow; runState?: FlowRunState; description?: string; historyEvent?: { timestamp: string; status: string; message?: string } }
-  | { type: 'cancelStep'; stepId: string }
+  | { type: 'runStep'; stepId: string; flow?: Flow; runState?: FlowRunState; description?: string; runId?: string; historyEvent?: { timestamp: string; status: string; message?: string } }
+  | { type: 'cancelStep'; stepId: string; runId?: string }
   | { type: 'runAgent'; agent: Agent; description?: string }
   | { type: 'runSkill'; skill: Skill; description?: string }
-  | { type: 'reviewStep'; stepId: string; decision: 'approved' | 'rejected' }
-  | { type: 'setAutoReview'; enabled: boolean }
-  | { type: 'resetRun' }
-  | { type: 'resetStep'; stepId: string }
-  | { type: 'closeRun', finalize?: boolean }
-  | { type: 'deleteRun' }
-  | { type: 'verifyRun' }
-  | { type: 'exportRunReport' }
+  | { type: 'getAdhocRuns'; kind: 'agent' | 'skill'; name: string }
+  | { type: 'resumeSession'; sessionId: string; projectPath: string; name?: string; kind?: 'agent' | 'skill' }
+  | { type: 'reviewStep'; stepId: string; decision: 'approved' | 'rejected'; runId?: string }
+  | { type: 'setAutoReview'; enabled: boolean; runId?: string }
+  | { type: 'editRun'; runName?: string; inputs: Record<string, string>; runId?: string }
+  | { type: 'resetRun'; runId?: string }
+  | { type: 'resetStep'; stepId: string; runId?: string }
+  | { type: 'closeRun', finalize?: boolean; runId?: string }
+  | { type: 'deleteRun'; runId?: string }
+  | { type: 'verifyRun'; runId?: string }
+  | { type: 'exportRunReport'; runId?: string }
   | { type: 'importAgentFile' }
   | { type: 'importSkillFile' }
   | { type: 'importReviewFile' }
@@ -98,19 +103,21 @@ export type WebviewMessage =
   | { type: 'generateDraft'; kind: 'agent' | 'skill'; prompt: string; history?: { role: 'user' | 'assistant'; content: string }[] }
   | { type: 'savePref'; key: string; value: string; global?: boolean }
   | { type: 'generateFlow'; description: string; flow?: Flow; history?: { role: 'user' | 'assistant'; content: string }[] }
+  | { type: 'cancelGenerate' }
   | { type: 'connectMcpServer'; config: { name: string; scope: 'global' | 'local'; command: string; args: string[]; env?: Record<string, string> } }
   | { type: 'runCommand'; command: RunnableCommand }
   | { type: 'openWorkspace'; path: string }
   | { type: 'revealPath'; path: string }
-  | { type: 'installGitnexus' }
+  | { type: 'connectGitnexus' }
   | { type: 'alert'; text: string };
 
 /** VS Code command ids the Overview quick-settings panel is allowed to trigger. Whitelisted to keep the webview from invoking arbitrary commands. */
 export const RUNNABLE_COMMANDS = [
-  'ai-stepflow.installDefaults',
-  'ai-stepflow.refreshAll',
-  'ai-stepflow.astGraph.rescan',
-  'ai-stepflow.astGraph.reregisterMcp',
+  'claudesteps.installDefaults',
+  'claudesteps.refreshAll',
+  'claudesteps.astGraph.install',
+  'claudesteps.astGraph.rescan',
+  'claudesteps.astGraph.reregisterMcp',
   'workbench.action.openSettings'
 ] as const;
 export type RunnableCommand = (typeof RUNNABLE_COMMANDS)[number];
@@ -137,12 +144,12 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   importSkillFile: () => true,
   importReviewFile: () => true,
   installReviewDefault: () => true,
-  resetRun: () => true,
-  resetStep: m => isString(m.stepId),
-  closeRun: m => m.finalize === undefined || typeof m.finalize === 'boolean',
-  deleteRun: () => true,
-  verifyRun: () => true,
-  exportRunReport: () => true,
+  resetRun: m => m.runId === undefined || isString(m.runId),
+  resetStep: m => isString(m.stepId) && (m.runId === undefined || isString(m.runId)),
+  closeRun: m => (m.finalize === undefined || typeof m.finalize === 'boolean') && (m.runId === undefined || isString(m.runId)),
+  deleteRun: m => m.runId === undefined || isString(m.runId),
+  verifyRun: m => m.runId === undefined || isString(m.runId),
+  exportRunReport: m => m.runId === undefined || isString(m.runId),
   loadFlow: m => isFlowLike(m.flow) && (m.runState === undefined || isFlowRunStateShape(m.runState)),
   openFile: m => isString(m.path),
   saveFlow: m => isFlowLike(m.flow),
@@ -160,21 +167,27 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   switchRun: m => isString(m.flowId) && isString(m.runId),
   runStep: m => isString(m.stepId)
     && (m.flow === undefined || isFlowLike(m.flow))
-    && (m.runState === undefined || isFlowRunStateShape(m.runState)),
-  cancelStep: m => isString(m.stepId),
+    && (m.runState === undefined || isFlowRunStateShape(m.runState))
+    && (m.runId === undefined || isString(m.runId)),
+  cancelStep: m => isString(m.stepId) && (m.runId === undefined || isString(m.runId)),
   runAgent: m => isAgentLike(m.agent),
   runSkill: m => isSkillLike(m.skill),
+  getAdhocRuns: m => (m.kind === 'agent' || m.kind === 'skill') && isString(m.name),
+  resumeSession: m => isString(m.sessionId) && isString(m.projectPath),
   reviewStep: m =>
     isString(m.stepId) &&
-    (m.decision === 'approved' || m.decision === 'rejected'),
-  setAutoReview: m => typeof m.enabled === 'boolean',
+    (m.decision === 'approved' || m.decision === 'rejected') &&
+    (m.runId === undefined || isString(m.runId)),
+  setAutoReview: m => typeof m.enabled === 'boolean' && (m.runId === undefined || isString(m.runId)),
+  editRun: m => (m.runName === undefined || isString(m.runName)) && isObject(m.inputs) && (m.runId === undefined || isString(m.runId)),
   generateDraft: m => (m.kind === 'agent' || m.kind === 'skill') && isString(m.prompt),
   generateFlow: m => isString(m.description) && (m.flow === undefined || isFlowLike(m.flow)),
+  cancelGenerate: () => true,
   connectMcpServer: m => isObject(m.config) && isString(m.config.name) && isString(m.config.command),
   runCommand: m => isString(m.command) && (RUNNABLE_COMMANDS as readonly string[]).includes(m.command),
   openWorkspace: m => isString(m.path),
   revealPath: m => isString(m.path),
-  installGitnexus: () => true,
+  connectGitnexus: () => true,
   savePref: m => isString(m.key) && isString(m.value),
   alert: m => isString(m.text)
 };

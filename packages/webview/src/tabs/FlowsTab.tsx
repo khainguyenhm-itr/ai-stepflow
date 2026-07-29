@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Flow, FlowRunState, Agent, Skill } from '@ai-stepflow/core/types';
-import { Icon } from '../components/primitives';
+import { Flow, FlowRunState, Agent, Skill } from '@claudesteps/core/types';
+import { Icon, Sparkline } from '../components/primitives';
 import { EmptyState } from '../components/ResourceCard';
 import { ScopeFilter, SaveScope, ViewFilter, SortOrder, UnifiedFilterPanel } from '../components/ScopeControls';
 import { FlowBoard } from './FlowBoard';
@@ -20,46 +20,32 @@ const fmtDuration = (ms: number) => {
   return `${h}h ${m % 60}m`;
 };
 
-/** Tiny inline line chart for the run-stat cards. */
-const Sparkline: React.FC<{ data: number[]; color: string }> = ({ data, color }) => {
-  const w = 76, h = 26;
-  const max = Math.max(1, ...data);
-  const n = data.length;
-  const pts = data.map((v, i) => `${n <= 1 ? w : (i / (n - 1)) * w},${(h - 1) - (v / max) * (h - 2)}`).join(' ');
-  return (
-    <svg className="flow-spark" viewBox={`0 0 ${w} ${h}`} width={w} height={h} preserveAspectRatio="none" aria-hidden="true">
-      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
-  );
-};
-
 interface FlowsTabProps {
   flows: Flow[];
   agents: Agent[];
   skills: Skill[];
   auditLogs: Record<string, any[]>;
   runSummaries: { flowId: string; runId: string; runName?: string; completedSteps: number; totalSteps: number; mtimeMs: number; isClosed: boolean; costUsd?: number; tokensUsed?: number; taskTimeMs?: number; reviewTimeMs?: number }[];
-  activeFlow: Flow | null;
-  runState: FlowRunState | null;
-  runnerVisible: boolean;
-  activeStepId: string | null;
-  completedSteps: number;
-  activeProgress: number;
+  revealRun: { flowId: string; runId: string; nonce: number } | null;
+  openRuns: Record<string, FlowRunState>;
+  openStepIds: Record<string, string | null>;
   commandCopied: boolean;
   globalPath: string;
   projectPath: string;
   onRun: (flow: Flow) => void;
+  onEditRun: (runId: string) => void;
   onEdit: (flow: Flow) => void;
+  onClone: (flow: Flow) => void;
   onDetail: (flow: Flow) => void;
   onNew: (flow: Flow, scope: SaveScope) => void;
   onBoardStepEditor: (flow: Flow, index: number) => void;
   onBoardStepAdder: (flow: Flow) => void;
   onRemoveStep: (flow: Flow, index: number) => void;
-  onSetActiveStep: (id: string) => void;
-  onRunStep: (stepId: string, description: string) => void;
+  onSetActiveStep: (runId: string, id: string) => void;
+  onRunStep: (runId: string, stepId: string, description: string) => void;
+  onCollapseRun: (runId: string) => void;
   onOpenFile: (path: string) => void;
   onCopyCommand: () => void;
-  outputEndRef: React.RefObject<HTMLDivElement | null>;
   initialFilter: ScopeFilter;
   onScopeFilterChange: (v: ScopeFilter) => void;
   initialViewFilter: ViewFilter;
@@ -72,17 +58,16 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
   flows,
   auditLogs,
   runSummaries,
-  activeFlow,
-  runState,
-  runnerVisible,
-  activeStepId,
-  completedSteps,
-  activeProgress,
+  revealRun,
+  openRuns,
+  openStepIds,
   commandCopied,
   globalPath,
   projectPath,
   onRun,
+  onEditRun,
   onEdit,
+  onClone,
   onDetail,
   onNew,
   onBoardStepEditor,
@@ -90,9 +75,9 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
   onRemoveStep,
   onSetActiveStep,
   onRunStep,
+  onCollapseRun,
   onOpenFile,
   onCopyCommand,
-  outputEndRef,
   initialFilter,
   onScopeFilterChange,
   initialViewFilter,
@@ -150,15 +135,20 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
   const todayStart = startOfDay(Date.now());
   const inDay = (t: number, start: number) => t >= start && t < start + DAY;
   const sum = (arr: number[]) => arr.reduce((a, b) => a + b, 0);
+  // Bucket by run creation time (runId is an ISO timestamp), not file mtime —
+  // reopening/previewing an old run rewrites its file and would otherwise bump it into "today".
+  const runTime = (r: { runId: string; mtimeMs: number }) => {
+    const t = Date.parse(r.runId);
+    return Number.isFinite(t) ? t : r.mtimeMs;
+  };
 
   const activeRuns = runSummaries.filter(r => !r.isClosed && r.completedSteps < r.totalSteps).length;
-  const runsToday = runSummaries.filter(r => inDay(r.mtimeMs, todayStart));
+  const runsToday = runSummaries.filter(r => inDay(runTime(r), todayStart));
   const tokensToday = sum(runsToday.map(r => r.tokensUsed || 0));
-  const tokensYest = sum(runSummaries.filter(r => inDay(r.mtimeMs, todayStart - DAY)).map(r => r.tokensUsed || 0));
+  const tokensYest = sum(runSummaries.filter(r => inDay(runTime(r), todayStart - DAY)).map(r => r.tokensUsed || 0));
   const costToday = sum(runsToday.map(r => r.costUsd || 0));
-  const avgBase = runsToday.length ? runsToday : runSummaries;
-  const avgTaskMs = avgBase.length ? sum(avgBase.map(r => r.taskTimeMs || 0)) / avgBase.length : 0;
-  const avgReviewMs = avgBase.length ? sum(avgBase.map(r => r.reviewTimeMs || 0)) / avgBase.length : 0;
+  const taskMsToday = sum(runsToday.map(r => r.taskTimeMs || 0));
+  const reviewMsToday = sum(runsToday.map(r => r.reviewTimeMs || 0));
   const tokenDelta = tokensYest > 0 ? Math.round(((tokensToday - tokensYest) / tokensYest) * 100) : null;
 
   type Run = (typeof runSummaries)[number];
@@ -166,7 +156,7 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
     const days = 14;
     const arr = new Array<number>(days).fill(0);
     for (const r of runSummaries) {
-      const idx = Math.round((todayStart - startOfDay(r.mtimeMs)) / DAY);
+      const idx = Math.round((todayStart - startOfDay(runTime(r))) / DAY);
       if (idx >= 0 && idx < days) arr[days - 1 - idx] += pick(r);
     }
     return arr;
@@ -245,10 +235,10 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
           </div>
         </div>
         <div className="flow-stat">
-          <div className="flow-stat-label">Avg run time</div>
-          <div className="flow-stat-value">{fmtDuration(avgTaskMs)}</div>
+          <div className="flow-stat-label">Task time (today)</div>
+          <div className="flow-stat-value">{fmtDuration(taskMsToday)}</div>
           <div className="flow-stat-foot">
-            <span className="muted small">{avgReviewMs > 0 ? `+ ${fmtDuration(avgReviewMs)} review` : (runsToday.length ? 'today' : 'all runs')}</span>
+            <span className="muted small">{reviewMsToday > 0 ? `+ ${fmtDuration(reviewMsToday)} review` : (runsToday.length ? 'today' : 'no runs today')}</span>
             <Sparkline data={series(r => r.taskTimeMs || 0)} color="var(--warn)" />
           </div>
         </div>
@@ -272,40 +262,39 @@ export const FlowsTab: React.FC<FlowsTabProps> = ({
           ) : undefined}
         />
       ) : (
-        <div className="dwrap scroll-x">
+        <div className="dwrap">
           <table className="dtable">
             <thead><tr>
-              <th style={{ width: '10%' }}>Status</th><th style={{ width: '37%' }}>Name</th>
-              <th style={{ width: '12%' }}>Runs</th><th style={{ width: '10%' }}>Scope</th>
-              <th style={{ width: '12%' }}>Steps</th><th style={{ width: '19%' }} />
+              <th style={{ width: '8%' }}>Status</th><th style={{ width: '36%' }}>Name</th>
+              <th style={{ width: '8%' }}>Runs</th><th style={{ width: '10%' }}>Scope</th>
+              <th style={{ width: '11%' }}>Steps</th><th style={{ width: '13%' }}>Started</th><th style={{ width: '14%' }} />
             </tr></thead>
           {visibleFlows.map(flow => (
             <FlowBoard
               key={flow.id}
               flow={flow}
               scopeBadge={<span className="badge scope">{getItemScope(flow.sourcePath) === 'global' ? 'global' : 'repo'}</span>}
-              activeFlow={activeFlow}
-              runState={runState}
               auditLogs={auditLogs}
               runSummaries={runSummaries.filter(s => s.flowId === flow.id)}
-              runnerVisible={runnerVisible}
-              activeStepId={activeStepId}
-              completedSteps={completedSteps}
-              activeProgress={activeProgress}
+              revealRun={revealRun}
+              openRuns={openRuns}
+              openStepIds={openStepIds}
               commandCopied={commandCopied}
               globalPath={globalPath}
               projectPath={projectPath}
               onRun={onRun}
+              onEditRun={onEditRun}
               onEdit={onEdit}
+              onClone={onClone}
               onDetail={onDetail}
               onBoardStepEditor={onBoardStepEditor}
               onBoardStepAdder={onBoardStepAdder}
               onRemoveStep={onRemoveStep}
               onSetActiveStep={onSetActiveStep}
               onRunStep={onRunStep}
+              onCollapseRun={onCollapseRun}
               onOpenFile={onOpenFile}
               onCopyCommand={onCopyCommand}
-              outputEndRef={outputEndRef}
             />
           ))}
           </table>

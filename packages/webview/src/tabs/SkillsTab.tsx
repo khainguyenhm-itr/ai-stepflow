@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Skill } from '@ai-stepflow/core/types';
+import { Skill } from '@claudesteps/core/types';
 import { Icon } from '../components/primitives';
 import { EmptyState } from '../components/ResourceCard';
 import { ScopeFilter, SaveScope, ViewFilter, SortOrder, UnifiedFilterPanel } from '../components/ScopeControls';
@@ -16,6 +16,7 @@ interface SkillsTabProps {
   projectPath: string;
   onOpenEditor: (skill: Skill) => void;
   onRun: (skill: Skill) => void;
+  onHistory: (skill: Skill) => void;
   onDetail: (skill: Skill) => void;
   onNew: (scope: SaveScope) => void;
   initialFilter: ScopeFilter;
@@ -33,6 +34,7 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
   globalPath,
   onOpenEditor,
   onRun,
+  onHistory,
   onDetail,
   onNew,
   initialFilter,
@@ -111,6 +113,7 @@ export const SkillsTab: React.FC<SkillsTabProps> = ({
           <span className="drow-actions">
 
             <button className="icon-btn" title="Run" onClick={() => onRun(skill)}><Icon.Play size={14} /></button>
+            <button className="icon-btn" title="Run history" onClick={() => onHistory(skill)}><Icon.History size={14} /></button>
             <button className="icon-btn pencil" title="Edit" onClick={() => onOpenEditor(skill)}><Icon.Pencil size={14} /></button>
             <button className="icon-btn" title="Details" onClick={() => onDetail(skill)}><Icon.Info size={14} /></button>
           </span>

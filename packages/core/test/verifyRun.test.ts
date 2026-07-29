@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { Flow, FlowRunState } from '@ai-stepflow/core';
-import { renderVerifyReportMarkdown, verifyRun } from '@ai-stepflow/core';
+import { Flow, FlowRunState } from '@claudesteps/core';
+import { renderVerifyReportMarkdown, verifyRun } from '@claudesteps/core';
 
 function createFixture() {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'ai-stepflow-verify-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'claudesteps-verify-'));
   const flow: Flow = {
     id: 'flow',
     name: 'Verify Flow',

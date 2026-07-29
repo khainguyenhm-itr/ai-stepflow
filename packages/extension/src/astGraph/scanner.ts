@@ -51,7 +51,7 @@ export async function ensureLocalExcludeEntry(folder: vscode.WorkspaceFolder): P
   const entries: string[] = [];
   if (!lines.some((l) => l.trim() === '.ast-graph/' || l.trim() === '.ast-graph')) entries.push('.ast-graph/');
   if (!lines.some((l) => l.trim() === '.claude/' || l.trim() === '.claude')) entries.push('.claude/');
-  if (!lines.some((l) => l.trim() === '.ai-stepflow/' || l.trim() === '.ai-stepflow')) entries.push('.ai-stepflow/');
+  if (!lines.some((l) => l.trim() === '.claudesteps/' || l.trim() === '.claudesteps')) entries.push('.claudesteps/');
   if (!entries.length) return;
 
   const prefix = body && !body.endsWith('\n') ? '\n' : '';

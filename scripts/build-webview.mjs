@@ -22,7 +22,7 @@ await copyFile('packages/webview/public/index.html', 'packages/extension/out/web
 
 if (isWatch) {
   await context.watch();
-  console.log('Watching @ai-stepflow/webview...');
+  console.log('Watching @claudesteps/webview...');
 } else {
   await context.rebuild();
   await context.dispose();

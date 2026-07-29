@@ -1,5 +1,5 @@
-import { applyDependencyLocks as applyCoreDependencyLocks } from '@ai-stepflow/core/runStateMachine';
-import { Flow, FlowStep, FlowRunState } from '@ai-stepflow/core/types';
+import { applyDependencyLocks as applyCoreDependencyLocks } from '@claudesteps/core/runStateMachine';
+import { Flow, FlowStep, FlowRunState } from '@claudesteps/core/types';
 
 export const applyDependencyLocks = applyCoreDependencyLocks;
 

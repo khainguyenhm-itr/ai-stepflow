@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Flow, FlowRunState, StepRunState } from '@ai-stepflow/core/types';
+import React, { useEffect, useState, useRef } from 'react';
+import { Flow, FlowRunState, StepRunState } from '@claudesteps/core/types';
 import { Icon, metaValue } from '../components/primitives';
 import { formatRunTime, getStepSkills } from '../flowUtils';
 import { sendToVSCode } from '../vscode';
@@ -23,34 +23,79 @@ function formatDuration(ms: number): string {
   return `${h}h ${m % 60}m`;
 }
 
+/** Split a path into its directory prefix and filename for two-line display. */
+function splitPath(p: string): { dir: string; name: string } {
+  const parts = p.split(/[\\/]/);
+  const name = parts.pop() || p;
+  return { dir: parts.join('/'), name };
+}
+
+/** One collapsible-looking artifact group (Inputs / Outputs / AI Review) in the Files tab. */
+function renderFileGroup(
+  kind: 'inputs' | 'outputs' | 'review',
+  label: string,
+  icon: React.ReactNode,
+  files: string[],
+  emptyText: string,
+  onOpenFile: (path: string) => void,
+) {
+  return (
+    <div className={`files-group files-group--${kind}`}>
+      <div className="files-group-head">
+        <span className="files-group-icon">{icon}</span>
+        <span className="files-group-label">{label}</span>
+        <span className="files-group-count">{files.length}</span>
+      </div>
+      {files.length > 0 ? (
+        <div className="files-list">
+          {files.map(f => {
+            const { dir, name } = splitPath(f);
+            return (
+              <button key={`${kind}-${f}`} type="button" className="file-row" title={`Open ${f}`} onClick={() => onOpenFile(f)}>
+                <Icon.FileText size={15} className="file-row-icon" />
+                <span className="file-row-text">
+                  <span className="file-name">{name}</span>
+                  {dir && <span className="file-dir">{dir}</span>}
+                </span>
+                <Icon.ChevronRight size={14} className="file-row-open" />
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        emptyText && <div className="files-empty">{emptyText}</div>
+      )}
+    </div>
+  );
+}
+
 interface InlineRunnerProps {
+  runId: string;
   flow: Flow;
   runState: FlowRunState;
   auditLogs: Record<string, any[]>;
   activeStepId: string | null;
-  completedSteps: number;
-  activeProgress: number;
   commandCopied: boolean;
   onSetActiveStep: (id: string) => void;
   onRunStep: (stepId: string, description: string) => void;
   onOpenFile: (path: string) => void;
   onCopyCommand: () => void;
-  outputEndRef: React.RefObject<HTMLDivElement | null>;
 }
 
 export const InlineRunner: React.FC<InlineRunnerProps> = ({
+  runId,
   flow,
   runState,
   auditLogs,
   activeStepId,
-  completedSteps,
   commandCopied,
   onSetActiveStep,
   onRunStep,
   onOpenFile,
   onCopyCommand,
-  outputEndRef,
 }) => {
+  // Each open drawer owns its own autoscroll anchor so concurrent runners don't fight over one ref.
+  const outputEndRef = useRef<HTMLDivElement>(null);
   const activeStep = flow.steps.find(step => step.id === activeStepId);
   const activeStepState = activeStepId ? runState.steps[activeStepId] : null;
   // An "auto" step is AI-reviewed; a "human" step waits for approve/reject. When the run's
@@ -111,6 +156,12 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
       // needs a plain "Finish"; a human-review step gets approve/reject.
       if (finishGate) actions.showFinish = true;
       else actions.showReview = true;
+      actions.showRerun = true;
+    } else if (reviewStatus === 'rejected') {
+      // AI review rejected the step and the run halted. A rejection isn't always a hard stop — the
+      // human may judge the artifact acceptable — so surface an override gate: Approve to accept it
+      // anyway and advance, Reject to keep it rejected, or Re-run to fix and retry.
+      actions.showReview = true;
       actions.showRerun = true;
     } else {
       // Fallback for terminal states without a review gate (ready, failed, cancelled, rejected)
@@ -187,34 +238,45 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   }, [activeStepId, activeStepState]);
 
   // Runner content is split into sub-tabs to cut vertical scrolling: the step detail head
-  // (status + actions) stays pinned; Console / Cost / History switch below it.
-  const [rtab, setRtab] = useState<'console' | 'cost' | 'history'>('console');
+  // (status + actions) stays pinned; Console / Files / Cost / History switch below it.
+  const [rtab, setRtab] = useState<'console' | 'files' | 'cost' | 'history'>('console');
+
+  // Files this step reads (requires) and writes (produces) — the artifact md files the run
+  // creates. Listed in the Files tab so the user can open/inspect each one.
+  const inputFiles = activeStep?.requires ?? [];
+  const outputFiles = activeStep?.produces ?? [];
+  // Review report written when the step is approved or rejected; absent if no review ran yet.
+  const reviewFile = activeStepState?.reviewReportPath;
 
   // Cost + History render as aligned monospace reports (same look as the console block).
   const costReport = (() => {
-    const rows = stepCosts.map(({ step, state, costUsd, tokensUsed }, i) => {
+    const rows = stepCosts.map(({ step, state, costUsd, tokensUsed, taskMs, reviewMs }, i) => {
       const running = state?.executionStatus === 'running';
       const hasRun = !!state && state.executionStatus !== 'ready' && state.executionStatus !== 'locked';
+      const stepMs = taskMs + reviewMs;
       return {
         label: `${i + 1} ${step.title || step.id}`,
         model: state?.modelUsed || (running ? '…' : hasRun ? 'interactive' : '—'),
         tokens: tokensUsed > 0 ? tokensUsed.toLocaleString() : running ? '…' : '—',
         cost: costUsd > 0 ? `$${costUsd.toFixed(4)}` : running ? '…' : '—',
+        time: stepMs > 0 ? formatDuration(stepMs) : running ? '…' : '—',
         active: activeStepId === step.id,
       };
     });
     const totalTokStr = totalTokens > 0 ? totalTokens.toLocaleString() : '—';
     const totalCostStr = totalCostUsd > 0 ? `$${totalCostUsd.toFixed(4)}` : '—';
+    const totalTimeStr = totalTaskMs + totalReviewMs > 0 ? formatDuration(totalTaskMs + totalReviewMs) : '—';
     const labelW = Math.max(4, ...rows.map(r => r.label.length), 5) + 6;
     const modelW = Math.max(5, ...rows.map(r => r.model.length)) + 6;
     const tokW = Math.max(6, ...rows.map(r => r.tokens.length), totalTokStr.length) + 4;
     const costW = Math.max(4, ...rows.map(r => r.cost.length), totalCostStr.length);
-    const line = (l: string, m: string, t: string, c: string, tail = '') =>
-      l.padEnd(labelW) + m.padEnd(modelW) + t.padStart(tokW) + '    ' + c.padStart(costW) + tail;
-    const out = [line('Step', 'Model', 'Tokens', 'Cost'), ''];
-    rows.forEach(r => out.push(line(r.label, r.model, r.tokens, r.cost, r.active ? '   ◀ active' : '')));
-    out.push(' '.repeat(labelW + modelW) + '─'.repeat(tokW + 4 + costW));
-    out.push(line('Total', '', totalTokStr, totalCostStr));
+    const timeW = Math.max(4, ...rows.map(r => r.time.length), totalTimeStr.length) + 4;
+    const line = (l: string, m: string, t: string, c: string, d: string, tail = '') =>
+      l.padEnd(labelW) + m.padEnd(modelW) + t.padStart(tokW) + '    ' + c.padStart(costW) + '    ' + d.padStart(timeW) + tail;
+    const out = [line('Step', 'Model', 'Tokens', 'Cost', 'Time'), ''];
+    rows.forEach(r => out.push(line(r.label, r.model, r.tokens, r.cost, r.time, r.active ? '   ◀ active' : '')));
+    out.push(' '.repeat(labelW + modelW) + '─'.repeat(tokW + 4 + costW + 4 + timeW));
+    out.push(line('Total', '', totalTokStr, totalCostStr, totalTimeStr));
     return out.join('\n');
   })();
 
@@ -226,6 +288,16 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
     if (/(run|start|progress|working)/.test(s)) return 'ev-run';
     if (/(reject|fail|error|stop|abort)/.test(s)) return 'ev-err';
     return 'ev-muted';
+  };
+  // Infer who made a review decision from the audit message, so an AI/validator approve|reject is
+  // visually distinct from a human one in the log. Gated on approve|reject so non-review rows that
+  // mention "user"/"reviewing" (e.g. "Terminal closed by user") are never mistaken for reviews.
+  const reviewActor = (message: string | undefined): 'ai' | 'human' | null => {
+    const m = (message || '').toLowerCase();
+    if (!/(approv|reject)/.test(m)) return null;
+    if (/by user|human review/.test(m)) return 'human';
+    if (/review|validator/.test(m)) return 'ai';
+    return null;
   };
   const historyNodes = (() => {
     const nodes: React.ReactNode[] = [];
@@ -239,11 +311,12 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
       group.events.forEach((e, ei) => {
         const time = new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         const status = String(e.status);
+        const actor = reviewActor(e.message);
         nodes.push(
           <React.Fragment key={`ev-${gi}-${ei}`}>
             <span className="ev-time">{time}</span>{'  '}
             <span className={statusClass(status)}>{status.padEnd(statusW)}</span>
-            {e.message ? `  ${e.message}` : ''}{'\n'}
+            {e.message ? <>{'  '}<span className={actor ? `ev-actor-${actor}` : undefined}>{e.message}</span></> : ''}{'\n'}
           </React.Fragment>
         );
       });
@@ -287,7 +360,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
               role="switch"
               checked={!!runState.autoReview}
               disabled={autoReviewLocked}
-              onChange={e => sendToVSCode('setAutoReview', { enabled: e.target.checked })}
+              onChange={e => sendToVSCode('setAutoReview', { enabled: e.target.checked, runId })}
             />
             <span className="switch-track" aria-hidden="true" />
             <span>Auto review</span>
@@ -310,14 +383,13 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
                   </button>
                 )}
                 {aiReviewing && (
-                  <span className="badge progress">
-                    <Icon.RotateCw size={10} style={{ marginRight: 4 }} className="spin" />
-                    AI reviewing…
-                  </span>
+                  <button className="btn review" disabled title="AI is reviewing...">
+                    <span className="btn-glyph"><Icon.RotateCw size={14} className="spin" /></span>AI reviewing
+                  </button>
                 )}
 
                 {stepActions.showCancel && (
-                  <button className="btn error" title="Stop the running step" onClick={() => sendToVSCode('cancelStep', { stepId: activeStepId! })}>
+                  <button className="btn error" title="Stop the running step" onClick={() => sendToVSCode('cancelStep', { stepId: activeStepId!, runId })}>
                     <span className="btn-glyph"><Icon.X size={14} /></span>Stop
                   </button>
                 )}
@@ -329,7 +401,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
                 {stepActions.showFinish && (
                   <button className="btn primary" title="Finish this step and continue to the next" disabled={pendingAction !== null} onClick={() => {
                     setPendingAction('approve');
-                    sendToVSCode('reviewStep', { stepId: activeStepId!, decision: 'approved' });
+                    sendToVSCode('reviewStep', { stepId: activeStepId!, decision: 'approved', runId });
                   }}>
                     {pendingAction === 'approve' ? <span className="btn-glyph"><Icon.RotateCw size={14} className="spin" /></span> : <span className="btn-glyph"><Icon.Check size={14} /></span>}Finish Step
                   </button>
@@ -341,13 +413,13 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
                     )}
                     <button className="btn success" title="Approve this step" disabled={pendingAction !== null} onClick={() => {
                       setPendingAction('approve');
-                      sendToVSCode('reviewStep', { stepId: activeStepId!, decision: 'approved' });
+                      sendToVSCode('reviewStep', { stepId: activeStepId!, decision: 'approved', runId });
                     }}>
                       {pendingAction === 'approve' && <span className="btn-glyph"><Icon.RotateCw size={14} className="spin" /></span>}Approve
                     </button>
                     <button className="btn error" title="Reject this step" disabled={pendingAction !== null} onClick={() => {
                       setPendingAction('reject');
-                      sendToVSCode('reviewStep', { stepId: activeStepId!, decision: 'rejected' });
+                      sendToVSCode('reviewStep', { stepId: activeStepId!, decision: 'rejected', runId });
                     }}>
                       {pendingAction === 'reject' && <span className="btn-glyph"><Icon.RotateCw size={14} className="spin" /></span>}Reject
                     </button>
@@ -360,7 +432,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
                 )}
                 {stepActions.isLocked && <button className="btn" disabled title="Complete the steps this one depends on first">Locked</button>}
                 {canResetStep && (
-                  <button className="btn" title="Reset this step to its initial state so it can be run again" onClick={() => sendToVSCode('resetStep', { stepId: activeStepId! })}>
+                  <button className="btn" title="Reset this step to its initial state so it can be run again" onClick={() => sendToVSCode('resetStep', { stepId: activeStepId!, runId })}>
                     <span className="btn-glyph"><Icon.RotateCw size={14} /></span>Reset Step
                   </button>
                 )}
@@ -380,6 +452,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
 
         <div className="runner-subtabs">
           <button className={`runner-subtab ${rtab === 'console' ? 'on' : ''}`} onClick={() => setRtab('console')}><Icon.Terminal size={13} /> Console</button>
+          <button className={`runner-subtab ${rtab === 'files' ? 'on' : ''}`} onClick={() => setRtab('files')}><Icon.FolderOpen size={13} /> Files</button>
           <button className={`runner-subtab ${rtab === 'cost' ? 'on' : ''}`} onClick={() => setRtab('cost')}><Icon.Zap size={13} /> Cost analysis</button>
           <button className={`runner-subtab ${rtab === 'history' ? 'on' : ''}`} onClick={() => setRtab('history')}><Icon.Info size={13} /> History</button>
         </div>
@@ -405,7 +478,7 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
         )}
         {reviewStatus === 'rejected' && (
           <div className="result-banner error">
-            <Icon.X size={13} /> Rejected — fix the issues and re-run the step.
+            <Icon.X size={13} /> Rejected by review. Re-run to fix, or approve anyway to override and continue.
           </div>
         )}
         {reviewStatus === 'waiting_human' && finishGate && (
@@ -420,6 +493,15 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
         )}
 
         </>)}
+
+        {/* Input (requires) / output (produces) artifact files for this step; click to open. */}
+        {rtab === 'files' && (
+          <div className="files-panel">
+            {renderFileGroup('inputs', 'Inputs', <Icon.Download size={14} />, inputFiles, 'No input files declared.', onOpenFile)}
+            {renderFileGroup('outputs', 'Outputs', <Icon.Upload size={14} />, outputFiles, 'No output files declared.', onOpenFile)}
+            {reviewFile && renderFileGroup('review', 'AI Review', <Icon.Sparkles size={14} />, [reviewFile], '', onOpenFile)}
+          </div>
+        )}
 
         {/* Step-scoped Execution History, grouped per run — aligned monospace log. */}
         {rtab === 'history' && (historyGroups.length > 0

@@ -1,14 +1,15 @@
 import React from 'react';
-import { Flow, Agent, Skill } from '@ai-stepflow/core/types';
-import { Icon } from '../components/primitives';
+import { Flow, Agent, Skill } from '@claudesteps/core/types';
+import { Icon, Sparkline } from '../components/primitives';
 import { Tab, ScopeFilter } from '../hooks/appState/types';
 
 /** VS Code command ids the quick-settings panel triggers; must stay in sync with RUNNABLE_COMMANDS in extension/messages.ts. */
 export type RunnableCommand =
-  | 'ai-stepflow.installDefaults'
-  | 'ai-stepflow.refreshAll'
-  | 'ai-stepflow.astGraph.rescan'
-  | 'ai-stepflow.astGraph.reregisterMcp'
+  | 'claudesteps.installDefaults'
+  | 'claudesteps.refreshAll'
+  | 'claudesteps.astGraph.install'
+  | 'claudesteps.astGraph.rescan'
+  | 'claudesteps.astGraph.reregisterMcp'
   | 'workbench.action.openSettings';
 
 interface RunSummary {
@@ -52,7 +53,7 @@ interface OverviewTabProps {
   onRunCommand: (command: RunnableCommand) => void;
   onOpenWorkspace: (path: string) => void;
   onRevealPath: (path: string) => void;
-  onInstallGitnexus: () => void;
+  onConnectGitnexus: () => void;
 }
 
 const fmtUsd = (n: number) => `$${n < 0.01 && n > 0 ? n.toFixed(4) : n.toFixed(2)}`;
@@ -77,11 +78,16 @@ const fmtAgo = (ms: number) => {
   return `${d}d ago`;
 };
 
-const Stat: React.FC<{ label: string; value: string; hint?: string; onClick?: () => void }> = ({ label, value, hint, onClick }) => (
+const Stat: React.FC<{ label: string; value: string; hint?: string; onClick?: () => void; spark?: number[]; sparkColor?: string }> = ({ label, value, hint, onClick, spark, sparkColor }) => (
   <div className={`ov-stat${onClick ? ' clickable' : ''}`} onClick={onClick} role={onClick ? 'button' : undefined}>
     <div className="ov-stat-value">{value}</div>
     <div className="ov-stat-label">{label}</div>
-    {hint && <div className="ov-stat-hint muted small">{hint}</div>}
+    {spark
+      ? <div className="ov-stat-foot">
+          {hint && <span className="ov-stat-hint muted small">{hint}</span>}
+          <Sparkline data={spark} color={sparkColor || 'var(--running)'} />
+        </div>
+      : hint && <div className="ov-stat-hint muted small">{hint}</div>}
   </div>
 );
 
@@ -167,7 +173,7 @@ const TrendChart: React.FC<{ trend: DayPoint[]; metric: TrendMetric }> = ({ tren
 
 export const OverviewTab: React.FC<OverviewTabProps> = ({
   flows, agents, skills, runSummaries, connectedMcpServers, defaultLibraryInstalled, recentWorkspaces, runTotalsAll, runTrendAll,
-  globalPath, projectPath, scope, onScopeChange, onNavigate, onConnectMcp, onRunCommand, onOpenWorkspace, onRevealPath, onInstallGitnexus
+  globalPath, projectPath, scope, onScopeChange, onNavigate, onConnectMcp, onRunCommand, onOpenWorkspace, onRevealPath, onConnectGitnexus
 }) => {
   const [trendMetric, setTrendMetric] = React.useState<TrendMetric>('costUsd');
   const [recentQuery, setRecentQuery] = React.useState('');
@@ -218,6 +224,11 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   const trendLabel = range === 'all' ? 'last 14 days' : rangeLabel;
 
   const gitnexusConnected = connectedMcpServers.some(s => /gitnexus|ast-graph/i.test(s));
+  // The Connect action registers the GitNexus MCP specifically — gate it on gitnexus alone (NOT
+  // ast-graph) so it stays consistent with the sidebar's gitnexus-only row gating.
+  const gitnexusMcpConnected = connectedMcpServers.some(s => /gitnexus/i.test(s));
+  // AST graph is installed once its MCP server is registered; before that, offer an Install button.
+  const astConnected = connectedMcpServers.some(s => /ast-graph/i.test(s));
 
   return (
     <div className="page ov-page">
@@ -236,7 +247,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               >{s.label}</button>
             ))}
           </div>
-          <button className="btn" onClick={() => onRunCommand('ai-stepflow.refreshAll')} title="Reload library and runs">
+          <button className="btn" onClick={() => onRunCommand('claudesteps.refreshAll')} title="Reload library and runs">
             <span className="btn-glyph"><Icon.RotateCw size={14} /></span>Refresh
           </button>
         </div>
@@ -272,10 +283,10 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           <div className="ov-note muted small">Runs are tracked per repository — switch to “Repo” or “All” to see run statistics.</div>
         ) : (
           <div className="ov-grid">
-            <Stat label="Total runs" value={`${totals.runs}`} hint={`${totals.completed} completed · ${totals.inProgress} in progress`} />
-            <Stat label="Total cost" value={fmtUsd(totals.costUsd)} hint={runsHint} />
-            <Stat label="Tokens" value={fmtTokens(totals.tokensUsed)} hint="input + output + cache" />
-            <Stat label="Execution time" value={fmtDuration(totals.taskTimeMs)} hint="steps running" />
+            <Stat label="Total runs" value={`${totals.runs}`} hint={`${totals.completed} completed · ${totals.inProgress} in progress`} spark={trend.map(d => d.runs)} sparkColor="var(--success)" />
+            <Stat label="Total cost" value={fmtUsd(totals.costUsd)} hint={runsHint} spark={trend.map(d => d.costUsd)} sparkColor="var(--muted)" />
+            <Stat label="Tokens" value={fmtTokens(totals.tokensUsed)} hint="input + output + cache" spark={trend.map(d => d.tokensUsed)} sparkColor="var(--running)" />
+            <Stat label="Execution time" value={fmtDuration(totals.taskTimeMs)} hint="steps running" spark={trend.map(d => d.taskTimeMs)} sparkColor="var(--warn)" />
           </div>
         )}
       </section>
@@ -370,7 +381,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             </button>
           </div>
 
-          {!gitnexusConnected && (
+          {!gitnexusMcpConnected && (
             <div className="ov-setting-row">
               <div className="ov-setting-main">
                 <div className="ov-setting-name">
@@ -378,11 +389,11 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 </div>
                 <div className="muted small">
                   <span className="ov-warn">Not connected</span>
-                  {' · code-graph CLI for impact analysis & symbol search — if it isn’t installed yet, install it globally via npm'}
+                  {' · registers the GitNexus MCP server (runs via npx — no install needed). Connect once, then Analyze repos from the sidebar.'}
                 </div>
               </div>
-              <button className="btn primary" onClick={onInstallGitnexus} title="Open a terminal and run: npm install -g gitnexus">
-                <span className="btn-glyph"><Icon.Terminal size={14} /></span>Install
+              <button className="btn primary" onClick={onConnectGitnexus} title="Run: claude mcp add gitnexus -- npx gitnexus mcp">
+                <span className="btn-glyph"><Icon.Zap size={14} /></span>Connect
               </button>
             </div>
           )}
@@ -403,7 +414,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               <button className="btn" onClick={() => onRevealPath(globalPath)} disabled={!globalPath} title="Open ~/.claude in file explorer">
                 <span className="btn-glyph"><Icon.FolderOpen size={14} /></span>Open folder
               </button>
-              <button className="btn" onClick={() => onRunCommand('ai-stepflow.installDefaults')}>
+              <button className="btn" onClick={() => onRunCommand('claudesteps.installDefaults')}>
                 <span className="btn-glyph"><Icon.Sparkles size={14} /></span>{defaultLibraryInstalled ? 'Repair' : 'Install'}
               </button>
             </div>
@@ -414,13 +425,24 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               <div className="ov-setting-name">
                 <span className="btn-glyph"><Icon.Zap size={14} /></span>AST graph &amp; run settings
               </div>
-              <div className="muted small">Enable/disable AST graph, run timeout, max turns, headless MCP servers</div>
+              <div className="muted small">
+                <span className={astConnected ? 'ov-ok' : 'ov-warn'}>
+                  {astConnected ? 'Installed' : 'Not installed'}
+                </span>
+                {' · downloads the ast-graph CLI, indexes this workspace, and exposes it as an MCP server'}
+              </div>
             </div>
             <div className="btn-group">
-              <button className="btn" onClick={() => onRunCommand('ai-stepflow.astGraph.rescan')} title="Rescan AST graph">
-                <span className="btn-glyph"><Icon.RotateCw size={14} /></span>Rescan
-              </button>
-              <button className="btn" onClick={() => onRunCommand('workbench.action.openSettings')} title="Open AI StepFlow settings">
+              {!astConnected ? (
+                <button className="btn primary" onClick={() => onRunCommand('claudesteps.astGraph.install')} title="Install AST graph (download CLI + index workspace)">
+                  <span className="btn-glyph"><Icon.Download size={14} /></span>Install
+                </button>
+              ) : (
+                <button className="btn" onClick={() => onRunCommand('claudesteps.astGraph.rescan')} title="Rescan AST graph">
+                  <span className="btn-glyph"><Icon.RotateCw size={14} /></span>Rescan
+                </button>
+              )}
+              <button className="btn" onClick={() => onRunCommand('workbench.action.openSettings')} title="Open ClaudeSteps settings">
                 <span className="btn-glyph"><Icon.Settings size={14} /></span>Settings
               </button>
             </div>

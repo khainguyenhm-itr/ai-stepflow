@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Agent } from '@ai-stepflow/core/types';
+import { Agent } from '@claudesteps/core/types';
 import { Icon } from '../components/primitives';
 import { EmptyState } from '../components/ResourceCard';
 import { ScopeFilter, SaveScope, ViewFilter, SortOrder, UnifiedFilterPanel } from '../components/ScopeControls';
@@ -16,6 +16,7 @@ interface AgentsTabProps {
   projectPath: string;
   onOpenEditor: (agent: Agent) => void;
   onRun: (agent: Agent) => void;
+  onHistory: (agent: Agent) => void;
   onDetail: (agent: Agent) => void;
   onNew: (scope: SaveScope) => void;
   initialFilter: ScopeFilter;
@@ -33,6 +34,7 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
   globalPath,
   onOpenEditor,
   onRun,
+  onHistory,
   onDetail,
   onNew,
   initialFilter,
@@ -108,6 +110,7 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
           <span className="drow-actions">
 
             <button className="icon-btn" title="Run" onClick={() => onRun(agent)}><Icon.Play size={14} /></button>
+            <button className="icon-btn" title="Run history" onClick={() => onHistory(agent)}><Icon.History size={14} /></button>
             <button className="icon-btn pencil" title="Edit" onClick={() => onOpenEditor(agent)}><Icon.Pencil size={14} /></button>
             <button className="icon-btn" title="Details" onClick={() => onDetail(agent)}><Icon.Info size={14} /></button>
           </span>

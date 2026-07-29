@@ -7,7 +7,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { Flow, FlowStep } from '@ai-stepflow/core';
+import type { Flow, FlowStep } from '@claudesteps/core';
 
 // ---------------------------------------------------------------------------
 // Inline the pure lintFlow function (mirrors cli.ts implementation) so core

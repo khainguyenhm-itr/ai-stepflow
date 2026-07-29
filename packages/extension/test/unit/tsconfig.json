@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "../..",
+    "outDir": "../../out-unit",
+    "composite": false,
+    "noEmit": false,
+    "declaration": false,
+    "types": ["node"]
+  },
+  "include": ["./**/*.ts", "../../src/**/*.ts"],
+  "exclude": ["../../node_modules", "../../out", "../../out-itest", "../../out-unit"]
+}

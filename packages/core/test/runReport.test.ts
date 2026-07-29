@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderRunReport } from '@ai-stepflow/core';
-import { Flow, FlowRunState } from '@ai-stepflow/core';
+import { renderRunReport } from '@claudesteps/core';
+import { Flow, FlowRunState } from '@claudesteps/core';
 
 test('renderRunReport includes step table and audit history', () => {
   const flow: Flow = {

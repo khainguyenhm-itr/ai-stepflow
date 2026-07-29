@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { resolveTemplates, resolveFlowPath, runOutputSlug } from './pathTemplates.js';
+import { resolveTemplates, resolveFlowPath, runOutputSlug, legacyRunOutputSlug } from './pathTemplates.js';
 import { Flow, FlowRunState } from './types.js';
 
 export interface StepDrift {
@@ -23,6 +23,15 @@ export function verifyRun(flow: Flow, runState: FlowRunState, projectPath: strin
   const drift: StepDrift[] = [];
   let checked = 0;
   const runSlug = runOutputSlug(runState.runName, runState.runId);
+  const legacyRunSlug = legacyRunOutputSlug(runState.runName, runState.runId);
+  // Prefer the current run slug; fall back to the legacy (pre-fingerprint) slug for runs whose
+  // artifacts were written before the runId suffix existed, so verify never false-flags them.
+  const resolvePath = (filePath: string): string => {
+    const p = resolveFlowPath(filePath, flow.name, projectPath, runSlug);
+    if (fs.existsSync(p) || !legacyRunSlug) return p;
+    const legacy = resolveFlowPath(filePath, flow.name, projectPath, legacyRunSlug);
+    return fs.existsSync(legacy) ? legacy : p;
+  };
 
   for (const step of flow.steps) {
     const state = runState.steps[step.id];
@@ -34,7 +43,7 @@ export function verifyRun(flow: Flow, runState: FlowRunState, projectPath: strin
     if (produces.length === 0 && markers.length === 0) continue;
     checked++;
 
-    const resolved = produces.map(filePath => resolveFlowPath(filePath, flow.name, projectPath, runSlug));
+    const resolved = produces.map(resolvePath);
     const missingFiles = resolved
       .filter(filePath => !fs.existsSync(filePath))
       .map(filePath => path.relative(projectPath, filePath) || filePath);

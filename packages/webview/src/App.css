@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------------ */
-/* AI StepFlow — fixed "GitHub Dark" palette matching the design       */
+/* ClaudeSteps — fixed "GitHub Dark" palette matching the design       */
 /* artifact. Colors are pinned (not derived from --vscode-* theme      */
 /* variables) so the UI always looks like the artifact regardless of   */
 /* the user's VS Code theme.                                           */
@@ -30,13 +30,22 @@
 
   --success: #3fb950;
   --running: #58a6ff;
+  --review-ai: #a371f7;
+  --review-human: #39c5cf;
   --badge-bg: #30363d;
   --badge-fg: #c9d1d9;
   /* Outline for secondary buttons, derived from the foreground color. */
-  --btn-outline: color-mix(in srgb, var(--fg) 40%, transparent);
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-  --font-size: 13px;
+  /* Outlined buttons/segmented/idle-badge share the one border color used by
+     inputs, cards and the sidebar so every outline reads at the same weight. */
+  --btn-outline: var(--border);
+  /* Match VS Code's UI / editor fonts so the cockpit blends with the editor. */
+  --font: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif);
+  --mono: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace);
+  /* Follow VS Code's UI font size so text matches the editor; 13px fallback. */
+  --font-size: var(--vscode-font-size, 13px);
+  /* Global UI scale. <1 shrinks the whole cockpit uniformly (fonts, padding,
+     gaps) for more content density. Change here to re-scale everything. */
+  --ui-zoom: 0.95;
 }
 
 * {
@@ -50,6 +59,12 @@ body,
   height: 100%;
 }
 
+/* Anchor `rem` to the VS Code base font so every font-size below scales with
+   the editor's font setting. All font sizes are expressed in rem = px / 13. */
+html {
+  font-size: var(--font-size);
+}
+
 body {
   margin: 0;
   /* VS Code's default webview stylesheet injects `body { padding: 0 20px }`;
@@ -61,12 +76,16 @@ body {
   font-family: var(--font);
   font-size: var(--font-size);
   line-height: 1.4;
+  /* Shrink the entire UI uniformly. Height is grossed up by the same factor so
+     the zoomed body still fills the full panel (zoom scales the rendered box). */
+  zoom: var(--ui-zoom);
+  height: calc(100vh / var(--ui-zoom));
 }
 
 .app {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
 }
 
 /* Overlay scrollbars — float on top of content, don't take up layout space. */
@@ -151,7 +170,7 @@ textarea.input::-webkit-scrollbar-thumb:hover,
 
 .mono { font-family: var(--mono); }
 .muted { color: var(--muted); }
-.small { font-size: 12px; }
+.small { font-size: 0.9231rem; }
 .success-text { color: var(--success); }
 .pad-sm { padding: 8px; }
 
@@ -195,7 +214,7 @@ textarea.input::-webkit-scrollbar-thumb:hover,
   border-radius: 9px;
   color: var(--badge-fg);
   background: var(--badge-bg);
-  font-size: 10px;
+  font-size: 0.7692rem;
   line-height: 15px;
 }
 
@@ -217,7 +236,7 @@ textarea.input::-webkit-scrollbar-thumb:hover,
 
 .page-head h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: 1.231rem;
   font-weight: 600;
 }
 
@@ -252,14 +271,14 @@ textarea.input::-webkit-scrollbar-thumb:hover,
 }
 
 .empty-title {
-  font-size: 14px;
+  font-size: 1.077rem;
   font-weight: 600;
   color: var(--fg);
 }
 
 .empty-text {
   max-width: 280px;
-  font-size: 12px;
+  font-size: 0.9231rem;
   line-height: 1.5;
 }
 
@@ -295,7 +314,7 @@ textarea.input::-webkit-scrollbar-thumb:hover,
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 11px;
+  font-size: 0.8462rem;
   font-weight: 500;
   color: var(--muted);
   text-transform: uppercase;
@@ -373,6 +392,15 @@ textarea.input::-webkit-scrollbar-thumb:hover,
   background: color-mix(in srgb, var(--running) 12%, transparent);
 }
 
+.btn.review {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.btn.review:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+}
+
 .btn.block {
   justify-content: center;
   width: 100%;
@@ -427,7 +455,7 @@ textarea.input::-webkit-scrollbar-thumb:hover,
   color: var(--muted);
   background: transparent;
   font-family: inherit;
-  font-size: 14px;
+  font-size: 1.077rem;
   line-height: 1;
   cursor: pointer;
 }
@@ -470,14 +498,14 @@ textarea.input {
 .fp-wrap { position: relative; }
 .fp-btn { display: inline-flex; align-items: center; gap: 5px; }
 .fp-btn.active { background: var(--active-sel); border-color: var(--focus); }
-.fp-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--focus); color: #fff; font-size: 10px; font-weight: 700; line-height: 1; }
+.fp-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--focus); color: #fff; font-size: 0.7692rem; font-weight: 700; line-height: 1; }
 
 .fp-panel { position: absolute; right: 0; top: calc(100% + 6px); z-index: 200; width: 300px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 8px 28px rgba(0,0,0,.45); overflow: hidden; }
 .fp-section { padding: 10px 14px; }
 .fp-section + .fp-section { border-top: 1px solid var(--border); }
 .fp-section-title { font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
 .fp-options { display: flex; flex-wrap: wrap; gap: 2px 0; }
-.fp-option { display: inline-flex; align-items: center; gap: 7px; padding: 4px 8px; border: 0; border-radius: 4px; background: transparent; color: var(--fg); font-size: 12px; font-family: inherit; cursor: pointer; transition: background .1s; white-space: nowrap; }
+.fp-option { display: inline-flex; align-items: center; gap: 7px; padding: 4px 8px; border: 0; border-radius: 4px; background: transparent; color: var(--fg); font-size: 0.9231rem; font-family: inherit; cursor: pointer; transition: background .1s; white-space: nowrap; }
 .fp-option:hover { background: var(--hover); }
 
 /* radio indicator */
@@ -523,7 +551,7 @@ textarea.input {
   border-radius: 6px;
   color: var(--accent, var(--vscode-textLink-foreground, #4daafc));
   background: var(--vscode-editor-background, var(--vscode-input-background, #1e1e1e));
-  font-size: 13px;
+  font-size: 1rem;
   line-height: 1;
   transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
 }
@@ -565,7 +593,7 @@ textarea.input {
   border-radius: 4px;
   background: var(--vscode-editorHoverWidget-background, #252526);
   color: var(--vscode-editorHoverWidget-foreground, var(--fg));
-  font-size: 11px;
+  font-size: 0.8462rem;
   font-weight: 400;
   line-height: 1.4;
   text-align: left;
@@ -611,14 +639,14 @@ textarea.input {
 
 .flow-ai-title {
   display: block;
-  font-size: 13px;
+  font-size: 1rem;
   font-weight: 600;
   line-height: 1.3;
 }
 
 .flow-ai-hint {
   display: block;
-  font-size: 11px;
+  font-size: 0.8462rem;
   color: var(--muted);
   margin-top: 2px;
   line-height: 1.4;
@@ -641,13 +669,13 @@ textarea.input {
   grid-template-columns: 30px minmax(0, 1fr);
   gap: 6px;
   align-items: start;
-  font-size: 12px;
+  font-size: 0.9231rem;
   line-height: 1.4;
 }
 
 .flow-ai-role {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 0.7692rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -677,7 +705,7 @@ textarea.input {
 
 .field-label {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 0.9231rem;
 }
 
 .field-hint {
@@ -754,7 +782,7 @@ textarea.input {
   border-radius: 9px;
   color: var(--badge-fg);
   background: var(--badge-bg);
-  font-size: 11px;
+  font-size: 0.8462rem;
   line-height: 16px;
   white-space: nowrap;
 }
@@ -767,7 +795,7 @@ textarea.input {
   border: 1px solid rgba(56, 139, 253, 0.4);
   border-radius: 4px;
   text-transform: uppercase;
-  font-size: 10px;
+  font-size: 0.7692rem;
   letter-spacing: 0.04em;
   line-height: 14px;
 }
@@ -804,7 +832,7 @@ textarea.input {
 
 .field-group .label {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 0.9231rem;
 }
 .badge.error { color: #ffffff; background: var(--error); }
 .badge.warning { color: #1e1e1e; background: var(--warn); }
@@ -816,7 +844,7 @@ textarea.input {
   border: 1px solid var(--error);
   border-radius: 2px;
   color: var(--error);
-  font-size: 12px;
+  font-size: 0.9231rem;
 }
 
 .info-note {
@@ -824,7 +852,7 @@ textarea.input {
   border: 1px solid var(--border);
   border-radius: 2px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 0.8462rem;
   line-height: 1.5;
 }
 
@@ -844,7 +872,7 @@ textarea.input {
   flex: 1;
   align-items: center;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 0.8462rem;
   line-height: 1.4;
   white-space: nowrap;
 }
@@ -857,7 +885,7 @@ textarea.input {
   border: 1px solid var(--warn);
   border-radius: 2px;
   color: var(--warn);
-  font-size: 12px;
+  font-size: 0.9231rem;
 }
 
 .result-banner {
@@ -866,7 +894,7 @@ textarea.input {
   gap: 6px;
   padding: 6px 10px;
   border-radius: 2px;
-  font-size: 12px;
+  font-size: 0.9231rem;
 }
 .result-banner.success { border: 1px solid var(--success); color: var(--success); }
 .result-banner.error { border: 1px solid var(--error); color: var(--error); }
@@ -880,7 +908,7 @@ textarea.input {
 
 
 .runner-flow-name {
-  font-size: 14px;
+  font-size: 1.077rem;
   font-weight: 600;
   color: var(--fg);
 }
@@ -915,7 +943,7 @@ textarea.input {
 .kv-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 0.9231rem;
 }
 
 .kv-table td {
@@ -987,7 +1015,7 @@ textarea.input {
 }
 
 .card-subtitle {
-  font-size: 11px;
+  font-size: 0.8462rem;
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1011,7 +1039,7 @@ textarea.input {
   margin: 0;
   overflow: hidden;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 0.9231rem;
   line-height: 16px;
 }
 
@@ -1162,12 +1190,12 @@ textarea.input {
 .flow-step-actions .icon-btn.sm {
   width: 20px;
   height: 20px;
-  font-size: 11px;
+  font-size: 0.8462rem;
 }
 
 /* The gear glyph renders smaller than ✕ at the same size; nudge it up to match. */
 .flow-step-actions .icon-btn.gear {
-  font-size: 14px;
+  font-size: 1.077rem;
 }
 
 .flow-step-number {
@@ -1183,14 +1211,14 @@ textarea.input {
   background: var(--panel);
   border: 1px solid var(--border);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 0.9231rem;
   line-height: 1;
 }
 
 .flow-step-title {
   overflow: hidden;
   font-weight: 600;
-  font-size: 14px;
+  font-size: 1.077rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1198,7 +1226,7 @@ textarea.input {
 .flow-step-sub {
   overflow: hidden;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 0.9231rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1218,7 +1246,7 @@ textarea.input {
   border-radius: 2px;
   color: var(--bg);
   background: var(--warn);
-  font-size: 12px;
+  font-size: 0.9231rem;
   line-height: 18px;
   white-space: nowrap;
 }
@@ -1363,7 +1391,7 @@ textarea.input {
 .more-menu-item {
   display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px;
   border: 0; border-radius: 4px; background: transparent; color: var(--fg);
-  font-size: 12px; font-family: inherit; cursor: pointer; text-align: left; transition: background .1s;
+  font-size: 0.9231rem; font-family: inherit; cursor: pointer; text-align: left; transition: background .1s;
 }
 .more-menu-item:hover { background: var(--hover); }
 .more-menu-item.danger { color: var(--error); }
@@ -1401,7 +1429,7 @@ textarea.input {
   color: var(--muted);
   background: var(--panel);
   font-family: inherit;
-  font-size: 11px;
+  font-size: 0.8462rem;
   cursor: pointer;
 }
 
@@ -1457,7 +1485,7 @@ textarea.input {
 }
 
 .runner-detail-step-label {
-  font-size: 11px;
+  font-size: 0.8462rem;
   font-weight: 500;
   color: var(--muted);
   text-transform: uppercase;
@@ -1465,7 +1493,7 @@ textarea.input {
 }
 
 .runner-detail-step-title {
-  font-size: 15px;
+  font-size: 1.154rem;
   font-weight: 600;
   color: var(--fg);
   overflow: hidden;
@@ -1539,7 +1567,7 @@ textarea.input {
 .icon-btn.sm {
   width: 18px;
   height: 18px;
-  font-size: 12px;
+  font-size: 0.9231rem;
 }
 
 .console {
@@ -1552,7 +1580,7 @@ textarea.input {
   color: var(--fg);
   background: var(--vscode-terminal-background, var(--vscode-editor-background, #1e1e1e));
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 0.9231rem;
   line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1567,6 +1595,9 @@ textarea.input {
 .console.report .ev-run { color: var(--running); }
 .console.report .ev-err { color: var(--error); }
 .console.report .ev-muted { color: var(--muted); }
+/* Review-actor tag: AI/validator vs human decisions get distinct colors in the log. */
+.console.report .ev-actor-ai { color: var(--review-ai); font-weight: 600; }
+.console.report .ev-actor-human { color: var(--review-human); font-weight: 600; }
 
 /* The automated-review transcript, shown beneath the run output. */
 .console.ai-review {
@@ -1590,7 +1621,7 @@ textarea.input {
 .runner-cost-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 0.9231rem;
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
@@ -1691,7 +1722,7 @@ textarea.input {
 .timeline-time {
   flex: 0 0 65px;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 0.8462rem;
   color: var(--muted);
   padding-top: 1px;
 }
@@ -1708,7 +1739,7 @@ textarea.input {
   align-items: center;
   gap: 6px;
   font-weight: 600;
-  font-size: 11px;
+  font-size: 0.8462rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -1718,51 +1749,135 @@ textarea.input {
 .timeline-status.running { color: var(--running); }
 
 .timeline-message {
-  font-size: 12px;
+  font-size: 0.9231rem;
   color: var(--fg);
   opacity: 0.9;
 }
 
 /* --------------------------- step builder ------------------------- */
 
-.step-list {
-  border: 1px solid var(--border);
-  border-radius: 3px;
+.wf-steps {
+  display: flex;
+  flex-direction: column;
 }
 
-.step-list-item {
+.wf-steps-empty {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 10px;
-  cursor: grab;
+  padding: 16px;
+  color: var(--muted);
+  font-size: 0.9231rem;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
 }
 
-.step-list-item + .step-list-item {
-  border-top: 1px solid var(--border);
+.wf-step {
+  display: flex;
+  gap: 10px;
 }
 
-.step-list-item:hover {
-  background: var(--hover);
+/* Numbered rail with a subtle connector line linking steps into a sequence. */
+.wf-step-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
 }
 
-.drag-handle {
+.wf-step-num {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
   color: var(--muted);
+  font-size: 0.7692rem;
+  font-weight: 600;
+  flex-shrink: 0;
 }
 
-.step-list-main {
+.wf-step-line {
+  flex: 1;
+  width: 1px;
+  min-height: 6px;
+  margin: 3px 0;
+  background: var(--border);
+}
+
+.wf-step-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 6px;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  cursor: grab;
+  transition: border-color 0.12s ease;
+}
+
+.wf-step-card:hover {
+  border-color: var(--muted);
+}
+
+.wf-step-drag {
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+  cursor: grab;
+  opacity: 0.6;
+}
+
+.wf-step-body {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 3px;
   flex: 1;
   min-width: 0;
 }
 
-.step-list-title {
+.wf-step-title {
   font-weight: 600;
+  font-size: 1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wf-step-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 0.8462rem;
+  color: var(--muted);
+}
+
+/* Calm chips: neutral text, only the icon carries a hint of color. */
+.wf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.wf-chip svg { flex-shrink: 0; }
+.wf-chip.agent svg { color: var(--link); }
+.wf-chip.skill svg { color: var(--review-ai); }
+.wf-chip.is-empty { font-style: italic; opacity: 0.7; }
+
+.wf-step-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .input-def-row {
@@ -1774,7 +1889,7 @@ textarea.input {
 
 .input-def-row code {
   color: var(--link);
-  font-size: 12px;
+  font-size: 0.9231rem;
 }
 
 /* ----------------------------- modals ----------------------------- */
@@ -1883,7 +1998,7 @@ textarea.input {
   transition: width 0.3s ease;
 }
 .cost-bar-label {
-  font-size: 11px;
+  font-size: 0.8462rem;
   color: var(--vscode-descriptionForeground);
   min-width: 32px;
   text-align: right;
@@ -1906,19 +2021,19 @@ textarea.input {
 .tag-group-title {
   display: flex; align-items: center; gap: 6px;
   margin: 0 0 8px; padding-bottom: 4px;
-  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  font-size: 0.9231rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
   color: var(--muted); border-bottom: 1px solid var(--border);
 }
 .tag-group-title .sec-count {
-  font-size: 10px; font-weight: 600; text-transform: none;
+  font-size: 0.7692rem; font-weight: 600; text-transform: none;
   padding: 0 6px; border-radius: 8px; background: var(--badge-bg); color: var(--badge-fg);
 }
 
 /* Overview tab */
-.ov-title { margin: 0; font-size: 15px; font-weight: 600; }
+.ov-title { margin: 0; font-size: 1.154rem; font-weight: 600; }
 .ov-section { margin-top: 18px; }
 .ov-section-title {
-  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  font-size: 0.8462rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
   color: var(--muted); margin-bottom: 8px;
 }
 .ov-grid {
@@ -1931,9 +2046,10 @@ textarea.input {
 }
 .ov-stat.clickable { cursor: pointer; }
 .ov-stat.clickable:hover { background: var(--hover); }
-.ov-stat-value { font-size: 22px; font-weight: 600; line-height: 1.1; }
-.ov-stat-label { font-size: 12px; margin-top: 4px; }
+.ov-stat-value { font-size: 1.692rem; font-weight: 600; line-height: 1.1; }
+.ov-stat-label { font-size: 0.9231rem; margin-top: 4px; }
 .ov-stat-hint { margin-top: 2px; }
+.ov-stat-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; margin-top: 8px; }
 .ov-settings { display: flex; flex-direction: column; gap: 8px; }
 .ov-setting-row {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -1941,7 +2057,7 @@ textarea.input {
   padding: 10px 12px; background: var(--panel);
 }
 .ov-setting-main { min-width: 0; }
-.ov-setting-name { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+.ov-setting-name { display: flex; align-items: center; gap: 6px; font-size: 1rem; font-weight: 600; margin-bottom: 3px; }
 .ov-ok { color: var(--success); }
 .ov-warn { color: var(--warn); }
 
@@ -1963,7 +2079,7 @@ textarea.input {
   width: 100%;
   margin-bottom: 8px;
   padding: 5px 8px;
-  font-size: 12px;
+  font-size: 0.9231rem;
   color: var(--fg);
   background: var(--input-bg, var(--panel));
   border: 1px solid var(--border);
@@ -1985,7 +2101,7 @@ textarea.input {
   border-left: 3px solid var(--focus, var(--accent));
   background: color-mix(in srgb, var(--focus, var(--accent)) 12%, var(--panel));
 }
-.ov-recent-name { font-size: 13px; font-weight: 600; flex-shrink: 0; }
+.ov-recent-name { font-size: 1rem; font-weight: 600; flex-shrink: 0; }
 .ov-recent-path { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ov-recent-meta { flex-shrink: 0; }
 .ov-recent-row.current .ov-recent-meta {
@@ -2010,7 +2126,7 @@ textarea.input {
 .ov-chart-bar-track { flex: 1; width: 100%; display: flex; align-items: flex-end; }
 .ov-chart-bar { width: 100%; min-height: 2px; border-radius: 2px 2px 0 0; background: var(--vscode-charts-blue, var(--link)); }
 .ov-chart-col:hover .ov-chart-bar { opacity: 0.8; }
-.ov-chart-x { font-size: 9px; white-space: nowrap; transform: rotate(-45deg); transform-origin: center; }
+.ov-chart-x { font-size: 0.6923rem; white-space: nowrap; transform: rotate(-45deg); transform-origin: center; }
 .ov-chart-max { position: absolute; top: 4px; right: 8px; }
 
 /* Overview — date-range filter */
@@ -2026,7 +2142,7 @@ textarea.input {
 .dname { max-width: 100%; }
 .dname .dn { min-width: 0; }
 .dtable thead th {
-  text-align: left; font-weight: 600; font-size: 11px; letter-spacing: .04em; text-transform: uppercase;
+  text-align: left; font-weight: 600; font-size: 0.8462rem; letter-spacing: .04em; text-transform: uppercase;
   color: var(--muted); padding: 8px 12px; border-bottom: 1px solid var(--border);
   background: var(--panel-2); white-space: nowrap;
 }
@@ -2042,22 +2158,46 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 
 .dname { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .dname .dn { font-weight: 600; display: flex; align-items: center; gap: 8px; }
-.dname .dsub { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.dname .dsub { color: var(--muted); font-size: 0.9231rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .dname .dn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dtools { display: flex; gap: 4px; flex-wrap: wrap; }
-.dtool { font-family: var(--mono); font-size: 11px; background: var(--badge-bg); color: var(--badge-fg); border-radius: 3px; padding: 0 6px; line-height: 17px; }
+.dtool { font-family: var(--mono); font-size: 0.8462rem; background: var(--badge-bg); color: var(--badge-fg); border-radius: 3px; padding: 0 6px; line-height: 17px; }
 .dmodel { font-family: var(--mono); color: var(--muted); }
+
+/* run history modal */
+.hist-toolbar { display: flex; align-items: flex-end; gap: 12px; margin-bottom: 12px; }
+.hist-toolbar .hist-summary { flex: 1; margin-bottom: 0; }
+.hist-filter { display: flex; flex-direction: column; gap: 4px; flex: none; }
+.hist-filter-lbl { font-size: 0.8462rem; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.hist-filter .select { min-width: 140px; }
+.hist-summary { display: flex; gap: 8px; margin-bottom: 12px; }
+.hist-stat {
+  flex: 1; display: flex; flex-direction: column; gap: 2px;
+  padding: 9px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel);
+}
+.hist-stat-val { font-family: var(--mono); font-size: 1.15rem; font-weight: 600; line-height: 1.2; }
+.hist-stat-lbl { font-size: 0.8462rem; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.dtable th.hist-num, .dtable td.hist-num { text-align: right; font-family: var(--mono); }
+.hist-model {
+  display: inline-block; max-width: 100%; font-family: var(--mono); font-size: 0.8462rem;
+  background: var(--badge-bg); color: var(--badge-fg); border-radius: 3px; padding: 1px 7px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;
+}
+.hist-empty { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 28px 12px; color: var(--muted); text-align: center; }
+.hist-empty p { margin: 0; }
 
 /* status dot + label */
 .dstatus { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
 .ddot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--muted); }
 .ddot.run { background: var(--running); box-shadow: 0 0 0 3px color-mix(in srgb, var(--running) 22%, transparent); animation: ddot-pulse 1.6s ease-in-out infinite; }
+.ddot.review { background: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 22%, transparent); animation: ddot-pulse-review 1.6s ease-in-out infinite; }
 .ddot.ok { background: var(--success); }
 .ddot.warn { background: var(--warn); }
 .ddot.fail { background: var(--error); }
 .ddot.idle { background: var(--muted); }
 @keyframes ddot-pulse { 0%,100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--running) 22%, transparent); } 50% { box-shadow: 0 0 0 5px transparent; } }
-@media (prefers-reduced-motion: reduce) { .ddot.run { animation: none; } }
+@keyframes ddot-pulse-review { 0%,100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 22%, transparent); } 50% { box-shadow: 0 0 0 5px transparent; } }
+@media (prefers-reduced-motion: reduce) { .ddot.run, .ddot.review { animation: none; } }
 .dstatus-label { color: var(--muted); }
 
 /* mini pipeline */
@@ -2065,8 +2205,9 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 .pipe .seg { width: 14px; height: 5px; border-radius: 3px; background: var(--badge-bg); flex: none; }
 .pipe .seg.done { background: var(--success); }
 .pipe .seg.active { background: var(--running); }
+.pipe .seg.review { background: var(--warn); }
 .pipe .seg.fail { background: var(--error); }
-.pipe .pipe-num { color: var(--muted); font-size: 12px; margin-left: 4px; font-variant-numeric: tabular-nums; }
+.pipe .pipe-num { color: var(--muted); font-size: 0.9231rem; margin-left: 4px; font-variant-numeric: tabular-nums; }
 
 /* Workflows tab — help line & run-stat cards */
 .flow-help { margin: 10px 0 0; }
@@ -2079,9 +2220,9 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
   border: 1px solid var(--border); border-radius: 3px;
   padding: 12px 14px; background: var(--panel);
 }
-.flow-stat-label { font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
-.flow-stat-value { font-size: 24px; font-weight: 600; line-height: 1; }
-.flow-stat-value .sub { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 5px; }
+.flow-stat-label { font-size: 0.7692rem; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.flow-stat-value { font-size: 1.846rem; font-weight: 600; line-height: 1; }
+.flow-stat-value .sub { font-size: 0.9231rem; font-weight: 400; color: var(--muted); margin-left: 5px; }
 .flow-stat-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; margin-top: auto; }
 .flow-spark { display: block; flex: none; opacity: .9; }
 
@@ -2099,17 +2240,38 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 .detail-row.runs-dr .detail { border-top: none; }
 .drow.graph-on { background: var(--hover); }
 .detail-subhead { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-.detail-subhead h4 { margin: 0; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
-.detail-subhead .hint { color: var(--muted); font-size: 11px; margin-left: auto; }
+.detail-subhead h4 { margin: 0; font-size: 0.8462rem; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.detail-subhead .hint { color: var(--muted); font-size: 0.8462rem; margin-left: auto; }
 .detail-subhead .new-run-btn { margin-left: auto; }
 
 /* extra breathing room between the tab strip and the runs table */
 .runs-dr .detail-subhead { margin-bottom: 18px; }
-/* Runs Running/Done switch: sized to match the New run button; active is the primary blue so the current tab is obvious. */
-.runs-dr .ov-scope-btn { padding: 6px 16px; font-weight: 600; color: var(--muted); }
-.runs-dr .ov-scope-btn:hover { color: var(--fg); }
-.runs-dr .ov-scope-btn.active { background: var(--btn-bg); color: var(--btn-fg); }
-.runs-table .run-empty-row td { text-align: center; color: var(--muted); padding: 22px; font-size: 12px; }
+/* Runs Running/Done switch — segmented pill: a recessed track with the active tab as an inset
+   rounded pill, so the current tab reads clearly without the harsh full-height blue block. */
+.runs-dr .ov-scope-switch {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  padding: 3px;
+  gap: 3px;
+  overflow: visible;
+}
+.runs-dr .ov-scope-btn {
+  border: none;
+  border-radius: 6px;
+  padding: 5px 14px;
+  font-weight: 600;
+  color: var(--muted);
+  transition: background .15s ease, color .15s ease;
+}
+.runs-dr .ov-scope-btn:hover { background: var(--hover); color: var(--fg); }
+.runs-dr .ov-scope-btn.active {
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .25);
+}
+.runs-dr .ov-scope-btn.active:hover { background: var(--btn-hover); color: var(--btn-fg); }
+.runs-table .run-empty-row td { text-align: center; color: var(--muted); padding: 22px; font-size: 0.9231rem; }
 
 /* ================= Runs — Docker-style table (inside the flow "Runs" panel) ================= */
 .runs-table-wrap { border: 1px solid var(--border); border-radius: 8px; background: var(--panel); overflow: hidden; }
@@ -2123,16 +2285,35 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 .runs-table td { padding: 11px 14px; vertical-align: middle; }
 .runs-table .run-row > td { overflow: hidden; }
 .rt-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.runs-table .run-row { cursor: pointer; border-bottom: 1px solid var(--border); transition: background .12s ease-out; }
+.runs-table .run-row { border-bottom: 1px solid var(--border); transition: background .12s ease-out; }
 .runs-table tbody tr:last-child { border-bottom: 0; }
 .run-row:hover { background: var(--hover); }
-.run-row.open { background: var(--panel-2); }
+
+/* Live (currently running) run: subtle accent so it stands out among finished rows. */
+.run-row.live { background: color-mix(in srgb, var(--running) 8%, transparent); box-shadow: inset 3px 0 0 var(--running); }
+
+/* Awaiting review: yellow accent so a run paused on a review reads differently from one running. */
+.run-row.reviewing { background: color-mix(in srgb, var(--warn) 8%, transparent); box-shadow: inset 3px 0 0 var(--warn); }
+
+/* Expanded run: the open row sits in a recessed "well" (the darkest surface) with a top hairline,
+   so the elevated detail card below reads as floating above it. */
+.run-row.open > td {
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+.run-row.open,
+.run-row.open:hover { background: transparent; border-bottom: 0; }
+
+/* When one run is expanded, fade the rest so the active one is the clear focus. */
+.runs-table tbody.has-open .run-row:not(.open) { opacity: .5; transition: opacity .12s ease-out; }
+.runs-table tbody.has-open .run-row:not(.open):hover { opacity: 1; }
+/* The bold, bright run title stays too legible under row opacity alone — mute it so it recedes
+   with everything else; restore on hover. */
+.runs-table tbody.has-open .run-row:not(.open) .run-name { color: var(--muted); font-weight: 500; }
+.runs-table tbody.has-open .run-row:not(.open):hover .run-name { color: var(--fg); font-weight: 600; }
 
 /* Balanced column widths (sum = 100%); table-layout:fixed scales them to the panel. */
-.rt-chev { width: 4%; padding-right: 0 !important; }
 .rt-run { width: 21%; }
-.rt-chevron { display: inline-flex; color: var(--muted); transition: transform .18s ease-out; }
-.run-row.open .rt-chevron { transform: rotate(90deg); color: var(--fg); }
 
 .rt-status { width: 12%; }
 .run-status { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
@@ -2141,11 +2322,11 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 .ddot.done { background: var(--muted); }
 
 .rt-name .run-name { font-weight: 600; }
-.rt-name .run-id { font-size: 11px; color: var(--muted); margin-left: 2px; }
+.rt-name .run-id { font-size: 0.8462rem; color: var(--muted); margin-left: 2px; }
 
 .rt-progress { width: 15%; }
 /* Numeric run metrics — right-aligned, tabular, muted */
-.rt-cost, .rt-tokens, .rt-task { text-align: right; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rt-cost, .rt-tokens, .rt-task { text-align: right; color: var(--muted); font-size: 0.9231rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rt-cost { width: 9%; }
 .rt-tokens { width: 11%; }
 .rt-task { width: 9%; }
@@ -2157,16 +2338,40 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 .run-prog-fill.ok { background: var(--success); }
 .run-prog-num { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
-.rt-started { width: 10%; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.rt-started { width: 10%; color: var(--muted); font-size: 0.9231rem; white-space: nowrap; }
 
 .rt-actions { width: 9%; text-align: right; overflow: visible !important; }
 /* Flat icon actions — no button box, matching the flow-row action icons. */
 .run-row-actions { display: inline-flex; align-items: center; gap: 2px; }
-.run-row-actions .icon-btn[aria-expanded="true"] { background: var(--hover); color: var(--fg); }
+/* Toggle button on an expanded run row: blend with the row's lighter surface (a fixed --hover
+   fill reads as a mismatched patch against the brighter open row). Hover lifts translucently so
+   it stays relative to whatever the row background is. */
+.run-row-actions .icon-btn[aria-expanded="true"] { background: transparent; color: var(--fg); }
+.run-row.open .run-row-actions .icon-btn:hover { background: color-mix(in srgb, var(--fg) 12%, transparent); }
 
-/* Detail drawer that slides open under the selected run */
-.run-detail > td { padding: 0; background: var(--panel-2); }
-.run-drawer { border-top: 1px solid var(--border); animation: runsDrawer .2s ease-out; }
+/* Detail drawer — a bordered panel card in the same visual language as the .flow-stat cards
+   (1px border, small radius, --panel surface, no shadow). It sits in a recessed --bg gutter so it
+   reads as a distinct card, not another flat table row, and carries an accent strip on its left
+   edge. A neutral hairline closes the well at the bottom. */
+.run-detail > td {
+  padding: 6px 14px 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.run-drawer {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  overflow: hidden;
+  animation: runsDrawer .2s ease-out;
+}
+/* Accent strip down the card's left edge (clipped to the rounded corners by overflow:hidden). */
+.run-drawer::before {
+  content: '';
+  position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--running);
+}
 .run-drawer .runner { border-top: 0; background: transparent; }
 
 @keyframes runsDrawer {
@@ -2175,19 +2380,19 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
 }
 
 /* runner header stats — replaces the run name/status that the row already shows */
-.runner-stats { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; color: var(--muted); font-size: 12px; }
+.runner-stats { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; color: var(--muted); font-size: 0.9231rem; }
 .runner-stats b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
 .runner-stats .sep { opacity: .5; }
 
 /* selected-step card */
 .step-card { border: 1px solid var(--border); border-radius: 8px; background: var(--panel); overflow: hidden; }
 .step-card-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 11px 14px; }
-.step-card-title { font-size: 14px; font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; }
+.step-card-title { font-size: 1.077rem; font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; }
 .step-card-head .runner-detail-actions { margin-left: auto; padding-top: 0; }
 
 /* meta grid — two columns of bordered cells */
 .step-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.step-meta .mcell { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 14px; border-top: 1px solid var(--border); font-size: 12px; }
+.step-meta .mcell { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 14px; border-top: 1px solid var(--border); font-size: 0.9231rem; }
 .step-meta .mcell:nth-child(odd) { border-right: 1px solid var(--border); }
 .step-meta .mk { flex: none; width: 58px; color: var(--muted); }
 .step-meta .mcell .small { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
@@ -2197,11 +2402,79 @@ td.drow-actions-cell { text-align: right; white-space: nowrap; }
   text-align: center;
   color: var(--muted);
   padding: 20px;
-  font-size: 12px;
+  font-size: 0.9231rem;
 }
 
 /* ---- runner sub-tabs ---- */
 .runner-subtabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin: 4px 0 12px; }
-.runner-subtab { border: 0; background: none; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; padding: 7px 12px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; display: inline-flex; align-items: center; gap: 6px; }
+.runner-subtab { border: 0; background: none; font: inherit; font-size: 0.9231rem; font-weight: 600; cursor: pointer; padding: 7px 12px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; display: inline-flex; align-items: center; gap: 6px; }
 .runner-subtab:hover { color: var(--fg); }
 .runner-subtab.on { color: var(--fg); border-bottom-color: var(--focus); }
+
+/* ---- runner Files tab ---- */
+.files-panel { display: flex; flex-direction: column; gap: 16px; }
+
+.files-group {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-2, var(--panel));
+  overflow: hidden;
+}
+.files-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+}
+.files-group-icon { display: inline-flex; color: var(--muted); }
+.files-group-label { font-size: 0.9231rem; font-weight: 600; letter-spacing: 0.02em; color: var(--fg); }
+.files-group-count {
+  margin-left: auto;
+  min-width: 18px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--muted);
+  font-size: 0.8462rem;
+  font-weight: 600;
+  text-align: center;
+}
+/* AI Review group gets a subtle accent so it reads as the verdict artifact. */
+.files-group--review .files-group-head { background: color-mix(in srgb, var(--focus) 10%, transparent); }
+.files-group--review .files-group-icon { color: var(--focus); }
+.files-group--review .files-group-count { background: color-mix(in srgb, var(--focus) 18%, transparent); color: var(--focus); }
+
+.files-list { display: flex; flex-direction: column; }
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  padding: 9px 12px;
+  cursor: pointer;
+}
+.file-row:first-child { border-top: 0; }
+.file-row:hover { background: color-mix(in srgb, var(--focus) 8%, transparent); }
+.file-row-icon { flex: none; color: var(--muted); }
+.file-row:hover .file-row-icon { color: var(--focus); }
+.file-row-text { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.file-name { font-size: 0.9231rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-dir {
+  font-size: 10.5px;
+  color: var(--muted);
+  font-family: var(--mono, monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-row-open { flex: none; margin-left: auto; color: var(--muted); opacity: 0; transition: opacity 0.12s ease; }
+.file-row:hover .file-row-open { opacity: 1; color: var(--focus); }
+.files-empty { padding: 12px; text-align: center; color: var(--muted); font-size: 0.9231rem; }
