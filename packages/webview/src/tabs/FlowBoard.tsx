@@ -120,8 +120,9 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
   }, [revealRun?.nonce, runsOpen, openRuns]);
 
   const activeRuns = runSummaries.filter(s => !s.isClosed);
-  // A run is "finished" once finalized or all its steps completed; everything else is still running.
-  const isFinished = (s: RunSummary) => s.isClosed || s.completedSteps >= s.totalSteps;
+  // A run moves to the "Done" tab only once the user finalizes it (clicks Done). A run whose steps
+  // have all completed but is not yet finalized stays under "Running" until the user marks it done.
+  const isFinished = (s: RunSummary) => s.isClosed;
   const runningRuns = runSummaries.filter(s => !isFinished(s)).sort((a, b) => b.mtimeMs - a.mtimeMs);
   const doneRuns = runSummaries.filter(isFinished).sort((a, b) => b.mtimeMs - a.mtimeMs);
   const total = flow.steps.length;
