@@ -30,6 +30,18 @@ This project follows **Karpathy's Rules** for high-standard engineering and agen
 - **Surgical Changes**: Only modify files and lines strictly necessary. No unrelated refactors.
 - **Goal-Driven**: Fulfill success criteria and ensure results are verifiable.
 
+## Workflow Authoring — Prefer Superpowers Skills
+When creating a workflow (the `Workflow` tool) or dispatching subagents for a multi-phase task, **prefer `superpowers:*` skills as the process for each phase** — they encode a shared, verified standard, so they win over ad-hoc prompts or other skills whenever one applies. Map each phase to its superpowers skill:
+
+- **Design / requirements** → `superpowers:brainstorming`, then `superpowers:writing-plans`
+- **Implementation** → `superpowers:test-driven-development`
+- **Debugging** → `superpowers:systematic-debugging`
+- **Review** → `superpowers:requesting-code-review` / `superpowers:receiving-code-review`
+- **Verification before done** → `superpowers:verification-before-completion`
+- **Parallel fan-out** → `superpowers:dispatching-parallel-agents`
+
+Only fall back to a non-superpowers skill or a custom prompt when no `superpowers:*` skill covers the phase. When you do, state briefly why.
+
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
