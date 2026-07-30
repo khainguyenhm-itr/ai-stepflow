@@ -105,4 +105,30 @@ export class AccountManager {
     mkdirSync(dirname(this.storePath), { recursive: true });
     writeFileSync(this.storePath, JSON.stringify({ accounts }, null, 2));
   }
+
+  private async readCanonicalBlob(): Promise<string> {
+    const out = await this.exec(['find-generic-password', '-w', '-s', CLAUDE_SERVICE, '-a', this.osUsername]);
+    return out.trim();
+  }
+
+  /** Snapshot the current login as a named account. Name defaults to the active email. */
+  async saveCurrentAsAccount(name?: string): Promise<AccountView> {
+    let blob = '';
+    try { blob = await this.readCanonicalBlob(); } catch { blob = ''; }
+    if (!blob) throw new Error('No current Claude login found in Keychain.');
+    const label = this.peekCurrentLabel();
+    const finalName = name ?? label?.email;
+    if (!finalName) throw new Error('Could not determine an account name; provide one explicitly.');
+    await this.exec(['add-generic-password', '-U', '-s', STORE_SERVICE, '-a', finalName, '-w', blob]);
+    const entry: AccountMeta = {
+      name: finalName,
+      email: label?.email ?? finalName,
+      displayName: label?.displayName,
+      organizationName: label?.organizationName,
+      fingerprint: this.fingerprint(blob),
+      savedAt: this.now(),
+    };
+    this.writeMeta([...this.readMeta().filter(a => a.name !== finalName), entry]);
+    return { ...entry, active: true };
+  }
 }
