@@ -116,19 +116,45 @@ export class AccountManager {
     let blob = '';
     try { blob = await this.readCanonicalBlob(); } catch { blob = ''; }
     if (!blob) throw new Error('No current Claude login found in Keychain.');
+    const fp = this.fingerprint(blob);
+    const meta = this.readMeta();
     const label = this.peekCurrentLabel();
-    const finalName = name ?? label?.email;
+
+    let finalName: string | undefined = name;
+    let matchedByFingerprint: AccountMeta | undefined;
+    if (!finalName) {
+      matchedByFingerprint = meta.find(a => a.fingerprint === fp);
+      finalName = matchedByFingerprint?.name;
+    }
+    if (!finalName) {
+      const email = label?.email;
+      const collision = email ? meta.find(a => a.name === email && a.fingerprint !== fp) : undefined;
+      if (collision) {
+        throw new Error(`The current login does not match saved account '${email}'. Its profile may be stale — wait for the Claude session to initialize, or pass an explicit name.`);
+      }
+      finalName = email;
+    }
     if (!finalName) throw new Error('Could not determine an account name; provide one explicitly.');
+
     await this.exec(['add-generic-password', '-U', '-s', STORE_SERVICE, '-a', finalName, '-w', blob]);
-    const entry: AccountMeta = {
-      name: finalName,
-      email: label?.email ?? finalName,
-      displayName: label?.displayName,
-      organizationName: label?.organizationName,
-      fingerprint: this.fingerprint(blob),
-      savedAt: this.now(),
-    };
-    this.writeMeta([...this.readMeta().filter(a => a.name !== finalName), entry]);
+    const entry: AccountMeta = matchedByFingerprint
+      ? {
+          name: finalName,
+          email: matchedByFingerprint.email,
+          displayName: matchedByFingerprint.displayName,
+          organizationName: matchedByFingerprint.organizationName,
+          fingerprint: fp,
+          savedAt: this.now(),
+        }
+      : {
+          name: finalName,
+          email: label?.email ?? finalName,
+          displayName: label?.displayName,
+          organizationName: label?.organizationName,
+          fingerprint: fp,
+          savedAt: this.now(),
+        };
+    this.writeMeta([...meta.filter(a => a.name !== finalName), entry]);
     return { ...entry, active: true };
   }
 

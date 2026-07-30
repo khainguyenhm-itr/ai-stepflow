@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, mkdirSync
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { createHash } from 'node:crypto';
-import { AccountManager } from '../../src/accountManager.js';
+import { AccountManager, type AccountMeta } from '../../src/accountManager.js';
 
 const fp = (s: string) => createHash('sha256').update(s).digest('hex');
 
@@ -109,6 +109,46 @@ test('saving the same name twice overwrites (refresh), not duplicates', async ()
   await m.saveCurrentAsAccount(); // canonical still BLOB-A
   const meta = JSON.parse(readFileSync(storePath(), 'utf8')).accounts;
   assert.equal(meta.length, 1);
+});
+
+test('saveCurrentAsAccount resolves by fingerprint after switchTo, preserving the other account (F1)', async () => {
+  mkdirSync(path.dirname(storePath()), { recursive: true });
+  writeFileSync(storePath(), JSON.stringify({ accounts: [
+    { name: 'a@x', email: 'a@x', fingerprint: fp('BLOB-A'), savedAt: 't' },
+    { name: 'b@y', email: 'b@y', fingerprint: fp('BLOB-B'), savedAt: 't' },
+  ] }));
+  writeFileSync(claudeJson(), JSON.stringify({ oauthAccount: { emailAddress: 'a@x' } })); // stale label from A
+  const fake = makeExec({ canonical: 'BLOB-B', store: { 'a@x': 'BLOB-A', 'b@y': 'BLOB-B' } });
+  const view = await mgr(fake).saveCurrentAsAccount();
+  assert.equal(view.name, 'b@y');
+  assert.equal(fake.store['a@x'], 'BLOB-A'); // A not clobbered
+  const meta = JSON.parse(readFileSync(storePath(), 'utf8')).accounts;
+  assert.equal(meta.length, 2);
+  const a = meta.find((m: AccountMeta) => m.name === 'a@x');
+  assert.equal(a.fingerprint, fp('BLOB-A'));
+});
+
+test('saveCurrentAsAccount throws on stale-email collision instead of overwriting a different saved account (F1)', async () => {
+  mkdirSync(path.dirname(storePath()), { recursive: true });
+  writeFileSync(storePath(), JSON.stringify({ accounts: [
+    { name: 'a@x', email: 'a@x', fingerprint: fp('BLOB-A'), savedAt: 't' },
+  ] }));
+  writeFileSync(claudeJson(), JSON.stringify({ oauthAccount: { emailAddress: 'a@x' } })); // stale
+  const fake = makeExec({ canonical: 'BLOB-C', store: { 'a@x': 'BLOB-A' } });
+  await assert.rejects(() => mgr(fake).saveCurrentAsAccount(), /does not match saved account/);
+  assert.equal(fake.store['a@x'], 'BLOB-A');
+});
+
+test('saveCurrentAsAccount with an explicit name still overwrites unconditionally (F1)', async () => {
+  mkdirSync(path.dirname(storePath()), { recursive: true });
+  writeFileSync(storePath(), JSON.stringify({ accounts: [
+    { name: 'a@x', email: 'a@x', fingerprint: fp('BLOB-A'), savedAt: 't' },
+  ] }));
+  writeFileSync(claudeJson(), JSON.stringify({ oauthAccount: { emailAddress: 'a@x' } }));
+  const fake = makeExec({ canonical: 'BLOB-C', store: { 'a@x': 'BLOB-A' } });
+  const view = await mgr(fake).saveCurrentAsAccount('a@x');
+  assert.equal(view.name, 'a@x');
+  assert.equal(fake.store['a@x'], 'BLOB-C');
 });
 
 test('switchTo writes the saved blob into the canonical Keychain slot', async () => {
