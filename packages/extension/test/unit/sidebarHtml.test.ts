@@ -37,3 +37,14 @@ test('the passed version is rendered into the header', () => {
   const html = getSidebarHtml(stubWebview(), { fsPath: '/ext' } as any, '1.2.3');
   assert.match(html, /v1\.2\.3/);
 });
+
+test('sidebar Settings includes the Claude Account switcher (select + save/remove)', () => {
+  const html = getSidebarHtml(stubWebview(), { fsPath: '/ext' } as any, '9.9.9');
+  assert.match(html, /id="account-select"/);
+  assert.match(html, /id="account-save-btn"/);
+  assert.match(html, /id="account-remove-btn"/);
+  // the client posts account messages
+  assert.match(html, /accountSwitch/);
+  assert.match(html, /accountSaveCurrent/);
+  assert.match(html, /accountRemove/);
+});

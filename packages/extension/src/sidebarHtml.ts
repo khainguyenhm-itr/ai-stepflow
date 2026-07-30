@@ -119,6 +119,7 @@ ${renderPaletteVars()}
     .gx-row { flex-direction: column; align-items: stretch; gap: 8px; }
     .gx-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
     .gx-ctl { display: flex; align-items: center; gap: 6px; }
+    .account-ctl { display: flex; align-items: center; gap: 6px; }
 
     /* ── section ── */
     .sec { margin-top: 8px; }
@@ -345,6 +346,17 @@ ${renderPaletteVars()}
           <span class="select-wrap sm"><select id="review-kit-select" class="input sm">
             <option value="">Default</option>
           </select></span>
+        </div>
+        <div class="setting-row" id="account-setting-row">
+          <div>
+            <div class="setting-label">Claude Account</div>
+            <div class="setting-desc">Active login — switching applies to all Claude on this machine</div>
+          </div>
+          <div class="account-ctl">
+            <span class="select-wrap sm"><select id="account-select" class="input sm"></select></span>
+            <button class="pill sm" id="account-save-btn" type="button" title="Save the current login as an account">&#43; Save</button>
+            <button class="pill sm" id="account-remove-btn" type="button" title="Remove the selected account">&#128465;</button>
+          </div>
         </div>
         <div class="setting-row gx-row" id="gitnexus-setting-row" style="display:none">
           <div class="gx-head">
@@ -1096,6 +1108,7 @@ ${renderPaletteVars()}
         const styleSelect = document.getElementById('ai-style-select');
         if (styleSelect && m.uiPrefs) styleSelect.value = m.uiPrefs['ai:responseStyle'] || 'default';
         renderReviewKits(m.reviewKits || [], (m.uiPrefs || {})['review:activeKit'] || '');
+        renderAccounts(m.accounts);
       } else if (m.type === 'mcp') {
         mcpReceived = true;
         setMcpData(m.mcp);
@@ -1134,6 +1147,35 @@ ${renderPaletteVars()}
 
   document.getElementById('review-kit-select').addEventListener('change', function() {
     vscode.postMessage({ type: 'savePref', key: 'review:activeKit', value: this.value });
+  });
+
+  // Populate the account switcher. accounts === null => unsupported platform (hide the row).
+  function renderAccounts(accounts) {
+    const row = document.getElementById('account-setting-row');
+    const sel = document.getElementById('account-select');
+    if (!row || !sel) return;
+    if (accounts == null) { row.style.display = 'none'; return; }
+    row.style.display = '';
+    if (!accounts.length) {
+      sel.innerHTML = '<option value="" disabled selected>No saved accounts</option>';
+      return;
+    }
+    const hasActive = accounts.some(a => a.active);
+    const placeholder = hasActive ? '' : '<option value="" disabled selected>&#8212; external login &#8212;</option>';
+    sel.innerHTML = placeholder + accounts.map(a =>
+      '<option value="' + esc(a.name) + '"' + (a.active ? ' selected' : '') + '>' + esc(a.email) + '</option>'
+    ).join('');
+  }
+
+  document.getElementById('account-select').addEventListener('change', function() {
+    if (this.value) vscode.postMessage({ type: 'accountSwitch', name: this.value });
+  });
+  document.getElementById('account-save-btn').addEventListener('click', function() {
+    vscode.postMessage({ type: 'accountSaveCurrent' });
+  });
+  document.getElementById('account-remove-btn').addEventListener('click', function() {
+    const sel = document.getElementById('account-select');
+    if (sel && sel.value) vscode.postMessage({ type: 'accountRemove', name: sel.value });
   });
 
   document.getElementById('gitnexus-analyze-btn').addEventListener('click', function() {
