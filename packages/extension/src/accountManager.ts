@@ -64,6 +64,9 @@ export class AccountManager {
   private readonly storePath: string;
   private readonly platform: NodeJS.Platform;
   private readonly now: () => string;
+  /** Per-process memory of the account currently logged in, so a later logout knows which saved
+   *  account to forget — by then the credential is gone and can't be re-identified by fingerprint. */
+  private lastActiveName: string | null = null;
 
   constructor(deps: AccountManagerDeps = {}) {
     this.exec = deps.exec ?? defaultExec;
@@ -225,6 +228,57 @@ export class AccountManager {
     } catch {
       return null; // stale-email collision or Keychain hiccup — skip quietly
     }
+  }
+
+  /**
+   * Prime the "active login" memory from the current Keychain/store without saving or changing
+   * anything, so a logout that happens before any ~/.claude.json change still knows what to forget.
+   * Safe to call at activation; a no-op off darwin, with no login, or when no saved account matches.
+   */
+  async noteActiveAccount(): Promise<void> {
+    if (!this.isSupported()) return;
+    let blob = '';
+    try { blob = await this.readCanonicalBlob(); } catch { return; }
+    if (!blob) return;
+    const fp = this.fingerprint(blob);
+    this.lastActiveName = this.readMeta().find(a => a.fingerprint === fp)?.name ?? this.lastActiveName;
+  }
+
+  /**
+   * Reconcile saved accounts with the live login on every ~/.claude.json change, from any window.
+   * Three transitions, so every open window stays in sync:
+   *   - logout (Keychain credential AND active profile both gone) → forget the account that was active;
+   *   - new login → snapshot it (auto-save) and remember it as active;
+   *   - switch / login-over (a known or freshly-saved login) → just remember the new active account.
+   * A login-over never clears both signals, so it never triggers a removal. Never throws — safe to
+   * call from a file watcher. Returns what changed so the caller can toast.
+   */
+  async reconcileOnChange(): Promise<{ autoSaved: AccountView | null; removed: string | null }> {
+    const nothing = { autoSaved: null, removed: null };
+    if (!this.isSupported()) return nothing;
+    let blob = '';
+    try { blob = await this.readCanonicalBlob(); } catch { blob = ''; }
+    const loggedIn = !!this.peekCurrentLabel();
+
+    // Logout: no credential and no active profile → forget the last-active account.
+    if (!blob && !loggedIn) {
+      const name = this.lastActiveName;
+      this.lastActiveName = null;
+      if (name && this.readMeta().some(a => a.name === name)) {
+        try { await this.removeAccount(name); return { autoSaved: null, removed: name }; } catch { return nothing; }
+      }
+      return nothing;
+    }
+
+    if (blob) {
+      const fp = this.fingerprint(blob);
+      const known = this.readMeta().find(a => a.fingerprint === fp);
+      if (known) { this.lastActiveName = known.name; return nothing; } // switch / already-saved login
+      const saved = await this.autoSaveIfNewLogin(); // new login → snapshot; never throws
+      if (saved) this.lastActiveName = saved.name;
+      return { autoSaved: saved, removed: null };
+    }
+    return nothing;
   }
 
   /** Make a saved account the active login by overwriting the canonical Keychain slot. */

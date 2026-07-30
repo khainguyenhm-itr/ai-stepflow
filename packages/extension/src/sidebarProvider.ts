@@ -185,9 +185,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             case 'accountSwitch':
               if (message.name) await this._actions.switchAccount(message.name);
               return;
-            case 'accountRemovePick':
-              await this._actions.pickAndRemoveAccount();
-              return;
           }
         } catch (e) {
           vscode.window.showErrorMessage(`ClaudeSteps: ${e instanceof Error ? e.message : String(e)}`);

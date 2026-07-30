@@ -380,22 +380,6 @@ export class SidebarActions {
     );
   }
 
-  /** Pick a saved account from a quick-pick and remove it (with confirmation). Invoked from the
-   *  "Remove an account…" entry inside the account switcher, replacing the standalone trash button. */
-  async pickAndRemoveAccount(): Promise<void> {
-    const accounts = await this.accounts.listAccounts();
-    if (!accounts.length) {
-      vscode.window.showInformationMessage('ClaudeSteps: no saved accounts to remove.');
-      return;
-    }
-    const picked = await vscode.window.showQuickPick(
-      accounts.map(a => ({ label: a.email, description: a.active ? 'active' : undefined, name: a.name })),
-      { placeHolder: 'Remove which saved account?' }
-    );
-    if (!picked) return;
-    await this.removeAccountAction(picked.name);
-  }
-
   /** Make a saved account the active login (global to the whole machine). */
   async switchAccount(name: string): Promise<void> {
     try {
@@ -405,14 +389,6 @@ export class SidebarActions {
     } catch (e) {
       vscode.window.showErrorMessage(`ClaudeSteps: ${e instanceof Error ? e.message : String(e)}`);
     }
-  }
-
-  /** Forget a saved account after confirmation. */
-  async removeAccountAction(name: string): Promise<void> {
-    const choice = await vscode.window.showWarningMessage(`Remove saved account '${name}'?`, { modal: true }, 'Remove');
-    if (choice !== 'Remove') return;
-    await this.accounts.removeAccount(name);
-    await this.refresh(false);
   }
 
   /** Deletes a run file, its report, and audit log entries after confirmation. */

@@ -1163,19 +1163,11 @@ ${renderPaletteVars()}
     const options = accounts.map(a =>
       '<option value="' + esc(a.name) + '"' + (a.active ? ' selected data-active="1"' : '') + '>' + esc(a.email) + '</option>'
     ).join('');
-    // A trailing action lives inside the dropdown itself (no separate trash button): picking it opens
-    // a remove picker, then the select is restored to the active account.
-    const removeEntry = '<option value="__remove__">&#128465; Remove an account&#8230;</option>';
-    sel.innerHTML = placeholder + options + removeEntry;
+    // Switch-only: there is no manual remove action — logging out of an account auto-removes it.
+    sel.innerHTML = placeholder + options;
   }
 
   document.getElementById('account-select').addEventListener('change', function() {
-    if (this.value === '__remove__') {
-      vscode.postMessage({ type: 'accountRemovePick' });
-      const active = Array.from(this.options).find(function(o) { return o.dataset.active === '1'; });
-      this.value = active ? active.value : '';
-      return;
-    }
     if (this.value) vscode.postMessage({ type: 'accountSwitch', name: this.value });
   });
 

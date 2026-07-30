@@ -56,7 +56,11 @@ function makeExec(opts: { canonical?: string | null; store?: Record<string, stri
       if (svc === 'Claude Code-credentials') canonical = w;
       return '';
     }
-    if (sub === 'delete-generic-password') { delete store[acct]; return ''; }
+    if (sub === 'delete-generic-password') {
+      if (svc === 'Claude Code-credentials') canonical = null; // models a Claude logout
+      else delete store[acct];
+      return '';
+    }
     return '';
   };
   return { exec, calls, store, get canonical() { return canonical; } };
@@ -316,4 +320,74 @@ test('listAccounts marks none active when the current login matches no saved acc
 test('listAccounts returns [] when there is no metadata', async () => {
   const fake = makeExec({ canonical: 'X' });
   assert.deepEqual(await mgr(fake).listAccounts(), []);
+});
+
+test('reconcileOnChange forgets the active account on logout (credential + profile gone)', async () => {
+  mkdirSync(path.dirname(storePath()), { recursive: true });
+  writeFileSync(storePath(), JSON.stringify({ accounts: [
+    { name: 'a@x', email: 'a@x', fingerprint: fp('BLOB-A'), savedAt: 't' },
+  ] }));
+  writeFileSync(claudeJson(), JSON.stringify({ oauthAccount: { emailAddress: 'a@x' } }));
+  const fake = makeExec({ canonical: 'BLOB-A', store: { 'a@x': 'BLOB-A' } });
+  const m = mgr(fake, { platform: 'darwin' });
+  await m.reconcileOnChange(); // observes a@x as the active login
+  // logout: Claude removes the credential and clears the profile
+  await fake.exec(['delete-generic-password', '-s', 'Claude Code-credentials', '-a', 'testuser']);
+  writeFileSync(claudeJson(), JSON.stringify({ numStartups: 1 }));
+  const res = await m.reconcileOnChange();
+  assert.equal(res.removed, 'a@x');
+  assert.equal(JSON.parse(readFileSync(storePath(), 'utf8')).accounts.length, 0);
+});
+
+test('reconcileOnChange does NOT remove on a login-over (switch to another account)', async () => {
+  mkdirSync(path.dirname(storePath()), { recursive: true });
+  writeFileSync(storePath(), JSON.stringify({ accounts: [
+    { name: 'a@x', email: 'a@x', fingerprint: fp('BLOB-A'), savedAt: 't' },
+    { name: 'b@y', email: 'b@y', fingerprint: fp('BLOB-B'), savedAt: 't' },
+  ] }));
+  writeFileSync(claudeJson(), JSON.stringify({ oauthAccount: { emailAddress: 'a@x' } }));
+  const fake = makeExec({ canonical: 'BLOB-A', store: { 'a@x': 'BLOB-A', 'b@y': 'BLOB-B' } });
+  const m = mgr(fake, { platform: 'darwin' });
+  await m.reconcileOnChange(); // active a@x
+  // login-over: a different account becomes active; the credential is never gone
+  await fake.exec(['add-generic-password', '-U', '-s', 'Claude Code-credentials', '-a', 'testuser', '-w', 'BLOB-B']);
+  writeFileSync(claudeJson(), JSON.stringify({ oauthAccount: { emailAddress: 'b@y' } }));
+  const res = await m.reconcileOnChange();
+  assert.equal(res.removed, null);
+  assert.equal(JSON.parse(readFileSync(storePath(), 'utf8')).accounts.length, 2);
+});
+
+test('reconcileOnChange auto-saves a brand-new login', async () => {
+  writeFileSync(claudeJson(), JSON.stringify({ oauthAccount: { emailAddress: 'new@itrvn.com' } }));
+  const fake = makeExec({ canonical: 'BLOB-NEW' });
+  const res = await mgr(fake, { platform: 'darwin' }).reconcileOnChange();
+  assert.equal(res.autoSaved?.email, 'new@itrvn.com');
+  assert.equal(fake.store['new@itrvn.com'], 'BLOB-NEW');
+});
+
+test('reconcileOnChange removes nothing on logout when no active account was ever observed', async () => {
+  mkdirSync(path.dirname(storePath()), { recursive: true });
+  writeFileSync(storePath(), JSON.stringify({ accounts: [
+    { name: 'a@x', email: 'a@x', fingerprint: fp('BLOB-A'), savedAt: 't' },
+  ] }));
+  writeFileSync(claudeJson(), JSON.stringify({ numStartups: 1 })); // already logged out
+  const fake = makeExec({ canonical: null });
+  const res = await mgr(fake, { platform: 'darwin' }).reconcileOnChange();
+  assert.equal(res.removed, null);
+  assert.equal(JSON.parse(readFileSync(storePath(), 'utf8')).accounts.length, 1);
+});
+
+test('noteActiveAccount seeds the active account so a later logout removes it', async () => {
+  mkdirSync(path.dirname(storePath()), { recursive: true });
+  writeFileSync(storePath(), JSON.stringify({ accounts: [
+    { name: 'a@x', email: 'a@x', fingerprint: fp('BLOB-A'), savedAt: 't' },
+  ] }));
+  writeFileSync(claudeJson(), JSON.stringify({ oauthAccount: { emailAddress: 'a@x' } }));
+  const fake = makeExec({ canonical: 'BLOB-A', store: { 'a@x': 'BLOB-A' } });
+  const m = mgr(fake, { platform: 'darwin' });
+  await m.noteActiveAccount(); // seed without any prior reconcile
+  await fake.exec(['delete-generic-password', '-s', 'Claude Code-credentials', '-a', 'testuser']);
+  writeFileSync(claudeJson(), JSON.stringify({}));
+  const res = await m.reconcileOnChange();
+  assert.equal(res.removed, 'a@x');
 });

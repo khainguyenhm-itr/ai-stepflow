@@ -40,39 +40,3 @@ test('switchAccount swaps the login, notifies, and refreshes', async () => {
   assert.equal(refreshed(), 1);
   assert.equal(recorder.infoMessages.length, 1);
 });
-
-test('pickAndRemoveAccount informs and does nothing when there are no saved accounts', async () => {
-  const acct = fakeAccounts([]);
-  const { actions, refreshed } = makeActions(acct);
-  await actions.pickAndRemoveAccount();
-  assert.deepEqual(acct.calls, []);
-  assert.equal(recorder.infoMessages.length, 1);
-  assert.equal(refreshed(), 0);
-});
-
-test('pickAndRemoveAccount removes the picked account after the user confirms', async () => {
-  const acct = fakeAccounts([{ name: 'work@x', email: 'work@x', savedAt: 't', active: false }]);
-  const { actions, refreshed } = makeActions(acct);
-  recorder.quickPickResult = { name: 'work@x' };
-  recorder.warnResult = 'Remove'; // confirm
-  await actions.pickAndRemoveAccount();
-  assert.deepEqual(acct.calls, ['remove:work@x']);
-  assert.equal(refreshed(), 1);
-});
-
-test('pickAndRemoveAccount does nothing when the picker is dismissed', async () => {
-  const acct = fakeAccounts([{ name: 'work@x', email: 'work@x', savedAt: 't', active: false }]);
-  const { actions } = makeActions(acct);
-  recorder.quickPickResult = undefined; // dismissed
-  await actions.pickAndRemoveAccount();
-  assert.deepEqual(acct.calls, []);
-});
-
-test('pickAndRemoveAccount does not remove when the confirm is declined', async () => {
-  const acct = fakeAccounts([{ name: 'work@x', email: 'work@x', savedAt: 't', active: false }]);
-  const { actions } = makeActions(acct);
-  recorder.quickPickResult = { name: 'work@x' };
-  recorder.warnResult = undefined; // declined / dismissed confirm
-  await actions.pickAndRemoveAccount();
-  assert.deepEqual(acct.calls, []);
-});

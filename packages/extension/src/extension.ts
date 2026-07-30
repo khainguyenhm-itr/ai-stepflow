@@ -106,19 +106,36 @@ export function activate(context: vscode.ExtensionContext) {
     // when the active login is one we have not saved yet, snapshot it silently (no button needed). A
     // switch or an already-known login is a no-op (autoSaveIfNewLogin skips by fingerprint).
     if (accountManager.isSupported()) {
-      const autoSaveAccount = debounce(() => {
-        void accountManager.autoSaveIfNewLogin().then(view => {
-          if (!view) return;
-          vscode.window.showInformationMessage(`ClaudeSteps: auto-saved Claude account ${view.email}.`);
-          void sidebar.refresh(false);
-        }).catch(() => undefined);
+      // Seed the active-login memory so a logout happening before any ~/.claude.json change still
+      // knows which saved account to forget.
+      void accountManager.noteActiveAccount();
+      // On every ~/.claude.json change (login, switch, or logout), reconcile saved accounts and
+      // ALWAYS refresh the sidebar — so the active highlight, a newly auto-saved account, and a
+      // logout removal all propagate to *every* open window, not just the one that changed.
+      const syncAccounts = debounce(() => {
+        void accountManager.reconcileOnChange().then(({ autoSaved, removed }) => {
+          if (autoSaved) vscode.window.showInformationMessage(`ClaudeSteps: auto-saved Claude account ${autoSaved.email}.`);
+          if (removed) vscode.window.showInformationMessage(`ClaudeSteps: logged out — removed saved account ${removed}.`);
+        }).catch(() => undefined).finally(() => void sidebar.refresh(false));
       }, 500);
       const claudeJsonWatcher = vscode.workspace.createFileSystemWatcher(
         new vscode.RelativePattern(vscode.Uri.file(homedir()), '.claude.json')
       );
-      claudeJsonWatcher.onDidCreate(autoSaveAccount);
-      claudeJsonWatcher.onDidChange(autoSaveAccount);
+      claudeJsonWatcher.onDidCreate(syncAccounts);
+      claudeJsonWatcher.onDidChange(syncAccounts);
+      claudeJsonWatcher.onDidDelete(syncAccounts);
       context.subscriptions.push(claudeJsonWatcher);
+
+      // The saved-account store lives in globalStorage, shared by every window. Watch it so a save
+      // or removal done in one window repaints the switcher in all the others.
+      const storeWatcher = vscode.workspace.createFileSystemWatcher(
+        new vscode.RelativePattern(vscode.Uri.file(context.globalStorageUri.fsPath), 'claude-accounts.json')
+      );
+      const refreshOnStore = debounce(() => void sidebar.refresh(false), 300);
+      storeWatcher.onDidCreate(refreshOnStore);
+      storeWatcher.onDidChange(refreshOnStore);
+      storeWatcher.onDidDelete(refreshOnStore);
+      context.subscriptions.push(storeWatcher);
     }
 
     // Re-attach the cockpit after a window reload instead of showing a dead panel.
