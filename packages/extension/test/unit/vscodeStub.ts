@@ -34,6 +34,12 @@ export const recorder = {
   infoMessages: [] as string[],
   errorMessages: [] as string[],
   warnMessages: [] as string[],
+  /** What `window.showWarningMessage` resolves to (e.g. the button the user clicked). */
+  warnResult: undefined as unknown,
+  /** What `window.showQuickPick` resolves to (the picked item, or undefined for a dismissal). */
+  quickPickResult: undefined as unknown,
+  /** Every `showQuickPick(items, …)` call's items, in order. */
+  quickPicks: [] as unknown[][],
   /** Values returned by `workspace.getConfiguration('claudesteps').get(key, default)`. */
   config: new Map<string, unknown>(),
   /** What `window.createTerminal` attaches as `shellIntegration` (undefined = unavailable). */
@@ -46,6 +52,9 @@ export const recorder = {
     this.infoMessages = [];
     this.errorMessages = [];
     this.warnMessages = [];
+    this.warnResult = undefined;
+    this.quickPickResult = undefined;
+    this.quickPicks = [];
     this.config = new Map();
     this.shellIntegrationForNewTerminals = undefined;
     this.shell = '/bin/zsh';
@@ -129,9 +138,13 @@ export const window = {
     recorder.errorMessages.push(message);
     return Promise.resolve(undefined);
   },
-  showWarningMessage(message: string): Promise<undefined> {
+  showWarningMessage(message: string): Promise<unknown> {
     recorder.warnMessages.push(message);
-    return Promise.resolve(undefined);
+    return Promise.resolve(recorder.warnResult);
+  },
+  showQuickPick(items: unknown[]): Promise<unknown> {
+    recorder.quickPicks.push(items);
+    return Promise.resolve(recorder.quickPickResult);
   },
   onDidEndTerminalShellExecution: noopEvent(),
   onDidCloseTerminal: noopEvent(),

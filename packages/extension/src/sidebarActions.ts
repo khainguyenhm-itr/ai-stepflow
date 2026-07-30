@@ -380,20 +380,20 @@ export class SidebarActions {
     );
   }
 
-  /** Save the current login as an account, labeled by the active email when available. */
-  async saveCurrentAccount(): Promise<void> {
-    let explicitName: string | undefined;
-    if (!this.accounts.peekCurrentLabel()?.email) {
-      explicitName = await vscode.window.showInputBox({ prompt: 'Name this Claude account (no email detected)', placeHolder: 'e.g. work@company.com' });
-      if (!explicitName) return;
+  /** Pick a saved account from a quick-pick and remove it (with confirmation). Invoked from the
+   *  "Remove an account…" entry inside the account switcher, replacing the standalone trash button. */
+  async pickAndRemoveAccount(): Promise<void> {
+    const accounts = await this.accounts.listAccounts();
+    if (!accounts.length) {
+      vscode.window.showInformationMessage('ClaudeSteps: no saved accounts to remove.');
+      return;
     }
-    try {
-      const view = await this.accounts.saveCurrentAsAccount(explicitName); // undefined when email detected → fingerprint/email precedence runs
-      vscode.window.showInformationMessage(`ClaudeSteps: saved account ${view.email}.`);
-      await this.refresh(false);
-    } catch (e) {
-      vscode.window.showErrorMessage(`ClaudeSteps: ${e instanceof Error ? e.message : String(e)}`);
-    }
+    const picked = await vscode.window.showQuickPick(
+      accounts.map(a => ({ label: a.email, description: a.active ? 'active' : undefined, name: a.name })),
+      { placeHolder: 'Remove which saved account?' }
+    );
+    if (!picked) return;
+    await this.removeAccountAction(picked.name);
   }
 
   /** Make a saved account the active login (global to the whole machine). */

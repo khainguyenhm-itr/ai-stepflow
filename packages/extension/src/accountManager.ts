@@ -28,6 +28,9 @@ export interface AccountMeta {
   organizationName?: string;
   fingerprint: string;
   savedAt: string;
+  /** Full `oauthAccount` object snapshotted from ~/.claude.json at save time, so switchTo can
+   *  restore the profile label Claude Code shows in `/status` (the Keychain swap alone leaves it stale). */
+  oauthAccount?: Record<string, unknown>;
 }
 
 export interface AccountView {
@@ -87,6 +90,40 @@ export class AccountManager {
     }
   }
 
+  /** Raw `oauthAccount` object from ~/.claude.json (the full profile, not just the label). */
+  protected peekCurrentOauthAccount(): Record<string, unknown> | undefined {
+    try {
+      const d = JSON.parse(readFileSync(this.claudeJsonPath, 'utf8'));
+      const oa = d?.oauthAccount;
+      return oa && typeof oa === 'object' ? oa : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Set (or, when `snapshot` is undefined, remove) `oauthAccount` in ~/.claude.json, preserving every
+   * other key. Best-effort: a missing snapshot leaves nothing to write when the file is absent, and a
+   * malformed file is left untouched rather than risking corruption. The Keychain swap has already
+   * succeeded by the time this runs.
+   */
+  protected applyOauthAccount(snapshot: Record<string, unknown> | undefined): void {
+    let d: Record<string, unknown>;
+    try {
+      d = JSON.parse(readFileSync(this.claudeJsonPath, 'utf8'));
+      if (!d || typeof d !== 'object') return;
+    } catch {
+      if (!snapshot) return; // no file and nothing to restore
+      d = {};
+    }
+    if (snapshot) d.oauthAccount = snapshot;
+    else delete d.oauthAccount;
+    try {
+      mkdirSync(dirname(this.claudeJsonPath), { recursive: true });
+      writeFileSync(this.claudeJsonPath, JSON.stringify(d, null, 2));
+    } catch { /* best-effort: leave ~/.claude.json as-is */ }
+  }
+
   protected fingerprint(blob: string): string {
     return createHash('sha256').update(blob).digest('hex');
   }
@@ -137,6 +174,15 @@ export class AccountManager {
     if (!finalName) throw new Error('Could not determine an account name; provide one explicitly.');
 
     await this.exec(['add-generic-password', '-U', '-s', STORE_SERVICE, '-a', finalName, '-w', blob]);
+    const email = matchedByFingerprint ? matchedByFingerprint.email : (label?.email ?? finalName);
+    // Trust ~/.claude.json's profile only when its email identifies the account we're saving; a stale
+    // label left over from a previous switch must not be captured under this account (F1). When it
+    // doesn't match, fall back to any snapshot already stored for this account.
+    const current = this.peekCurrentOauthAccount();
+    const currentEmail = typeof current?.emailAddress === 'string' ? current.emailAddress : undefined;
+    const oauthAccount = current && (currentEmail === email || currentEmail === finalName)
+      ? current
+      : matchedByFingerprint?.oauthAccount;
     const entry: AccountMeta = matchedByFingerprint
       ? {
           name: finalName,
@@ -145,6 +191,7 @@ export class AccountManager {
           organizationName: matchedByFingerprint.organizationName,
           fingerprint: fp,
           savedAt: this.now(),
+          oauthAccount,
         }
       : {
           name: finalName,
@@ -153,9 +200,31 @@ export class AccountManager {
           organizationName: label?.organizationName,
           fingerprint: fp,
           savedAt: this.now(),
+          oauthAccount,
         };
     this.writeMeta([...meta.filter(a => a.name !== finalName), entry]);
     return { ...entry, active: true };
+  }
+
+  /**
+   * Auto-save hook: if the current login is a *new* one (its fingerprint is not already saved) and
+   * carries an email to name it, snapshot it as an account. Returns the saved view, or null when there
+   * is nothing to do — unsupported platform, no login, an already-known login, a nameless login, or a
+   * save that the collision guard rejected. Never throws, so it is safe to call from a file watcher.
+   */
+  async autoSaveIfNewLogin(): Promise<AccountView | null> {
+    if (!this.isSupported()) return null;
+    let blob = '';
+    try { blob = await this.readCanonicalBlob(); } catch { return null; }
+    if (!blob) return null;
+    const fp = this.fingerprint(blob);
+    if (this.readMeta().some(a => a.fingerprint === fp)) return null; // already saved / just switched
+    if (!this.peekCurrentLabel()?.email) return null; // no email to name it → leave to manual naming
+    try {
+      return await this.saveCurrentAsAccount();
+    } catch {
+      return null; // stale-email collision or Keychain hiccup — skip quietly
+    }
   }
 
   /** Make a saved account the active login by overwriting the canonical Keychain slot. */
@@ -168,6 +237,11 @@ export class AccountManager {
     }
     if (!blob) throw new Error(`Saved account '${name}' has no stored credential.`);
     await this.exec(['add-generic-password', '-U', '-s', CLAUDE_SERVICE, '-a', this.osUsername, '-w', blob]);
+    // The Keychain swap changes the token but not the profile Claude Code shows in `/status`.
+    // Restore the saved oauthAccount so the label matches; clear it (forcing a refetch) when the
+    // account predates snapshotting, rather than leaving the previous account's stale label.
+    const saved = this.readMeta().find(a => a.name === name);
+    this.applyOauthAccount(saved?.oauthAccount);
   }
 
   /** Forget a saved account (Keychain item + metadata). Safe if the item is already gone. */

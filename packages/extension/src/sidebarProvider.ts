@@ -182,14 +182,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
               if (st.currentGroup) await this._actions.openGitnexusFile(join(homedir(), '.gitnexus', 'groups', st.currentGroup, 'group.yaml'), 'group config not found.');
               return;
             }
-            case 'accountSaveCurrent':
-              await this._actions.saveCurrentAccount();
-              return;
             case 'accountSwitch':
               if (message.name) await this._actions.switchAccount(message.name);
               return;
-            case 'accountRemove':
-              if (message.name) await this._actions.removeAccountAction(message.name);
+            case 'accountRemovePick':
+              await this._actions.pickAndRemoveAccount();
               return;
           }
         } catch (e) {

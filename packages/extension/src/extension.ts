@@ -102,6 +102,25 @@ export function activate(context: vscode.ExtensionContext) {
     gxWatcher.onDidDelete(refreshSidebarOnly);
     context.subscriptions.push(gxWatcher);
 
+    // Auto-save a *new* Claude login as a switchable account. Claude rewrites ~/.claude.json on login;
+    // when the active login is one we have not saved yet, snapshot it silently (no button needed). A
+    // switch or an already-known login is a no-op (autoSaveIfNewLogin skips by fingerprint).
+    if (accountManager.isSupported()) {
+      const autoSaveAccount = debounce(() => {
+        void accountManager.autoSaveIfNewLogin().then(view => {
+          if (!view) return;
+          vscode.window.showInformationMessage(`ClaudeSteps: auto-saved Claude account ${view.email}.`);
+          void sidebar.refresh(false);
+        }).catch(() => undefined);
+      }, 500);
+      const claudeJsonWatcher = vscode.workspace.createFileSystemWatcher(
+        new vscode.RelativePattern(vscode.Uri.file(homedir()), '.claude.json')
+      );
+      claudeJsonWatcher.onDidCreate(autoSaveAccount);
+      claudeJsonWatcher.onDidChange(autoSaveAccount);
+      context.subscriptions.push(claudeJsonWatcher);
+    }
+
     // Re-attach the cockpit after a window reload instead of showing a dead panel.
     context.subscriptions.push(
       vscode.window.registerWebviewPanelSerializer('claudeStepsCockpit', {

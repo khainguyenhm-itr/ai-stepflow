@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -163,6 +163,120 @@ test('switchTo writes the saved blob into the canonical Keychain slot', async ()
 test('switchTo throws when the saved account is missing', async () => {
   const fake = makeExec({ canonical: 'OLD', store: {} });
   await assert.rejects(() => mgr(fake).switchTo('ghost'), /not found/);
+});
+
+test('saveCurrentAsAccount snapshots the full oauthAccount object into metadata', async () => {
+  const oauth = { emailAddress: 'ba@itrvn.com', accountUuid: 'uuid-b', organizationUuid: 'org-b', displayName: 'BA', organizationName: 'ITR' };
+  writeFileSync(claudeJson(), JSON.stringify({ oauthAccount: oauth }));
+  const fake = makeExec({ canonical: 'BLOB-1' });
+  await mgr(fake).saveCurrentAsAccount();
+  const meta = JSON.parse(readFileSync(storePath(), 'utf8')).accounts;
+  assert.deepEqual(meta[0].oauthAccount, oauth);
+});
+
+test('saveCurrentAsAccount backfills oauthAccount for a previously-saved account when the current label matches', async () => {
+  const oauthB = { emailAddress: 'b@y', accountUuid: 'uuid-b' };
+  mkdirSync(path.dirname(storePath()), { recursive: true });
+  writeFileSync(storePath(), JSON.stringify({ accounts: [
+    { name: 'b@y', email: 'b@y', fingerprint: fp('BLOB-B'), savedAt: 't' }, // no oauthAccount yet
+  ] }));
+  writeFileSync(claudeJson(), JSON.stringify({ oauthAccount: oauthB })); // label matches the account
+  const fake = makeExec({ canonical: 'BLOB-B', store: { 'b@y': 'BLOB-B' } });
+  await mgr(fake).saveCurrentAsAccount();
+  const meta = JSON.parse(readFileSync(storePath(), 'utf8')).accounts;
+  assert.deepEqual(meta[0].oauthAccount, oauthB);
+});
+
+test('saveCurrentAsAccount keeps the existing snapshot when the current label is stale (mismatched)', async () => {
+  const good = { emailAddress: 'b@y', accountUuid: 'uuid-b' };
+  mkdirSync(path.dirname(storePath()), { recursive: true });
+  writeFileSync(storePath(), JSON.stringify({ accounts: [
+    { name: 'b@y', email: 'b@y', fingerprint: fp('BLOB-B'), savedAt: 't', oauthAccount: good },
+  ] }));
+  writeFileSync(claudeJson(), JSON.stringify({ oauthAccount: { emailAddress: 'a@x' } })); // stale, different account
+  const fake = makeExec({ canonical: 'BLOB-B', store: { 'b@y': 'BLOB-B' } });
+  await mgr(fake).saveCurrentAsAccount();
+  const meta = JSON.parse(readFileSync(storePath(), 'utf8')).accounts;
+  assert.deepEqual(meta[0].oauthAccount, good); // NOT overwritten with the stale label
+});
+
+test('switchTo restores the saved oauthAccount into ~/.claude.json, preserving other keys', async () => {
+  const oauthB = { emailAddress: 'b@y', accountUuid: 'uuid-b', displayName: 'B', organizationName: 'ORG' };
+  mkdirSync(path.dirname(storePath()), { recursive: true });
+  writeFileSync(storePath(), JSON.stringify({ accounts: [
+    { name: 'b@y', email: 'b@y', fingerprint: fp('WORK'), savedAt: 't', oauthAccount: oauthB },
+  ] }));
+  writeFileSync(claudeJson(), JSON.stringify({ oauthAccount: { emailAddress: 'a@x' }, numStartups: 42 }));
+  const fake = makeExec({ canonical: 'OLD', store: { 'b@y': 'WORK' } });
+  await mgr(fake).switchTo('b@y');
+  const d = JSON.parse(readFileSync(claudeJson(), 'utf8'));
+  assert.deepEqual(d.oauthAccount, oauthB);
+  assert.equal(d.numStartups, 42); // unrelated keys preserved
+});
+
+test('switchTo clears a stale oauthAccount when the saved account has no snapshot', async () => {
+  mkdirSync(path.dirname(storePath()), { recursive: true });
+  writeFileSync(storePath(), JSON.stringify({ accounts: [
+    { name: 'work', email: 'work', fingerprint: fp('WORK'), savedAt: 't' },
+  ] }));
+  writeFileSync(claudeJson(), JSON.stringify({ oauthAccount: { emailAddress: 'stale@x' }, numStartups: 7 }));
+  const fake = makeExec({ canonical: 'OLD', store: { 'work': 'WORK' } });
+  await mgr(fake).switchTo('work');
+  const d = JSON.parse(readFileSync(claudeJson(), 'utf8'));
+  assert.equal('oauthAccount' in d, false); // cleared so Claude refetches
+  assert.equal(d.numStartups, 7);
+});
+
+test('switchTo does not throw when ~/.claude.json is absent', async () => {
+  const fake = makeExec({ canonical: 'OLD', store: { 'work': 'WORK' } });
+  await mgr(fake).switchTo('work'); // claudeJsonPath points at a non-existent file
+  assert.equal(fake.canonical, 'WORK');
+});
+
+test('autoSaveIfNewLogin returns null on non-darwin', async () => {
+  const fake = makeExec({ canonical: 'BLOB-NEW' });
+  const view = await mgr(fake, { platform: 'linux' }).autoSaveIfNewLogin();
+  assert.equal(view, null);
+});
+
+test('autoSaveIfNewLogin returns null when there is no current login', async () => {
+  const fake = makeExec({ canonical: null });
+  assert.equal(await mgr(fake).autoSaveIfNewLogin(), null);
+});
+
+test('autoSaveIfNewLogin skips a login whose fingerprint is already saved', async () => {
+  mkdirSync(path.dirname(storePath()), { recursive: true });
+  writeFileSync(storePath(), JSON.stringify({ accounts: [
+    { name: 'ba@itrvn.com', email: 'ba@itrvn.com', fingerprint: fp('BLOB-B'), savedAt: 't' },
+  ] }));
+  writeFileSync(claudeJson(), JSON.stringify({ oauthAccount: { emailAddress: 'ba@itrvn.com' } }));
+  const fake = makeExec({ canonical: 'BLOB-B', store: { 'ba@itrvn.com': 'BLOB-B' } });
+  assert.equal(await mgr(fake).autoSaveIfNewLogin(), null);
+});
+
+test('autoSaveIfNewLogin returns null for a new login with no email to name it', async () => {
+  writeFileSync(claudeJson(), JSON.stringify({ nope: 1 })); // no oauthAccount email
+  const fake = makeExec({ canonical: 'BLOB-NEW' });
+  assert.equal(await mgr(fake).autoSaveIfNewLogin(), null);
+});
+
+test('autoSaveIfNewLogin saves a new login and returns its view', async () => {
+  writeFileSync(claudeJson(), JSON.stringify({ oauthAccount: { emailAddress: 'new@itrvn.com', displayName: 'New' } }));
+  const fake = makeExec({ canonical: 'BLOB-NEW' });
+  const view = await mgr(fake).autoSaveIfNewLogin();
+  assert.equal(view?.email, 'new@itrvn.com');
+  assert.equal(fake.store['new@itrvn.com'], 'BLOB-NEW');
+});
+
+test('autoSaveIfNewLogin swallows a save error (e.g. stale-email collision) and returns null', async () => {
+  mkdirSync(path.dirname(storePath()), { recursive: true });
+  writeFileSync(storePath(), JSON.stringify({ accounts: [
+    { name: 'a@x', email: 'a@x', fingerprint: fp('BLOB-A'), savedAt: 't' },
+  ] }));
+  writeFileSync(claudeJson(), JSON.stringify({ oauthAccount: { emailAddress: 'a@x' } })); // stale label, new blob
+  const fake = makeExec({ canonical: 'BLOB-NEW', store: { 'a@x': 'BLOB-A' } });
+  assert.equal(await mgr(fake).autoSaveIfNewLogin(), null);
+  assert.equal(fake.store['a@x'], 'BLOB-A'); // untouched
 });
 
 test('removeAccount deletes the Keychain item and the metadata entry', async () => {

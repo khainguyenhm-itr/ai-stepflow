@@ -5,18 +5,18 @@ import { SidebarActions } from '../../src/sidebarActions.js';
 
 beforeEach(() => recorder.reset());
 
+type AcctView = { name: string; email: string; savedAt: string; active: boolean };
+
 // Minimal AccountManager double — only the methods SidebarActions calls.
-function fakeAccounts() {
+function fakeAccounts(list: AcctView[] = []) {
   const calls: string[] = [];
   return {
     calls,
     isSupported: () => true,
     peekCurrentLabel: () => ({ email: 'ba@itrvn.com' }),
     async switchTo(name: string) { calls.push('switchTo:' + name); },
-    async saveCurrentAsAccount(name?: string) { calls.push('save:' + (name ?? '<none>')); return { name: name ?? 'ba@itrvn.com', email: 'ba@itrvn.com', savedAt: 't', active: true }; },
     async removeAccount(name: string) { calls.push('remove:' + name); },
-    async listAccounts() { return []; },
-    // no reLogin in v1
+    async listAccounts() { return list; },
   };
 }
 
@@ -41,20 +41,38 @@ test('switchAccount swaps the login, notifies, and refreshes', async () => {
   assert.equal(recorder.infoMessages.length, 1);
 });
 
-test('saveCurrentAccount uses the detected email (no input box needed)', async () => {
-  const acct = fakeAccounts();
+test('pickAndRemoveAccount informs and does nothing when there are no saved accounts', async () => {
+  const acct = fakeAccounts([]);
   const { actions, refreshed } = makeActions(acct);
-  await actions.saveCurrentAccount();
-  assert.deepEqual(acct.calls, ['save:<none>']);
+  await actions.pickAndRemoveAccount();
+  assert.deepEqual(acct.calls, []);
+  assert.equal(recorder.infoMessages.length, 1);
+  assert.equal(refreshed(), 0);
+});
+
+test('pickAndRemoveAccount removes the picked account after the user confirms', async () => {
+  const acct = fakeAccounts([{ name: 'work@x', email: 'work@x', savedAt: 't', active: false }]);
+  const { actions, refreshed } = makeActions(acct);
+  recorder.quickPickResult = { name: 'work@x' };
+  recorder.warnResult = 'Remove'; // confirm
+  await actions.pickAndRemoveAccount();
+  assert.deepEqual(acct.calls, ['remove:work@x']);
   assert.equal(refreshed(), 1);
 });
 
-test('saveCurrentAccount does not force the detected email as an explicit name (F1 regression guard)', async () => {
-  const acct = fakeAccounts();
+test('pickAndRemoveAccount does nothing when the picker is dismissed', async () => {
+  const acct = fakeAccounts([{ name: 'work@x', email: 'work@x', savedAt: 't', active: false }]);
   const { actions } = makeActions(acct);
-  await actions.saveCurrentAccount();
-  // Must call saveCurrentAsAccount() with NO argument when an email is detected,
-  // so the accountManager's fingerprint-match / collision-guard precedence runs
-  // instead of the unconditional-overwrite explicit-name path.
-  assert.deepEqual(acct.calls, ['save:<none>']);
+  recorder.quickPickResult = undefined; // dismissed
+  await actions.pickAndRemoveAccount();
+  assert.deepEqual(acct.calls, []);
+});
+
+test('pickAndRemoveAccount does not remove when the confirm is declined', async () => {
+  const acct = fakeAccounts([{ name: 'work@x', email: 'work@x', savedAt: 't', active: false }]);
+  const { actions } = makeActions(acct);
+  recorder.quickPickResult = { name: 'work@x' };
+  recorder.warnResult = undefined; // declined / dismissed confirm
+  await actions.pickAndRemoveAccount();
+  assert.deepEqual(acct.calls, []);
 });

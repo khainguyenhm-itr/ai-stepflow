@@ -354,8 +354,6 @@ ${renderPaletteVars()}
           </div>
           <div class="account-ctl">
             <span class="select-wrap sm"><select id="account-select" class="input sm"></select></span>
-            <button class="pill sm" id="account-save-btn" type="button" title="Save the current login as an account">&#43; Save</button>
-            <button class="pill sm" id="account-remove-btn" type="button" title="Remove the selected account">&#128465;</button>
           </div>
         </div>
         <div class="setting-row gx-row" id="gitnexus-setting-row" style="display:none">
@@ -1162,20 +1160,23 @@ ${renderPaletteVars()}
     }
     const hasActive = accounts.some(a => a.active);
     const placeholder = hasActive ? '' : '<option value="" disabled selected>&#8212; external login &#8212;</option>';
-    sel.innerHTML = placeholder + accounts.map(a =>
-      '<option value="' + esc(a.name) + '"' + (a.active ? ' selected' : '') + '>' + esc(a.email) + '</option>'
+    const options = accounts.map(a =>
+      '<option value="' + esc(a.name) + '"' + (a.active ? ' selected data-active="1"' : '') + '>' + esc(a.email) + '</option>'
     ).join('');
+    // A trailing action lives inside the dropdown itself (no separate trash button): picking it opens
+    // a remove picker, then the select is restored to the active account.
+    const removeEntry = '<option value="__remove__">&#128465; Remove an account&#8230;</option>';
+    sel.innerHTML = placeholder + options + removeEntry;
   }
 
   document.getElementById('account-select').addEventListener('change', function() {
+    if (this.value === '__remove__') {
+      vscode.postMessage({ type: 'accountRemovePick' });
+      const active = Array.from(this.options).find(function(o) { return o.dataset.active === '1'; });
+      this.value = active ? active.value : '';
+      return;
+    }
     if (this.value) vscode.postMessage({ type: 'accountSwitch', name: this.value });
-  });
-  document.getElementById('account-save-btn').addEventListener('click', function() {
-    vscode.postMessage({ type: 'accountSaveCurrent' });
-  });
-  document.getElementById('account-remove-btn').addEventListener('click', function() {
-    const sel = document.getElementById('account-select');
-    if (sel && sel.value) vscode.postMessage({ type: 'accountRemove', name: sel.value });
   });
 
   document.getElementById('gitnexus-analyze-btn').addEventListener('click', function() {
