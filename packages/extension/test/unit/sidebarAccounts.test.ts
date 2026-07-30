@@ -13,7 +13,7 @@ function fakeAccounts() {
     isSupported: () => true,
     peekCurrentLabel: () => ({ email: 'ba@itrvn.com' }),
     async switchTo(name: string) { calls.push('switchTo:' + name); },
-    async saveCurrentAsAccount(name?: string) { calls.push('save:' + (name ?? '')); return { name: name ?? 'ba@itrvn.com', email: 'ba@itrvn.com', savedAt: 't', active: true }; },
+    async saveCurrentAsAccount(name?: string) { calls.push('save:' + (name ?? '<none>')); return { name: name ?? 'ba@itrvn.com', email: 'ba@itrvn.com', savedAt: 't', active: true }; },
     async removeAccount(name: string) { calls.push('remove:' + name); },
     async listAccounts() { return []; },
     // no reLogin in v1
@@ -45,6 +45,16 @@ test('saveCurrentAccount uses the detected email (no input box needed)', async (
   const acct = fakeAccounts();
   const { actions, refreshed } = makeActions(acct);
   await actions.saveCurrentAccount();
-  assert.deepEqual(acct.calls, ['save:ba@itrvn.com']);
+  assert.deepEqual(acct.calls, ['save:<none>']);
   assert.equal(refreshed(), 1);
+});
+
+test('saveCurrentAccount does not force the detected email as an explicit name (F1 regression guard)', async () => {
+  const acct = fakeAccounts();
+  const { actions } = makeActions(acct);
+  await actions.saveCurrentAccount();
+  // Must call saveCurrentAsAccount() with NO argument when an email is detected,
+  // so the accountManager's fingerprint-match / collision-guard precedence runs
+  // instead of the unconditional-overwrite explicit-name path.
+  assert.deepEqual(acct.calls, ['save:<none>']);
 });

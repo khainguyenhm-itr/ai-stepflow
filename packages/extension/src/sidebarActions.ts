@@ -382,13 +382,13 @@ export class SidebarActions {
 
   /** Save the current login as an account, labeled by the active email when available. */
   async saveCurrentAccount(): Promise<void> {
-    let name = this.accounts.peekCurrentLabel()?.email;
-    if (!name) {
-      name = await vscode.window.showInputBox({ prompt: 'Name this Claude account (no email detected)', placeHolder: 'e.g. work@company.com' });
-      if (!name) return;
+    let explicitName: string | undefined;
+    if (!this.accounts.peekCurrentLabel()?.email) {
+      explicitName = await vscode.window.showInputBox({ prompt: 'Name this Claude account (no email detected)', placeHolder: 'e.g. work@company.com' });
+      if (!explicitName) return;
     }
     try {
-      const view = await this.accounts.saveCurrentAsAccount(name);
+      const view = await this.accounts.saveCurrentAsAccount(explicitName); // undefined when email detected → fingerprint/email precedence runs
       vscode.window.showInformationMessage(`ClaudeSteps: saved account ${view.email}.`);
       await this.refresh(false);
     } catch (e) {
