@@ -149,4 +149,23 @@ export class AccountManager {
     try { await this.exec(['delete-generic-password', '-s', STORE_SERVICE, '-a', name]); } catch { /* already gone */ }
     this.writeMeta(this.readMeta().filter(a => a.name !== name));
   }
+
+  /** All saved accounts, flagging the one that matches the current login. */
+  async listAccounts(): Promise<AccountView[]> {
+    let activeFp: string | null = null;
+    try {
+      const blob = await this.readCanonicalBlob();
+      activeFp = blob ? this.fingerprint(blob) : null;
+    } catch {
+      activeFp = null;
+    }
+    return this.readMeta().map(a => ({
+      name: a.name,
+      email: a.email,
+      displayName: a.displayName,
+      organizationName: a.organizationName,
+      savedAt: a.savedAt,
+      active: activeFp !== null && a.fingerprint === activeFp,
+    }));
+  }
 }

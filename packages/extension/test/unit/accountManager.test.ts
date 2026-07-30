@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { createHash } from 'node:crypto';
 import { AccountManager } from '../../src/accountManager.js';
+
+const fp = (s: string) => createHash('sha256').update(s).digest('hex');
 
 let dir: string;
 const storePath = () => path.join(dir, 'sub', 'accounts.json');
@@ -133,4 +136,30 @@ test('removeAccount deletes the Keychain item and the metadata entry', async () 
   assert.equal('a' in fake.store, false);
   const meta = JSON.parse(readFileSync(storePath(), 'utf8')).accounts;
   assert.deepEqual(meta.map((m: { name: string }) => m.name), ['b']);
+});
+
+test('listAccounts marks exactly the account matching the current login active', async () => {
+  mkdirSync(path.dirname(storePath()), { recursive: true });
+  writeFileSync(storePath(), JSON.stringify({ accounts: [
+    { name: 'a@x', email: 'a@x', fingerprint: fp('BLOB-A'), savedAt: 't' },
+    { name: 'b@y', email: 'b@y', fingerprint: fp('BLOB-B'), savedAt: 't' },
+  ] }));
+  const fake = makeExec({ canonical: 'BLOB-B' });
+  const list = await mgr(fake).listAccounts();
+  assert.deepEqual(list.map((a: any) => [a.name, a.active]), [['a@x', false], ['b@y', true]]);
+});
+
+test('listAccounts marks none active when the current login matches no saved account', async () => {
+  mkdirSync(path.dirname(storePath()), { recursive: true });
+  writeFileSync(storePath(), JSON.stringify({ accounts: [
+    { name: 'a@x', email: 'a@x', fingerprint: fp('BLOB-A'), savedAt: 't' },
+  ] }));
+  const fake = makeExec({ canonical: null }); // read throws
+  const list = await mgr(fake).listAccounts();
+  assert.equal(list.every((a: any) => !a.active), true);
+});
+
+test('listAccounts returns [] when there is no metadata', async () => {
+  const fake = makeExec({ canonical: 'X' });
+  assert.deepEqual(await mgr(fake).listAccounts(), []);
 });
