@@ -5,6 +5,7 @@ import { ConfigManager } from './configManager.js';
 import { CockpitPanel } from './webviewPanel.js';
 import { StateManager } from './stateManager.js';
 import { SidebarProvider } from './sidebarProvider.js';
+import { AccountManager } from './accountManager.js';
 import { registerAstGraph } from './astGraph/index.js';
 import { ensureLocalExcludeEntry } from './astGraph/scanner.js';
 
@@ -19,7 +20,10 @@ export function activate(context: vscode.ExtensionContext) {
     // Sidebar dashboard: active run, library counts, MCP servers, generated files.
     // Defensively handle version access
     const version = String(context.extension?.packageJSON?.version || '0.0.7');
-    const sidebar = new SidebarProvider(context.extensionUri, configManager, stateManager, version);
+    const accountManager = new AccountManager({
+      storePath: join(context.globalStorageUri.fsPath, 'claude-accounts.json'),
+    });
+    const sidebar = new SidebarProvider(context.extensionUri, configManager, stateManager, version, accountManager);
     context.subscriptions.push(
       vscode.window.registerWebviewViewProvider(SidebarProvider.viewType, sidebar)
     );

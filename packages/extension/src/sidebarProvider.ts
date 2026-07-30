@@ -11,6 +11,7 @@ import type { PluginInfo, AvailablePlugin } from './plugins.js';
 import { getSidebarHtml } from './sidebarHtml.js';
 import { SidebarActions } from './sidebarActions.js';
 import type { GitnexusStatus } from './sidebarActions.js';
+import { AccountManager } from './accountManager.js';
 
 /**
  * Renders the activity-bar sidebar as a compact dashboard: the active run, library
@@ -30,14 +31,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     private readonly extensionUri: vscode.Uri,
     private configManager: ConfigManager,
     private stateManager: StateManager,
-    private readonly version: string
+    private readonly version: string,
+    private readonly accountManager: AccountManager
   ) {
     this._actions = new SidebarActions(
       configManager,
       stateManager,
       (probeMcp) => this.refresh(probeMcp),
       () => this._view,
-      () => this._cachedMcp
+      () => this._cachedMcp,
+      accountManager
     );
   }
 
@@ -50,7 +53,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       };
       view.webview.html = this._getHtml(view.webview);
 
-      view.webview.onDidReceiveMessage(async (message: { type?: string; path?: string; url?: string; pluginId?: string; pluginName?: string; enable?: boolean; mcpName?: string; mcpTarget?: string; tab?: string; kind?: BundledKind; filename?: string; isGlobal?: boolean; flowId?: string; runId?: string; group?: string; }) => {
+      view.webview.onDidReceiveMessage(async (message: { type?: string; path?: string; url?: string; pluginId?: string; pluginName?: string; enable?: boolean; mcpName?: string; mcpTarget?: string; tab?: string; kind?: BundledKind; filename?: string; isGlobal?: boolean; flowId?: string; runId?: string; group?: string; name?: string; }) => {
         try {
           switch (message?.type) {
             case 'openRun':
@@ -179,6 +182,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
               if (st.currentGroup) await this._actions.openGitnexusFile(join(homedir(), '.gitnexus', 'groups', st.currentGroup, 'group.yaml'), 'group config not found.');
               return;
             }
+            case 'accountSaveCurrent':
+              await this._actions.saveCurrentAccount();
+              return;
+            case 'accountSwitch':
+              if (message.name) await this._actions.switchAccount(message.name);
+              return;
+            case 'accountRemove':
+              if (message.name) await this._actions.removeAccountAction(message.name);
+              return;
           }
         } catch (e) {
           vscode.window.showErrorMessage(`ClaudeSteps: ${e instanceof Error ? e.message : String(e)}`);
@@ -203,7 +215,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     if (!this._view) return;
 
     try {
-      const [flows, agents, skills, runFiles, activeRun, defaultItems, uiPrefs, gitnexus, reviewKits] = await Promise.all([
+      const [flows, agents, skills, runFiles, activeRun, defaultItems, uiPrefs, gitnexus, reviewKits, accounts] = await Promise.all([
         this.configManager.loadFlows().catch(() => []),
         this.configManager.loadAgents().catch(() => []),
         this.configManager.loadSkills().catch(() => []),
@@ -212,7 +224,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         this.configManager.listBundledDefaults().catch(() => []),
         this.configManager.loadUiPrefs().catch(() => ({} as Record<string, string>)),
         this._actions.readGitnexusStatus().catch(() => ({ indexed: false, stale: false, files: 0, indexedAt: null, registryName: null, groups: [], currentGroup: null, currentAlias: null } as GitnexusStatus)),
-        this.configManager.loadReviewKits().catch(() => [])
+        this.configManager.loadReviewKits().catch(() => []),
+        this.accountManager.isSupported() ? this.accountManager.listAccounts().catch(() => []) : Promise.resolve(null)
       ]);
       // Flatten review kits to the picker's shape: filename (the loadReviewKit lookup key) + scope.
       const globalRoot = this.configManager.getGlobalPath();
@@ -292,7 +305,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           isActive: file.runId === activeRun?.runId
         })),
         totalRunFiles: visibleRunFiles.length,
-        activeRun: active
+        activeRun: active,
+        accounts
       });
 
       if (probeMcp) {
