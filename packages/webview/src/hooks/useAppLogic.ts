@@ -371,6 +371,7 @@ export const useAppLogic = () => {
           buildState.setSkillForm(prev => ({ ...prev, ...message.item, scope: 'project' }));
           buildState.setSkillFormError(null);
           buildState.setEditingSkillSource(null);
+          buildState.setSkillImportSourceDir(message.importSourceDir ?? null);
           buildState.setSkillModalOpen(true);
           libState.setActiveTab('skills');
         }
@@ -523,10 +524,13 @@ export const useAppLogic = () => {
         ...(chatState.skillAiMessages.length ? { aiConversation: chatState.skillAiMessages } : {})
       },
       originalSourcePath: buildState.editingSkillSource,
-      isGlobal: buildState.skillForm.scope === 'global'
+      isGlobal: buildState.skillForm.scope === 'global',
+      // Only meaningful on create (folder import); the host copies this folder's resources into the skill dir.
+      ...(!buildState.editingSkillSource && buildState.skillImportSourceDir ? { importSourceDir: buildState.skillImportSourceDir } : {})
     });
     buildState.setSkillModalOpen(false);
     buildState.setEditingSkillSource(null);
+    buildState.setSkillImportSourceDir(null);
     buildState.setSkillForm(buildState.emptySkillForm);
   };
 
@@ -544,6 +548,7 @@ export const useAppLogic = () => {
       buildState.setSkillForm({ ...buildState.emptySkillForm, scope: newScope });
       buildState.setEditingSkillSource(null);
     }
+    buildState.setSkillImportSourceDir(null);
     buildState.setSkillFormError(null);
     chatState.setSkillAiPrompt('');
     chatState.setSkillAiMessages(skill?.aiConversation || []);

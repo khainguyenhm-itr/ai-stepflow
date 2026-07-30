@@ -19,6 +19,8 @@ export const useBuilderState = () => {
   const [editingSkillSource, setEditingSkillSource] = useState<string | null>(null);
   const [editingAgentSource, setEditingAgentSource] = useState<string | null>(null);
   const [editingReviewSource, setEditingReviewSource] = useState<string | null>(null);
+  // Source folder of a skill imported as a directory; echoed back on save so the host copies its resources.
+  const [skillImportSourceDir, setSkillImportSourceDir] = useState<string | null>(null);
 
   const emptyAgentForm = { name: '', description: '', model: 'claude-sonnet-4-6', tools: [] as string[], systemPrompt: '', scope: 'project' as SaveScope, maxTurns: undefined as number | undefined, tags: [] as string[] };
   const emptySkillForm = { name: '', description: '', instructions: '', scope: 'project' as SaveScope, tags: [] as string[] };
@@ -48,6 +50,7 @@ export const useBuilderState = () => {
     editingSkillSource, setEditingSkillSource,
     editingAgentSource, setEditingAgentSource,
     editingReviewSource, setEditingReviewSource,
+    skillImportSourceDir, setSkillImportSourceDir,
     agentForm, setAgentForm,
     skillForm, setSkillForm,
     reviewForm, setReviewForm,

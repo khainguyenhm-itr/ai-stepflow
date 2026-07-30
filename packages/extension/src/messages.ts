@@ -54,7 +54,7 @@ export type HostMessage =
   | { type: 'resetAuditLog'; flowId: string; runId?: string; stepIds?: string[] }
   | { type: 'runDeleted'; flowId: string; runId: string }
   | { type: 'fileImported'; kind: 'agent'; item: { name: string; description: string; model: string; tools: string; systemPrompt: string } }
-  | { type: 'fileImported'; kind: 'skill'; item: { name: string; description: string; instructions: string } }
+  | { type: 'fileImported'; kind: 'skill'; item: { name: string; description: string; instructions: string }; importSourceDir?: string }
   | { type: 'fileImported'; kind: 'review'; item: { name: string; description: string; content: string } }
   | { type: 'draftGenerated'; kind: 'agent' | 'skill'; name?: string; description?: string; content?: string; reply?: string; error?: string }
   | { type: 'flowGenerated'; flow?: Flow; reply?: string; error?: string }
@@ -71,7 +71,7 @@ export type WebviewMessage =
   | { type: 'saveFlow'; flow: Flow; isGlobal?: boolean }
   | { type: 'createAgent'; agent: AgentInput; isGlobal?: boolean }
   | { type: 'updateAgent'; agent: AgentInput; isGlobal?: boolean; originalSourcePath?: string }
-  | { type: 'createSkill'; skill: SkillInput; isGlobal?: boolean }
+  | { type: 'createSkill'; skill: SkillInput; isGlobal?: boolean; importSourceDir?: string }
   | { type: 'updateSkill'; skill: SkillInput; isGlobal?: boolean; originalSourcePath?: string }
   | { type: 'createReviewKit'; review: ReviewKitInput; isGlobal?: boolean }
   | { type: 'updateReviewKit'; review: ReviewKitInput; isGlobal?: boolean; originalSourcePath?: string }
@@ -156,7 +156,7 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   saveFlow: m => isFlowLike(m.flow),
   createAgent: m => isAgentLike(m.agent),
   updateAgent: m => isAgentLike(m.agent),
-  createSkill: m => isSkillLike(m.skill),
+  createSkill: m => isSkillLike(m.skill) && (m.importSourceDir === undefined || isString(m.importSourceDir)),
   updateSkill: m => isSkillLike(m.skill),
   createReviewKit: m => isObject(m.review) && isString((m.review as any).name),
   updateReviewKit: m => isObject(m.review) && isString((m.review as any).name),

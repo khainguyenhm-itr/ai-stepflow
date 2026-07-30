@@ -589,12 +589,24 @@ export class ConfigManager {
     return filePath;
   }
 
-  public async saveSkill(skill: SkillInput, isGlobal: boolean = false): Promise<string> {
+  public async saveSkill(skill: SkillInput, isGlobal: boolean = false, importSourceDir?: string): Promise<string> {
     const targetDir = path.join(this.resolveTargetDir('skills', isGlobal), this.slugify(skill.name));
     await fs.mkdir(targetDir, { recursive: true });
 
     const filePath = path.join(targetDir, 'SKILL.md');
+
+    // Folder import: copy the whole skill tree (references/, scripts/, assets/…) first, then let the
+    // edited SKILL.md below overwrite the copied one so modal edits win. Skip if source === target.
+    let preserved: Record<string, unknown> = {};
+    if (importSourceDir && path.normalize(importSourceDir) !== path.normalize(targetDir)) {
+      await fs.cp(importSourceDir, targetDir, { recursive: true });
+      // Keep any extra frontmatter the copied SKILL.md declared (allowed-tools, license, metadata, …);
+      // the managed fields below still override, so modal edits take precedence.
+      preserved = await this.readExtraSkillFrontmatter(filePath);
+    }
+
     const frontmatter = matter.stringify(skill.instructions || '', {
+      ...preserved,
       name: skill.name,
       description: skill.description || '',
       ...(skill.tags?.length ? { tags: skill.tags } : {}),
@@ -604,6 +616,22 @@ export class ConfigManager {
     await fs.writeFile(filePath, frontmatter, 'utf8');
     this.invalidateLibraryCache();
     return filePath;
+  }
+
+  /**
+   * Read a SKILL.md's frontmatter and return only the keys saveSkill does NOT manage itself, so a
+   * folder import can round-trip extras (allowed-tools, license, metadata, …) instead of dropping them.
+   */
+  private async readExtraSkillFrontmatter(filePath: string): Promise<Record<string, unknown>> {
+    try {
+      const raw = await fs.readFile(filePath, 'utf8');
+      // Match parseSkillFile: strip a leading HTML comment so gray-matter can find the --- frontmatter.
+      const stripped = raw.replace(/^<!--[\s\S]*?-->\s*\n/, '');
+      const { name, description, tags, aiConversation, ...extra } = matter(stripped).data as Record<string, unknown>;
+      return extra;
+    } catch {
+      return {};
+    }
   }
 
   /** Parse any agent markdown file the user picked for import. */

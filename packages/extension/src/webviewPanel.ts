@@ -142,7 +142,7 @@ export class CockpitPanel {
         return;
       }
       case 'createSkill':
-        await this.configManager.saveSkill(message.skill, !!message.isGlobal);
+        await this.configManager.saveSkill(message.skill, !!message.isGlobal, message.importSourceDir);
         await this._sendAllData();
         vscode.window.showInformationMessage(`Skill '${message.skill.name}' created.`);
         return;
@@ -413,13 +413,18 @@ export class CockpitPanel {
   }
 
   private async _handleImportFile(kind: 'agent' | 'skill' | 'review'): Promise<void> {
+    // Skills may be a folder (SKILL.md + references/, scripts/, assets/…). Allow picking a folder
+    // so those bundled resources come along; agents/reviews are always single files.
     const picked = await vscode.window.showOpenDialog({
-      canSelectMany: false,
+      // Skills support multi-select so several can be imported at once; agents/reviews are single.
+      canSelectMany: kind === 'skill',
+      canSelectFolders: kind === 'skill',
+      canSelectFiles: true,
       openLabel: `Import ${kind}`,
-      filters: { Markdown: ['md'] }
+      ...(kind === 'skill' ? {} : { filters: { Markdown: ['md'] } })
     });
-    const fileUri = picked?.[0];
-    if (!fileUri) return;
+    if (!picked?.length) return;
+    const fileUri = picked[0];
 
     if (kind === 'agent') {
       const agent = await this.configManager.importAgentFromFile(fileUri.fsPath);
@@ -427,9 +432,18 @@ export class CockpitPanel {
         this.postMessage({ type: 'fileImported', kind, item: { name: agent.name, description: agent.description, model: agent.model, tools: agent.tools?.join(', ') ?? '', systemPrompt: agent.systemPrompt } });
       }
     } else if (kind === 'skill') {
-      const skill = await this.configManager.importSkillFromFile(fileUri.fsPath);
+      // Many picked → copy each straight in (no per-skill modal). One picked → preview it in the modal.
+      if (picked.length > 1) {
+        await this._importSkillsBulk(picked.map(u => u.fsPath));
+        return;
+      }
+      // If a folder was picked, read its SKILL.md and remember the folder so its resources are copied on save.
+      const src = await this._resolveSkillSource(fileUri.fsPath);
+      const skill = await this.configManager.importSkillFromFile(src.skillFile);
       if (skill) {
-        this.postMessage({ type: 'fileImported', kind, item: { name: skill.name, description: skill.description, instructions: skill.instructions } });
+        this.postMessage({ type: 'fileImported', kind, item: { name: skill.name, description: skill.description, instructions: skill.instructions }, importSourceDir: src.importSourceDir });
+      } else if (src.isDir) {
+        vscode.window.showErrorMessage(`No SKILL.md found in '${path.basename(fileUri.fsPath)}'.`);
       }
     } else {
       const review = await this.configManager.importReviewFromFile(fileUri.fsPath);
@@ -437,6 +451,49 @@ export class CockpitPanel {
         this.postMessage({ type: 'fileImported', kind, item: { name: review.name, description: review.description, content: review.content } });
       }
     }
+  }
+
+  /** Resolve a picked skill path to its SKILL.md and (for folders) the source dir whose resources to copy. */
+  private async _resolveSkillSource(fsPath: string): Promise<{ skillFile: string; importSourceDir?: string; isDir: boolean }> {
+    const stat = await fs.promises.stat(fsPath).catch(() => null);
+    const isDir = !!stat?.isDirectory();
+    return {
+      skillFile: isDir ? path.join(fsPath, 'SKILL.md') : fsPath,
+      importSourceDir: isDir ? fsPath : undefined,
+      isDir
+    };
+  }
+
+  /** Import several skills at once: ask scope once, copy each (with resources), then refresh + summarize. */
+  private async _importSkillsBulk(fsPaths: string[]): Promise<void> {
+    const scope = await vscode.window.showQuickPick(
+      [
+        { label: 'This workspace (project)', isGlobal: false },
+        { label: 'Global (~/.claude)', isGlobal: true }
+      ],
+      { placeHolder: `Import ${fsPaths.length} skills to which scope?` }
+    );
+    if (!scope) return; // cancelled
+
+    const imported: string[] = [];
+    const skipped: string[] = [];
+    // Guard each skill independently so one failure (missing SKILL.md, copy error) never aborts the batch.
+    for (const fsPath of fsPaths) {
+      try {
+        const src = await this._resolveSkillSource(fsPath);
+        const skill = await this.configManager.importSkillFromFile(src.skillFile);
+        if (!skill) { skipped.push(path.basename(fsPath)); continue; }
+        await this.configManager.saveSkill(skill, scope.isGlobal, src.importSourceDir);
+        imported.push(skill.name);
+      } catch (e) {
+        console.error(`ClaudeSteps: failed to import skill from ${fsPath}`, e);
+        skipped.push(path.basename(fsPath));
+      }
+    }
+
+    await this._sendAllData();
+    if (imported.length) vscode.window.showInformationMessage(`Imported ${imported.length} skill${imported.length > 1 ? 's' : ''}: ${imported.join(', ')}.`);
+    if (skipped.length) vscode.window.showWarningMessage(`Skipped ${skipped.length}: ${skipped.join(', ')}.`);
   }
 
   /**
