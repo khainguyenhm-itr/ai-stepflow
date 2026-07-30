@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { AccountManager } from '../../src/accountManager.js';
@@ -106,4 +106,31 @@ test('saving the same name twice overwrites (refresh), not duplicates', async ()
   await m.saveCurrentAsAccount(); // canonical still BLOB-A
   const meta = JSON.parse(readFileSync(storePath(), 'utf8')).accounts;
   assert.equal(meta.length, 1);
+});
+
+test('switchTo writes the saved blob into the canonical Keychain slot', async () => {
+  const fake = makeExec({ canonical: 'OLD', store: { 'work': 'WORK-BLOB' } });
+  await mgr(fake).switchTo('work');
+  assert.equal(fake.canonical, 'WORK-BLOB');
+  const addCanonical = fake.calls.find(a => a[0] === 'add-generic-password' && a.includes('Claude Code-credentials'));
+  assert.ok(addCanonical, 'must add-generic-password into the canonical service');
+  assert.ok(addCanonical!.includes('-U'), 'must upsert with -U');
+});
+
+test('switchTo throws when the saved account is missing', async () => {
+  const fake = makeExec({ canonical: 'OLD', store: {} });
+  await assert.rejects(() => mgr(fake).switchTo('ghost'), /not found/);
+});
+
+test('removeAccount deletes the Keychain item and the metadata entry', async () => {
+  mkdirSync(path.dirname(storePath()), { recursive: true });
+  writeFileSync(storePath(), JSON.stringify({ accounts: [
+    { name: 'a', email: 'a', fingerprint: 'fa', savedAt: 't' },
+    { name: 'b', email: 'b', fingerprint: 'fb', savedAt: 't' },
+  ] }));
+  const fake = makeExec({ canonical: 'OLD', store: { a: 'A', b: 'B' } });
+  await mgr(fake).removeAccount('a');
+  assert.equal('a' in fake.store, false);
+  const meta = JSON.parse(readFileSync(storePath(), 'utf8')).accounts;
+  assert.deepEqual(meta.map((m: { name: string }) => m.name), ['b']);
 });

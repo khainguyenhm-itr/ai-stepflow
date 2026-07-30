@@ -131,4 +131,22 @@ export class AccountManager {
     this.writeMeta([...this.readMeta().filter(a => a.name !== finalName), entry]);
     return { ...entry, active: true };
   }
+
+  /** Make a saved account the active login by overwriting the canonical Keychain slot. */
+  async switchTo(name: string): Promise<void> {
+    let blob = '';
+    try {
+      blob = (await this.exec(['find-generic-password', '-w', '-s', STORE_SERVICE, '-a', name])).trim();
+    } catch {
+      throw new Error(`Saved account '${name}' not found.`);
+    }
+    if (!blob) throw new Error(`Saved account '${name}' has no stored credential.`);
+    await this.exec(['add-generic-password', '-U', '-s', CLAUDE_SERVICE, '-a', this.osUsername, '-w', blob]);
+  }
+
+  /** Forget a saved account (Keychain item + metadata). Safe if the item is already gone. */
+  async removeAccount(name: string): Promise<void> {
+    try { await this.exec(['delete-generic-password', '-s', STORE_SERVICE, '-a', name]); } catch { /* already gone */ }
+    this.writeMeta(this.readMeta().filter(a => a.name !== name));
+  }
 }
