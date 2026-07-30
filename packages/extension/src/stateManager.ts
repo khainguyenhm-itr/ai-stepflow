@@ -72,12 +72,22 @@ export class StateManager {
     return dir;
   }
 
-  /** Absolute path of the ad-hoc run history file in the extension's machine-global storage. */
+  /**
+   * Absolute path of the ad-hoc run history file inside the repo's `.claudesteps` folder, so the
+   * per-agent/skill history persists with the project (like flow runs) instead of in machine-global
+   * storage that gets wiped on reinstall / a fresh Extension Development Host.
+   */
   private async adhocRunsFile(): Promise<string | undefined> {
-    if (!this.context?.globalStorageUri) return undefined;
-    const dir = this.context.globalStorageUri.fsPath;
+    if (!this.projectPath) return undefined;
+    const dir = path.join(this.projectPath, '.claudesteps');
     await fs.mkdir(dir, { recursive: true });
     return path.join(dir, 'adhoc-runs.json');
+  }
+
+  /** Legacy machine-global history file, kept only to migrate records written before the move to `.claudesteps`. */
+  private legacyAdhocRunsFile(): string | undefined {
+    if (!this.context?.globalStorageUri) return undefined;
+    return path.join(this.context.globalStorageUri.fsPath, 'adhoc-runs.json');
   }
 
   /** Read the raw ad-hoc run records (newest first). Returns [] on any failure. */
@@ -87,6 +97,21 @@ export class StateManager {
     try {
       const arr = JSON.parse(await fs.readFile(file, 'utf8'));
       return Array.isArray(arr) ? arr as AdhocRun[] : [];
+    } catch {
+      // New file absent: one-time best-effort migration of this workspace's records from the
+      // legacy global file, so existing history isn't dropped by the move to `.claudesteps`.
+      return this.migrateLegacyAdhocRuns();
+    }
+  }
+
+  /** Pull records for the current workspace out of the legacy global history. Returns [] if none/unavailable. */
+  private async migrateLegacyAdhocRuns(): Promise<AdhocRun[]> {
+    const legacy = this.legacyAdhocRunsFile();
+    if (!legacy || !this.projectPath) return [];
+    try {
+      const arr = JSON.parse(await fs.readFile(legacy, 'utf8'));
+      if (!Array.isArray(arr)) return [];
+      return (arr as AdhocRun[]).filter(r => r.projectPath === this.projectPath);
     } catch { return []; }
   }
 

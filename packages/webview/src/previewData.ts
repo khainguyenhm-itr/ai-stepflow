@@ -78,6 +78,7 @@ export const previewRunState: FlowRunState = {
   projectPath: '/preview/project',
   inputs: { topic: 'ClaudeSteps overview' },
   autoReview: false,
+  autoEnter: false,
   steps: {
     'collect-context': {
       executionStatus: 'completed',

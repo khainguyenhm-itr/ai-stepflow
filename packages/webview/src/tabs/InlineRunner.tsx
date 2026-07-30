@@ -366,6 +366,21 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
             <span>Auto review</span>
           </label>
         )}
+        {!isFinalized && (
+          <label
+            className="auto-review-toggle small"
+            title="On: each step auto-submits (presses Enter) the moment it opens in the Claude terminal. Off: the step opens with the message pre-filled — review the agent/skill/model context and press Enter yourself."
+          >
+            <input
+              type="checkbox"
+              role="switch"
+              checked={!!runState.autoEnter}
+              onChange={e => sendToVSCode('setAutoEnter', { enabled: e.target.checked, runId })}
+            />
+            <span className="switch-track" aria-hidden="true" />
+            <span>Auto enter</span>
+          </label>
+        )}
       </div>
       <div className="runner-detail">
         <div className="step-card">

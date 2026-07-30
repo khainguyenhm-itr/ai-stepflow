@@ -213,7 +213,19 @@ export class RunOrchestrator {
   async adoptRunState(runState: FlowRunState, historyEvent?: HistoryEvent): Promise<void> {
     const existing = this._runs.get(runState.runId);
     if (existing) existing.runState = runState;
-    else if (this._focusedFlow) this._runs.set(runState.runId, this._newRunCtx(this._focusedFlow, runState));
+    else {
+      // A freshly created run reaches the backend only via this message; nothing has set
+      // `_focusedFlow` yet (the webview never sends `loadFlow`). Resolve the flow by id so the run is
+      // registered in `_runs` immediately — otherwise run-scoped actions like setAutoReview /
+      // setAutoEnter can't find a RunCtx until the run is reopened via switchRun.
+      const flow = this._focusedFlow?.id === runState.flowId
+        ? this._focusedFlow
+        : (await this.configManager.loadFlows()).find(f => f.id === runState.flowId) ?? this._focusedFlow;
+      if (flow) {
+        this._runs.set(runState.runId, this._newRunCtx(flow, runState));
+        this._focusedFlow = flow;
+      }
+    }
     this._focusedRunId = runState.runId;
     await this.stateManager.saveRun(runState);
     if (historyEvent) {
@@ -333,10 +345,11 @@ export class RunOrchestrator {
       setStepStartTime: (sid, t) => rc.stepStartTimes.set(sid, t),
     };
 
-    // All steps run in the interactive terminal and auto-submit (like an agent/skill run) so
-    // pressing "Run Step" actually executes; AI-reviewed steps are auto-verified in
-    // onDidEndRunningStep.
-    await runInteractiveStep(ctx, this.terminals, true);
+    // Steps run in the interactive terminal. Auto-enter is a per-run toggle: when on, the pre-filled
+    // message is submitted automatically (like an agent/skill run); when off (default), it is only
+    // pre-filled so the user reviews the context and presses Enter. AI-reviewed steps are
+    // auto-verified in onDidEndRunningStep.
+    await runInteractiveStep(ctx, this.terminals, rc.runState.autoEnter ?? false);
   }
 
   /** Approve/reject a step from the webview's human-review buttons (targets `explicitRunId`, else the focused run). */
@@ -412,6 +425,18 @@ export class RunOrchestrator {
     if (anyStepStarted) return;
     await this._setRunState(runId, s => ({ ...s, autoReview: enabled }));
     if (enabled) this._advanceReadySteps(runId);
+  }
+
+  /**
+   * Toggle auto-enter for the current run (persisted on the run state). Unlike auto-review this is
+   * not locked mid-run: it only affects how the NEXT step launch submits its pre-filled message, so
+   * flipping it never desyncs an in-flight step.
+   */
+  async setAutoEnter(enabled: boolean, explicitRunId?: string): Promise<void> {
+    const runId = explicitRunId ?? this._focusedRunId;
+    const rc = runId ? this._runs.get(runId) : undefined;
+    if (!runId || !rc || rc.runState.autoEnter === enabled) return;
+    await this._setRunState(runId, s => ({ ...s, autoEnter: enabled }));
   }
 
   /**

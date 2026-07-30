@@ -267,6 +267,9 @@ export class CockpitPanel {
       case 'setAutoReview':
         await this._runner.setAutoReview(message.enabled, message.runId);
         return;
+      case 'setAutoEnter':
+        await this._runner.setAutoEnter(message.enabled, message.runId);
+        return;
       case 'editRun':
         await this._runner.editRunMeta(message.runName, message.inputs, message.runId);
         return;

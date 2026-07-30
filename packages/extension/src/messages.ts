@@ -89,6 +89,7 @@ export type WebviewMessage =
   | { type: 'resumeSession'; sessionId: string; projectPath: string; name?: string; kind?: 'agent' | 'skill' }
   | { type: 'reviewStep'; stepId: string; decision: 'approved' | 'rejected'; runId?: string }
   | { type: 'setAutoReview'; enabled: boolean; runId?: string }
+  | { type: 'setAutoEnter'; enabled: boolean; runId?: string }
   | { type: 'editRun'; runName?: string; inputs: Record<string, string>; runId?: string }
   | { type: 'resetRun'; runId?: string }
   | { type: 'resetStep'; stepId: string; runId?: string }
@@ -179,6 +180,7 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
     (m.decision === 'approved' || m.decision === 'rejected') &&
     (m.runId === undefined || isString(m.runId)),
   setAutoReview: m => typeof m.enabled === 'boolean' && (m.runId === undefined || isString(m.runId)),
+  setAutoEnter: m => typeof m.enabled === 'boolean' && (m.runId === undefined || isString(m.runId)),
   editRun: m => (m.runName === undefined || isString(m.runName)) && isObject(m.inputs) && (m.runId === undefined || isString(m.runId)),
   generateDraft: m => (m.kind === 'agent' || m.kind === 'skill') && isString(m.prompt),
   generateFlow: m => isString(m.description) && (m.flow === undefined || isFlowLike(m.flow)),

@@ -54,9 +54,9 @@ export interface Skill {
 
 /**
  * One recorded ad-hoc run of an agent or skill (launched from the library's Run button, not a flow
- * step). Persisted globally so the per-agent/skill history is visible across workspaces. Token/cost/
- * model are NOT stored — they are read lazily from the pinned session's `.jsonl` when the history is
- * opened (see `readInteractiveSessionStats`).
+ * step). Persisted in the workspace's `.claudesteps/adhoc-runs.json` so the per-agent/skill history
+ * survives extension reinstalls (like flow runs). Token/cost/model are NOT stored — they are read
+ * lazily from the pinned session's `.jsonl` when the history is opened (see `readInteractiveSessionStats`).
  */
 export interface AdhocRun {
   /** Unique id for this run record. */
@@ -233,4 +233,10 @@ export interface FlowRunState {
    * click "Finish" before advancing. Either way, human-review steps always wait for approve/reject.
    */
   autoReview?: boolean;
+  /**
+   * When true, a step launched in the Claude terminal auto-submits its pre-filled message
+   * (as if the user pressed Enter). When false (default), the message is only pre-filled so the
+   * user can review the agent/skill/model context and press Enter to start the run.
+   */
+  autoEnter?: boolean;
 }
