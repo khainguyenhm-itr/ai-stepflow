@@ -211,6 +211,9 @@ ${renderPaletteVars()}
     /* ── select dropdowns ── */
     .select-wrap { position: relative; display: inline-block; min-width: 90px; }
     .select-wrap.sm { min-width: 80px; }
+    /* Account switcher: wider so a full email fits, capped so it doesn't crowd the label. */
+    .account-select-wrap { min-width: 150px; max-width: 220px; }
+    .account-select-wrap select { text-overflow: ellipsis; }
     .gx-ctl .select-wrap { flex: 1 1 auto; min-width: 0; display: block; }
     .select-wrap::after { content: ''; position: absolute; right: 9px; top: 50%; transform: translateY(-50%); width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid #aaa; pointer-events: none; }
     .input { width: 100%; height: 22px; padding: 0 24px 0 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); color: var(--fg); font-size: 0.9231rem; font-family: inherit; outline: none; appearance: none; -webkit-appearance: none; cursor: pointer; box-shadow: inset 0 1px 2px rgba(0,0,0,.2); }
@@ -328,6 +331,15 @@ ${renderPaletteVars()}
         </button>
       </div>
       <div class="box" id="settings-panel" style="display:none">
+        <div class="setting-row" id="account-setting-row">
+          <div>
+            <div class="setting-label">Claude Account</div>
+            <div class="setting-desc">Active login — switching applies to all Claude on this machine</div>
+          </div>
+          <div class="account-ctl">
+            <span class="select-wrap sm account-select-wrap"><select id="account-select" class="input sm"></select></span>
+          </div>
+        </div>
         <div class="setting-row">
           <div>
             <div class="setting-label">AI Response Style</div>
@@ -346,15 +358,6 @@ ${renderPaletteVars()}
           <span class="select-wrap sm"><select id="review-kit-select" class="input sm">
             <option value="">Default</option>
           </select></span>
-        </div>
-        <div class="setting-row" id="account-setting-row">
-          <div>
-            <div class="setting-label">Claude Account</div>
-            <div class="setting-desc">Active login — switching applies to all Claude on this machine</div>
-          </div>
-          <div class="account-ctl">
-            <span class="select-wrap sm"><select id="account-select" class="input sm"></select></span>
-          </div>
         </div>
         <div class="setting-row gx-row" id="gitnexus-setting-row" style="display:none">
           <div class="gx-head">

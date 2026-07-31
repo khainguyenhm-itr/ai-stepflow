@@ -209,6 +209,34 @@ export class AccountManager {
     return { ...entry, active: true };
   }
 
+  /** Stable identity of the currently-active login from ~/.claude.json. Unlike the credential blob's
+   *  fingerprint, accountUuid/email do NOT change when Claude rotates the OAuth token. */
+  private currentIdentity(): { uuid?: string; email?: string } {
+    const oa = this.peekCurrentOauthAccount();
+    return {
+      uuid: typeof oa?.accountUuid === 'string' ? oa.accountUuid : undefined,
+      email: typeof oa?.emailAddress === 'string' ? oa.emailAddress : undefined,
+    };
+  }
+
+  /** Find the saved account matching a login identity — by accountUuid first, then email. */
+  private matchByIdentity(meta: AccountMeta[], id: { uuid?: string; email?: string }): AccountMeta | undefined {
+    if (id.uuid) { const m = meta.find(a => (a.oauthAccount?.accountUuid as string | undefined) === id.uuid); if (m) return m; }
+    if (id.email) return meta.find(a => a.email === id.email);
+    return undefined;
+  }
+
+  /** Re-store the live credential for an already-saved account whose token has rotated, so active
+   *  detection and future switchTo keep working with a valid token. Best-effort; never throws. */
+  private async refreshStoredCredential(name: string, blob: string, fp: string): Promise<void> {
+    try { await this.exec(['add-generic-password', '-U', '-s', STORE_SERVICE, '-a', name, '-w', blob]); } catch { return; }
+    const meta = this.readMeta();
+    const idx = meta.findIndex(a => a.name === name);
+    if (idx < 0) return;
+    meta[idx] = { ...meta[idx], fingerprint: fp, oauthAccount: this.peekCurrentOauthAccount() ?? meta[idx].oauthAccount, savedAt: this.now() };
+    this.writeMeta(meta);
+  }
+
   /**
    * Auto-save hook: if the current login is a *new* one (its fingerprint is not already saved) and
    * carries an email to name it, snapshot it as an account. Returns the saved view, or null when there
@@ -240,43 +268,65 @@ export class AccountManager {
     let blob = '';
     try { blob = await this.readCanonicalBlob(); } catch { return; }
     if (!blob) return;
-    const fp = this.fingerprint(blob);
-    this.lastActiveName = this.readMeta().find(a => a.fingerprint === fp)?.name ?? this.lastActiveName;
+    const meta = this.readMeta();
+    const saved = this.matchByIdentity(meta, this.currentIdentity()) ?? meta.find(a => a.fingerprint === this.fingerprint(blob));
+    this.lastActiveName = saved?.name ?? this.lastActiveName;
   }
 
   /**
    * Reconcile saved accounts with the live login on every ~/.claude.json change, from any window.
    * Three transitions, so every open window stays in sync:
-   *   - logout (Keychain credential AND active profile both gone) → forget the account that was active;
+   *   - logout (Keychain credential AND active profile both gone) → forget the account that was
+   *     active, then switch to another saved account if one remains so the user isn't left signed out;
    *   - new login → snapshot it (auto-save) and remember it as active;
    *   - switch / login-over (a known or freshly-saved login) → just remember the new active account.
    * A login-over never clears both signals, so it never triggers a removal. Never throws — safe to
    * call from a file watcher. Returns what changed so the caller can toast.
    */
-  async reconcileOnChange(): Promise<{ autoSaved: AccountView | null; removed: string | null }> {
-    const nothing = { autoSaved: null, removed: null };
+  async reconcileOnChange(): Promise<{ autoSaved: AccountView | null; removed: string | null; switchedTo: string | null }> {
+    const nothing = { autoSaved: null, removed: null, switchedTo: null };
     if (!this.isSupported()) return nothing;
     let blob = '';
     try { blob = await this.readCanonicalBlob(); } catch { blob = ''; }
     const loggedIn = !!this.peekCurrentLabel();
 
-    // Logout: no credential and no active profile → forget the last-active account.
+    // Logout: no credential and no active profile → forget the last-active account, then fall back
+    // to another saved account if one remains.
     if (!blob && !loggedIn) {
       const name = this.lastActiveName;
       this.lastActiveName = null;
+      let removed: string | null = null;
       if (name && this.readMeta().some(a => a.name === name)) {
-        try { await this.removeAccount(name); return { autoSaved: null, removed: name }; } catch { return nothing; }
+        try { await this.removeAccount(name); removed = name; } catch { return nothing; }
       }
-      return nothing;
+      // Pick the most recently saved remaining account (deterministic across windows) and switch to it.
+      const next = [...this.readMeta()].sort((a, b) =>
+        (b.savedAt || '').localeCompare(a.savedAt || '') || a.name.localeCompare(b.name))[0];
+      if (next) {
+        try {
+          await this.switchTo(next.name);
+          this.lastActiveName = next.name;
+          return { autoSaved: null, removed, switchedTo: next.name };
+        } catch { /* fall through: stay signed out */ }
+      }
+      return { autoSaved: null, removed, switchedTo: null };
     }
 
     if (blob) {
-      const fp = this.fingerprint(blob);
-      const known = this.readMeta().find(a => a.fingerprint === fp);
-      if (known) { this.lastActiveName = known.name; return nothing; } // switch / already-saved login
-      const saved = await this.autoSaveIfNewLogin(); // new login → snapshot; never throws
+      const fpNow = this.fingerprint(blob);
+      const meta = this.readMeta();
+      // Match by stable identity (accountUuid/email) so a token rotation isn't mistaken for a new
+      // account; fall back to fingerprint for accounts saved before we snapshotted the profile.
+      const known = this.matchByIdentity(meta, this.currentIdentity()) ?? meta.find(a => a.fingerprint === fpNow);
+      if (known) {
+        this.lastActiveName = known.name;
+        // Token rotated → refresh the stored credential so active-detection and switchTo stay valid.
+        if (known.fingerprint !== fpNow) await this.refreshStoredCredential(known.name, blob, fpNow);
+        return nothing;
+      }
+      const saved = await this.autoSaveIfNewLogin(); // genuinely new login → snapshot; never throws
       if (saved) this.lastActiveName = saved.name;
-      return { autoSaved: saved, removed: null };
+      return { autoSaved: saved, removed: null, switchedTo: null };
     }
     return nothing;
   }
@@ -304,22 +354,25 @@ export class AccountManager {
     this.writeMeta(this.readMeta().filter(a => a.name !== name));
   }
 
-  /** All saved accounts, flagging the one that matches the current login. */
+  /** All saved accounts, flagging the one that matches the current login. Identity (accountUuid/email
+   *  from ~/.claude.json) is the primary signal so a rotated OAuth token doesn't hide the active
+   *  account; the credential-blob fingerprint is only a fallback when no identity is available. */
   async listAccounts(): Promise<AccountView[]> {
+    const meta = this.readMeta();
+    const id = this.currentIdentity();
+    const activeByIdentity = (id.uuid || id.email) ? this.matchByIdentity(meta, id) : undefined;
     let activeFp: string | null = null;
-    try {
-      const blob = await this.readCanonicalBlob();
-      activeFp = blob ? this.fingerprint(blob) : null;
-    } catch {
-      activeFp = null;
+    if (!activeByIdentity) {
+      try { const blob = await this.readCanonicalBlob(); activeFp = blob ? this.fingerprint(blob) : null; }
+      catch { activeFp = null; }
     }
-    return this.readMeta().map(a => ({
+    return meta.map(a => ({
       name: a.name,
       email: a.email,
       displayName: a.displayName,
       organizationName: a.organizationName,
       savedAt: a.savedAt,
-      active: activeFp !== null && a.fingerprint === activeFp,
+      active: activeByIdentity ? a.name === activeByIdentity.name : (activeFp !== null && a.fingerprint === activeFp),
     }));
   }
 }

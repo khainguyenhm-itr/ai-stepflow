@@ -322,6 +322,34 @@ test('listAccounts returns [] when there is no metadata', async () => {
   assert.deepEqual(await mgr(fake).listAccounts(), []);
 });
 
+test('listAccounts marks the account active by identity even after the OAuth token rotated (fingerprint changed)', async () => {
+  mkdirSync(path.dirname(storePath()), { recursive: true });
+  writeFileSync(storePath(), JSON.stringify({ accounts: [
+    { name: 'sw@x', email: 'sw@x', fingerprint: fp('YESTERDAY-BLOB'), savedAt: 't', oauthAccount: { emailAddress: 'sw@x', accountUuid: 'uuid-sw' } },
+  ] }));
+  // Live login is the same account but the credential blob (token) has rotated → different fingerprint.
+  writeFileSync(claudeJson(), JSON.stringify({ oauthAccount: { emailAddress: 'sw@x', accountUuid: 'uuid-sw' } }));
+  const fake = makeExec({ canonical: 'TODAY-ROTATED-BLOB' });
+  const list = await mgr(fake).listAccounts();
+  assert.deepEqual(list.map(a => [a.name, a.active]), [['sw@x', true]]);
+});
+
+test('reconcileOnChange refreshes the stored credential when the active account token rotated', async () => {
+  mkdirSync(path.dirname(storePath()), { recursive: true });
+  writeFileSync(storePath(), JSON.stringify({ accounts: [
+    { name: 'sw@x', email: 'sw@x', fingerprint: fp('OLD-BLOB'), savedAt: 't', oauthAccount: { emailAddress: 'sw@x', accountUuid: 'uuid-sw' } },
+  ] }));
+  writeFileSync(claudeJson(), JSON.stringify({ oauthAccount: { emailAddress: 'sw@x', accountUuid: 'uuid-sw' } }));
+  const fake = makeExec({ canonical: 'NEW-ROTATED-BLOB', store: { 'sw@x': 'OLD-BLOB' } });
+  const res = await mgr(fake, { platform: 'darwin' }).reconcileOnChange();
+  assert.equal(res.autoSaved, null); // recognized as the same account, not a new one
+  assert.equal(res.removed, null);
+  assert.equal(fake.store['sw@x'], 'NEW-ROTATED-BLOB'); // stored credential refreshed
+  const meta = JSON.parse(readFileSync(storePath(), 'utf8')).accounts;
+  assert.equal(meta.length, 1); // no duplicate account created
+  assert.equal(meta[0].fingerprint, fp('NEW-ROTATED-BLOB')); // fingerprint updated to the live token
+});
+
 test('reconcileOnChange forgets the active account on logout (credential + profile gone)', async () => {
   mkdirSync(path.dirname(storePath()), { recursive: true });
   writeFileSync(storePath(), JSON.stringify({ accounts: [
@@ -337,6 +365,26 @@ test('reconcileOnChange forgets the active account on logout (credential + profi
   const res = await m.reconcileOnChange();
   assert.equal(res.removed, 'a@x');
   assert.equal(JSON.parse(readFileSync(storePath(), 'utf8')).accounts.length, 0);
+});
+
+test('reconcileOnChange switches to another saved account after a real logout', async () => {
+  mkdirSync(path.dirname(storePath()), { recursive: true });
+  writeFileSync(storePath(), JSON.stringify({ accounts: [
+    { name: 'a@x', email: 'a@x', fingerprint: fp('BLOB-A'), savedAt: '2026-01-01T00:00:00.000Z' },
+    { name: 'b@y', email: 'b@y', fingerprint: fp('BLOB-B'), savedAt: '2026-02-01T00:00:00.000Z' }, // newer
+  ] }));
+  writeFileSync(claudeJson(), JSON.stringify({ oauthAccount: { emailAddress: 'a@x' } }));
+  const fake = makeExec({ canonical: 'BLOB-A', store: { 'a@x': 'BLOB-A', 'b@y': 'BLOB-B' } });
+  const m = mgr(fake, { platform: 'darwin' });
+  await m.reconcileOnChange(); // active a@x
+  await fake.exec(['delete-generic-password', '-s', 'Claude Code-credentials', '-a', 'testuser']);
+  writeFileSync(claudeJson(), JSON.stringify({}));
+  const res = await m.reconcileOnChange();
+  assert.equal(res.removed, 'a@x');
+  assert.equal(res.switchedTo, 'b@y'); // most-recently-saved remaining account
+  assert.equal(fake.canonical, 'BLOB-B'); // credential swapped into the canonical slot
+  const meta = JSON.parse(readFileSync(storePath(), 'utf8')).accounts;
+  assert.deepEqual(meta.map((x: AccountMeta) => x.name), ['b@y']);
 });
 
 test('reconcileOnChange does NOT remove on a login-over (switch to another account)', async () => {

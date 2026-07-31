@@ -113,9 +113,11 @@ export function activate(context: vscode.ExtensionContext) {
       // ALWAYS refresh the sidebar — so the active highlight, a newly auto-saved account, and a
       // logout removal all propagate to *every* open window, not just the one that changed.
       const syncAccounts = debounce(() => {
-        void accountManager.reconcileOnChange().then(({ autoSaved, removed }) => {
+        void accountManager.reconcileOnChange().then(({ autoSaved, removed, switchedTo }) => {
           if (autoSaved) vscode.window.showInformationMessage(`ClaudeSteps: auto-saved Claude account ${autoSaved.email}.`);
-          if (removed) vscode.window.showInformationMessage(`ClaudeSteps: logged out — removed saved account ${removed}.`);
+          if (removed && switchedTo) vscode.window.showInformationMessage(`ClaudeSteps: logged out of ${removed} — switched to ${switchedTo}.`);
+          else if (switchedTo) vscode.window.showInformationMessage(`ClaudeSteps: logged out — switched to ${switchedTo}.`);
+          else if (removed) vscode.window.showInformationMessage(`ClaudeSteps: logged out — removed saved account ${removed}.`);
         }).catch(() => undefined).finally(() => void sidebar.refresh(false));
       }, 500);
       const claudeJsonWatcher = vscode.workspace.createFileSystemWatcher(
