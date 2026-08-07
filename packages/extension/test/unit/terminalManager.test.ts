@@ -62,9 +62,44 @@ test('without shell integration the command line carries only claude + flags, an
   assert.equal(commandLine.includes('touch /tmp/pwned'), false, 'prompt text reached the shell command line');
   assert.equal(commandLine.startsWith('claude --session-id sess-1'), true);
 
-  // The prompt is delivered separately, into the REPL.
-  await new Promise(resolve => setTimeout(resolve, 1600));
-  assert.equal(term.sent.some(s => s.text === '$(touch /tmp/pwned)' && s.submit), true);
+  // The prompt is delivered separately, into the REPL — text first, then a lone Enter.
+  await new Promise(resolve => setTimeout(resolve, 2200));
+  assert.deepEqual(term.sent.slice(1), [
+    { text: '$(touch /tmp/pwned)', submit: false },
+    { text: '', submit: true },
+  ]);
+  tm.dispose();
+});
+
+test('a multi-line auto-enter prompt is submitted by a separate Enter, not a trailing newline', async () => {
+  recorder.shellIntegrationForNewTerminals = fakeShellIntegration();
+  const tm = new TerminalManager(configStub);
+  const prompt = '/plan do the thing\n\nMandatory input files:\n- a.md';
+
+  // First launch claims the terminal, then a Re-run types into the still-live REPL.
+  await tm.runInTerminal(prompt, '/repo', undefined, true, 'step-1', 'sess-1', 'run-1');
+  const term = lastTerminal();
+  term.sent.length = 0;
+  await tm.runInTerminal(prompt, '/repo', undefined, true, 'step-1', 'sess-1', 'run-1');
+
+  // The text must never carry the submit flag: Claude Code folds that CR into the paste.
+  assert.deepEqual(term.sent, [{ text: prompt, submit: false }]);
+  await new Promise(resolve => setTimeout(resolve, 500));
+  assert.deepEqual(term.sent, [{ text: prompt, submit: false }, { text: '', submit: true }]);
+  tm.dispose();
+});
+
+test('a re-run pre-fill (submit=false) types the prompt and never sends an Enter', async () => {
+  recorder.shellIntegrationForNewTerminals = fakeShellIntegration();
+  const tm = new TerminalManager(configStub);
+
+  await tm.runInTerminal('go', '/repo', undefined, true, 'step-1', 'sess-1', 'run-1');
+  const term = lastTerminal();
+  term.sent.length = 0;
+  await tm.runInTerminal('review this', '/repo', undefined, false, 'step-1', 'sess-1', 'run-1');
+
+  await new Promise(resolve => setTimeout(resolve, 500));
+  assert.deepEqual(term.sent, [{ text: 'review this', submit: false }]);
   tm.dispose();
 });
 

@@ -13,6 +13,12 @@ import { ConfigManager } from './configManager.js';
  *  `#adhoc-<fingerprint>` terminal so repeated agent/skill runs are independent, not one session. */
 const ADHOC_KEY = '#adhoc';
 
+/** How long to wait for the `claude` REPL to come up before typing into it (sendText fallback). */
+const REPL_READY_DELAY_MS = 1500;
+
+/** Gap between the typed prompt and its Enter, so the CR is its own read (see {@link TerminalManager._typeIntoRepl}). */
+const ENTER_DELAY_MS = 300;
+
 /** Terminal run kinds: flow step, ad-hoc skill, or ad-hoc agent. */
 type TermKind = 'flow' | 'skill' | 'agent';
 
@@ -173,7 +179,7 @@ export class TerminalManager {
     if (state.running) {
       // Continue in the live terminal: a Re-run of the still-running step. (Ad-hoc runs always get a
       // fresh key above, so they never land here.)
-      if (prompt) terminal.sendText(prompt, submit);
+      if (prompt) this._typeIntoRepl(terminal, prompt, submit);
       return;
     }
 
@@ -231,8 +237,24 @@ export class TerminalManager {
     // submitted when the prompt could not ride along as an argv entry (the fallback path).
     if (prompt && !promptAsArg) {
       const send = submit;
-      setTimeout(() => { try { terminal.sendText(prompt, send); } catch { /* terminal closed */ } }, 1500);
+      setTimeout(() => this._typeIntoRepl(terminal, prompt, send), REPL_READY_DELAY_MS);
     }
+  }
+
+  /**
+   * Type a prompt into a live `claude` REPL, sending the Enter as its OWN write rather than
+   * appending it to the text.
+   *
+   * `sendText(text, true)` writes the text and the trailing CR in a single chunk. Claude Code's TUI
+   * reads a chunk containing newlines as a *paste* and folds that CR into the input as one more line
+   * break — so an auto-enter step whose message spans several lines (any step declaring
+   * requires/produces) ended up pre-filled but never submitted. A CR arriving on its own is read as
+   * a real Enter keypress.
+   */
+  private _typeIntoRepl(terminal: vscode.Terminal, prompt: string, submit: boolean): void {
+    try { terminal.sendText(prompt, false); } catch { return; /* terminal closed */ }
+    if (!submit) return;
+    setTimeout(() => { try { terminal.sendText('', true); } catch { /* terminal closed */ } }, ENTER_DELAY_MS);
   }
 
   /**
