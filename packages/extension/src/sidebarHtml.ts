@@ -113,15 +113,7 @@ ${renderPaletteVars()}
     .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; }
     .setting-row + .setting-row { border-top: 1px solid rgba(127,127,127,.07); }
     .setting-label { font-size: 0.8462rem; color: var(--fg); font-weight: 500; }
-    .gx-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 5px; vertical-align: middle; background: var(--muted); }
-    /* One shared legend for every colored status dot in the sidebar (GitNexus, MCP, library,
-       plugins) — sits once at the bottom instead of repeating a sentence per row. */
-    .dot-legend { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; margin-top: 4px; padding: 8px 10px; border-top: 1px solid rgba(127,127,127,.07); font-size: 0.7308rem; color: var(--muted); white-space: nowrap; overflow-x: auto; }
-    .dot-legend > span { flex: 1 1 0; display: flex; align-items: center; justify-content: center; }
-    .dot-legend .legend-dot { width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; display: inline-block; vertical-align: middle; flex: 0 0 auto; }
-    /* GitNexus row stacks vertically: status line (with ··· menu) on top, controls on a second line. */
-    .gx-row { flex-direction: column; align-items: stretch; gap: 8px; }
-    .gx-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+    /* Analyze button sits directly beside the ··· menu on the GitNexus settings row. */
     .gx-ctl { display: flex; align-items: center; gap: 6px; }
 
     /* ── section ── */
@@ -173,7 +165,6 @@ ${renderPaletteVars()}
     .item-dot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
     .item-body { min-width: 0; }
     .item-name { display: block; font-size: 0.8846rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
-    .item-sub { display: block; font-size: 0.7692rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; margin-top: 1px; }
     /* action buttons: hidden until hover so narrow sidebars don't clip content */
     .item-acts { display: flex; align-items: center; gap: 3px; opacity: 0; transition: opacity .1s; }
     .item:hover .item-acts, .item.menu-open .item-acts { opacity: 1; }
@@ -344,16 +335,14 @@ ${renderPaletteVars()}
             <option value="">Default</option>
           </select></span>
         </div>
-        <div class="setting-row gx-row" id="gitnexus-setting-row" style="display:none">
-          <div class="gx-head">
-            <div class="setting-label"><span id="gitnexus-dot" class="gx-dot"></span>GitNexus</div>
+        <div class="setting-row" id="gitnexus-setting-row" style="display:none">
+          <div class="setting-label" id="gitnexus-label">GitNexus</div>
+          <div class="gx-ctl">
+            <button id="gitnexus-analyze-btn" class="pill accent" type="button">Analyze</button>
             <details class="menu" id="gitnexus-menu">
               <summary class="menu-btn" title="More actions" aria-label="More">···</summary>
               <div class="menu-pop" id="gitnexus-menu-pop"></div>
             </details>
-          </div>
-          <div class="gx-ctl">
-            <button id="gitnexus-analyze-btn" class="pill accent" type="button">Analyze</button>
           </div>
         </div>
       </div>
@@ -375,9 +364,6 @@ ${renderPaletteVars()}
         <div id="runs"><span class="empty">No runs yet</span></div>
       </div>
     </section>
-
-    <!-- shared legend for every status dot in the sidebar (GitNexus, MCP, library, plugins) -->
-    <div class="dot-legend" id="sidebar-legend"></div>
 
   </div><!-- /.body -->
 </div><!-- /.shell -->
@@ -432,22 +418,14 @@ ${renderPaletteVars()}
     } catch (_) {}
   }
 
-  // Single semantic color set for every status dot in the sidebar (GitNexus, MCP, library items,
-  // plugins), so the same meaning always renders the same color. Explained once in #sidebar-legend.
+  // Single semantic color set for every status dot in the sidebar (MCP, library items, plugins),
+  // so the same meaning always renders the same color.
   const DOT = {
     good: 'var(--success, #3fb950)',
     warn: 'var(--vscode-charts-yellow, #d7a000)',
     bad: 'var(--vscode-charts-red, #f48771)',
     neutral: 'var(--muted, #8b949e)'
   };
-  const sidebarLegendEl = document.getElementById('sidebar-legend');
-  if (sidebarLegendEl) {
-    sidebarLegendEl.innerHTML = [
-      [DOT.good, 'Good'],
-      [DOT.warn, 'Attention'],
-      [DOT.bad, 'Failed']
-    ].map(([color, label]) => '<span><span class="legend-dot" style="background:' + color + '"></span>' + label + '</span>').join('');
-  }
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const fmtTime = iso => { const d = new Date(iso); return !isNaN(d.getTime()) ? d.toLocaleString() : esc(iso); };
   const fmtDate = iso => { const d = new Date(iso); if (isNaN(d.getTime())) return esc(iso); return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }); };
@@ -687,7 +665,6 @@ ${renderPaletteVars()}
             '<span class="item-dot" style="background:' + (item.installed ? DOT.good : DOT.neutral) + '"></span>' +
             '<span class="item-body">' +
               '<span class="item-name" title="' + esc(item.filename.replace(/.md$/i, '')) + '">' + esc(item.filename.replace(/.md$/i, '')) + (item.hasUpdate ? '<span class="update-dot" title="Update available"></span>' : '') + '</span>' +
-              '<span class="item-sub" title="' + esc(item.name) + '">' + esc(item.name) + '</span>' +
             '</span>' +
             '<span class="item-acts">' + actsHtml + '</span>' +
             '</div>';
@@ -787,10 +764,10 @@ ${renderPaletteVars()}
   // per-repo index lifecycle: analyzing → not-indexed (Analyze) → stale (Re-analyze) → up to date.
   function updateGitnexusRow() {
     const row = document.getElementById('gitnexus-setting-row');
-    const dot = document.getElementById('gitnexus-dot');
+    const label = document.getElementById('gitnexus-label');
     const btn = document.getElementById('gitnexus-analyze-btn');
     const menuPop = document.getElementById('gitnexus-menu-pop');
-    if (!row || !dot || !btn || !menuPop) return;
+    if (!row || !label || !btn || !menuPop) return;
 
     // Gated on the MCP connection: until GitNexus is connected (set up in Overview) there's nothing
     // to query, so the row stays hidden and Overview owns the "connect" step.
@@ -802,8 +779,7 @@ ${renderPaletteVars()}
 
     // ---- Transient: a run is in flight ----
     if (gitnexusAnalyzing) {
-      dot.style.background = DOT.neutral;
-      dot.title = 'Analyzing…';
+      label.title = 'Analyzing…';
       btn.style.display = ''; btn.disabled = true; btn.textContent = 'Analyzing…';
       menuPop.innerHTML = '';
       return;
@@ -817,23 +793,19 @@ ${renderPaletteVars()}
     const grp = gitnexusStatus.currentGroup ? ' · group: ' + gitnexusStatus.currentGroup : '';
     const meta = (parts.length ? ' · ' + parts.join(' · ') : '') + grp;
 
-    // The dot's color always matches the shared legend at the bottom of the sidebar; the full
-    // detail (file count, indexed time, active group) lives in its hover tooltip instead of a
-    // per-state sentence on the row.
+    // Full detail (file count, indexed time, active group) lives in the label's hover tooltip
+    // instead of a per-state sentence on the row.
     if (!indexed) {
       // Never analyzed → Analyze is the primary action; group choice lives in the ··· menu.
-      dot.style.background = DOT.neutral;
-      dot.title = 'Not indexed — click Analyze (or pick a group from ···)';
+      label.title = 'Not indexed — click Analyze (or pick a group from ···)';
       btn.style.display = ''; btn.textContent = 'Analyze';
     } else if (stale) {
       // Indexed but code moved on (new commit, branch switch, or an edit since analyze) → re-analyze.
-      dot.style.background = DOT.warn;
-      dot.title = 'Out of date — re-analyze recommended' + meta;
+      label.title = 'Out of date — re-analyze recommended' + meta;
       btn.style.display = ''; btn.textContent = 'Re-analyze';
     } else {
       // Indexed and fresh → nothing to do; re-analyze still available from the ··· menu.
-      dot.style.background = DOT.good;
-      dot.title = 'Up to date' + meta;
+      label.title = 'Up to date' + meta;
       btn.style.display = 'none';
     }
 
@@ -944,7 +916,6 @@ ${renderPaletteVars()}
           (p.enabled ? DOT.good : DOT.bad) + '"></span>' +
         '<span class="item-body">' +
           '<span class="item-name" title="' + esc(p.name) + ' · v' + esc(p.version) + '">' + esc(p.name) + '</span>' +
-          '<span class="item-sub">' + esc(p.scope) + ' · v' + esc(p.version) + '</span>' +
         '</span>' +
         '<span class="item-acts">' +
           '<button class="pill" type="button" data-act="details" data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '">Details</button>' +
@@ -964,8 +935,7 @@ ${renderPaletteVars()}
         '<div class="item">' +
         '<span class="item-dot" style="background:' + DOT.neutral + '"></span>' +
         '<span class="item-body">' +
-          '<span class="item-name" title="' + esc(p.id) + '">' + esc(p.name) + '</span>' +
-          '<span class="item-sub" title="' + esc(p.description || p.id) + '">' + esc(p.description || p.id) + '</span>' +
+          '<span class="item-name" title="' + esc(p.description || p.id) + '">' + esc(p.name) + '</span>' +
         '</span>' +
         '<span class="item-acts">' +
           '<button class="pill accent" type="button" data-act="install" data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '">Install</button>' +
