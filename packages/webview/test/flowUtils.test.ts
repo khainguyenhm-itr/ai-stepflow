@@ -6,7 +6,8 @@ import {
   getFlowColumns,
   getDefaultActiveStepId,
   hasUnfinishedSteps,
-  formatRunTime
+  formatRunTime,
+  missingRequiredInputs
 } from '../src/flowUtils.js';
 
 /** Minimal flow-step factory; cast to the real type without filling every field. */
@@ -77,4 +78,17 @@ test('hasUnfinishedSteps is true unless every step is done', () => {
 
 test('formatRunTime returns the input unchanged for an unparseable timestamp', () => {
   assert.equal(formatRunTime('not-a-date'), 'not-a-date');
+});
+
+test('missingRequiredInputs reports labels for empty/whitespace required fields only', () => {
+  const inputs = {
+    level: { type: 'string', required: true, label: 'Level' },
+    module: { type: 'string', required: false, label: 'Module' },
+    ticket: { type: 'string', required: true, label: 'Ticket' }
+  };
+  assert.deepEqual(missingRequiredInputs(inputs, {}), ['Level', 'Ticket']);
+  assert.deepEqual(missingRequiredInputs(inputs, { level: '  ', ticket: 'EPIC-1' }), ['Level']);
+  assert.deepEqual(missingRequiredInputs(inputs, { level: '1', ticket: 'EPIC-1' }), []);
+  // optional field left empty never blocks
+  assert.deepEqual(missingRequiredInputs(inputs, { level: '1', ticket: 'EPIC-1', module: '' }), []);
 });

@@ -36,6 +36,7 @@ export function verifyRun(flow: Flow, runState: FlowRunState, projectPath: strin
   for (const step of flow.steps) {
     const state = runState.steps[step.id];
     if (!state) continue;
+    if (state.executionStatus === 'skipped') continue; // never ran — nothing to verify
     if (state.completionStatus !== 'done' && state.executionStatus !== 'completed') continue;
 
     const produces = resolveTemplates(step.produces, runState.inputs);

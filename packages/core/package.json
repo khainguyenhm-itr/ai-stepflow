@@ -7,7 +7,8 @@
   "exports": {
     ".": "./out/index.js",
     "./types": "./out/types.js",
-    "./runStateMachine": "./out/runStateMachine.js"
+    "./runStateMachine": "./out/runStateMachine.js",
+    "./flowInputs": "./out/flowInputs.js"
   },
   "license": "MIT",
   "type": "module",

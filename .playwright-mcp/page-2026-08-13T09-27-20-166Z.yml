@@ -1,0 +1,35 @@
+- generic [ref=e2]:
+  - generic [ref=e3]: Loading…
+  - generic [ref=e6]:
+    - generic [ref=e7]: CSF
+    - generic [ref=e8]: v1.0.0
+    - button "Refresh" [ref=e9] [cursor=pointer]: ↻
+  - generic [ref=e10]:
+    - generic [ref=e11]:
+      - button "► MCP Connections" [ref=e13] [cursor=pointer]:
+        - generic [ref=e14]: ►
+        - generic [ref=e15]: MCP Connections
+      - generic [ref=e16]:
+        - generic [ref=e17]:
+          - button "Installed" [ref=e18] [cursor=pointer]
+          - button "Available" [ref=e19] [cursor=pointer]
+        - textbox "Filter servers…" [ref=e21]
+    - generic [ref=e26]:
+      - button "► Plugins" [ref=e28] [cursor=pointer]:
+        - generic [ref=e29]: ►
+        - generic [ref=e30]: Plugins
+      - generic [ref=e31]:
+        - generic [ref=e32]:
+          - button "Installed" [ref=e33] [cursor=pointer]
+          - button "Available" [ref=e34] [cursor=pointer]
+        - textbox "Filter plugins…" [ref=e36]
+    - button "► Project Settings" [ref=e44] [cursor=pointer]:
+      - generic [ref=e45]: ►
+      - generic [ref=e46]: Project Settings
+    - generic [ref=e47]:
+      - button "► Runs" [ref=e49] [cursor=pointer]:
+        - generic [ref=e50]: ►
+        - generic [ref=e51]: Runs
+      - generic [ref=e52]:
+        - textbox "Filter runs…" [ref=e54]
+        - generic [ref=e55]: No runs yet

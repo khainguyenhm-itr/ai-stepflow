@@ -1,4 +1,4 @@
-export type StepExecutionStatus = "locked" | "ready" | "running" | "completed" | "failed" | "cancelled";
+export type StepExecutionStatus = "locked" | "ready" | "running" | "completed" | "failed" | "cancelled" | "skipped";
 
 export type StepReviewStatus = "pending" | "ai_review_running" | "waiting_human" | "approved" | "rejected";
 
@@ -117,6 +117,22 @@ export interface FlowStep {
   /** All skills of the step, run in order. Falls back to [skill] when unset. */
   skills?: string[];
   dependsOn?: string[];
+  /**
+   * Optional gate: this step only runs when the named flow input matches. Unset → step always
+   * runs (default, backward compatible). A step whose condition fails is auto-skipped — never
+   * launched, never blocks its dependents — so one flow can serve several run "tiers" (e.g. a
+   * `level` input selecting which steps apply) without splitting into separate flows.
+   */
+  runIf?: {
+    /** Name of the flow input (a `Flow.inputs` key) to check. */
+    input: string;
+    /** Exact string match against the input's value. */
+    equals?: string;
+    /** Numeric lower bound (inclusive); the input's value is coerced with `Number(...)`. */
+    min?: number;
+    /** Numeric upper bound (inclusive); the input's value is coerced with `Number(...)`. */
+    max?: number;
+  };
   /** Files the step is expected to create/update (relative to the project). Validated before the step can be marked done. */
   produces?: string[];
   /** Files that must already exist before the step can start or complete. */

@@ -18,14 +18,24 @@ export interface RequiresValidationResult {
 
 /** Verify a step's declared `requires` files exist before work continues. */
 export function validateRequires(step: FlowStep, projectPath: string, inputs: Record<string, string> = {}, flowName = '', runSlug = '', legacyRunSlug = ''): RequiresValidationResult {
-  const requires = resolveTemplates(step.requires, inputs);
-  if (requires.length === 0) return { ok: true };
-  // Skip entries that are flow input keys (not file artifacts) — they are validated at flow start.
-  const fileRequires = requires.filter(r => !(r in inputs));
-  if (fileRequires.length === 0) return { ok: true };
+  const declared = step.requires ?? [];
+  if (declared.length === 0) return { ok: true };
+
+  // A bare entry (exactly a flow input key, before any template resolution) declares "this step
+  // needs that input's value" — checked against the actual value, never treated as a file on disk.
+  // Anything else is a file path (optionally templated) and gets existence-checked as before.
+  const inputEntries = declared.filter(r => r in inputs);
+  const missingInputs = inputEntries.filter(r => !(inputs[r] || '').trim());
+  if (missingInputs.length > 0) {
+    return { ok: false, message: `missing required input(s): ${missingInputs.join(', ')}` };
+  }
+
+  const fileEntries = declared.filter(r => !(r in inputs));
+  if (fileEntries.length === 0) return { ok: true };
+  const resolvedFiles = resolveTemplates(fileEntries, inputs);
   // Locate each required file where it actually landed (an upstream step may have nested its
   // output in a subfolder), so a downstream step isn't blocked by a mismatched declared path.
-  const resolved = fileRequires.map(p => locateProducedFile(p, flowName, projectPath, runSlug, legacyRunSlug));
+  const resolved = resolvedFiles.map(p => locateProducedFile(p, flowName, projectPath, runSlug, legacyRunSlug));
   const missing = resolved.filter(p => !fs.existsSync(p));
   if (missing.length === 0) return { ok: true };
   return { ok: false, message: `missing required file(s): ${missing.map(p => path.relative(projectPath, p) || p).join(', ')}` };

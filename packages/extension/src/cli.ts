@@ -222,10 +222,24 @@ async function runFlow(projectPath: string, flowRef: string, inputs: Record<stri
   let runState = machine.initRunState(flow, { runId: new Date().toISOString(), projectPath, inputs });
   const runSlug = machine.runOutputSlug(runState.runName, runState.runId);
 
-  const orch = new machine.FlowOrchestrator(flow, runState);
-
   for (;;) {
+    // Re-built each iteration on the current runState — required for `skip` cascades below
+    // (skipping a step must be visible to the very next getAutoAdvanceActions() call) and, more
+    // generally, so `doneStepIds` always reflects the step that just finished.
+    const orch = new machine.FlowOrchestrator(flow, runState);
     const actions = orch.getAutoAdvanceActions();
+
+    const skips = actions.filter(a => a.type === 'skip');
+    if (skips.length > 0) {
+      for (const skip of skips) {
+        const skippedStep = flow.steps.find(s => s.id === skip.stepId);
+        runState = machine.markSkipped(runState, flow, skip.stepId, 'runIf not met');
+        process.stdout.write(`[skipped] ${skippedStep?.title || skip.stepId} — runIf not met\n`);
+      }
+      await saveRun(projectPath, runState);
+      continue; // re-derive actions against the updated state so dependents can advance/skip too
+    }
+
     const action = actions.find(a => a.type === 'launch_headless' || a.type === 'launch_interactive');
     if (!action) break;
 

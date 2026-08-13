@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   Flow,
-  initRunState, markRunning, markCompleted, markFailed, markCancelled,
+  initRunState, markRunning, markCompleted, markFailed, markCancelled, markSkipped,
   applyHumanReview, applyAiReview, markDone, doneStepIds, lockStatesEqual, resetStep
 } from '@claudesteps/core';
 
@@ -60,6 +60,17 @@ test('markFailed transitions status', () => {
   st = markFailed(st, flow, 'a', { output: 'error' });
   assert.equal(st.steps.a.executionStatus, 'failed');
   assert.equal(st.steps.a.output, 'error');
+});
+
+test('markSkipped marks a step done (so dependents unlock) but tags it skipped, not completed', () => {
+  let st = initRunState(flow, { runId: 'r1' });
+  assert.equal(st.steps.b.executionStatus, 'locked');
+  st = markSkipped(st, flow, 'a', 'runIf not met');
+  assert.equal(st.steps.a.executionStatus, 'skipped');
+  assert.equal(st.steps.a.completionStatus, 'done');
+  // Dependent unlocks exactly as it would after a real completion.
+  assert.equal(st.steps.b.executionStatus, 'ready');
+  assert.equal(doneStepIds(st).has('a'), true);
 });
 
 test('markCancelled marks the attempt cancelled and stays re-runnable', () => {

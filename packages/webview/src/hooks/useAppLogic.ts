@@ -5,7 +5,8 @@ import {
   getStepSkills,
   applyDependencyLocks,
   getDefaultActiveStepId,
-  hasDependencyCycle
+  hasDependencyCycle,
+  missingRequiredInputs
 } from '../flowUtils';
 import { previewFlow, previewAgents, previewSkills, previewRunState, previewAuditLogs, previewRunSummaries } from '../previewData';
 
@@ -615,6 +616,11 @@ export const useAppLogic = () => {
 
   const submitRunInputs = () => {
     if (!runState.runInputsTarget) return;
+    const missing = missingRequiredInputs(runState.runInputsTarget.inputs, runState.runInputValues);
+    if (missing.length > 0) {
+      runState.setRunInputsError(`Required: ${missing.join(', ')}`);
+      return;
+    }
     if (runState.runInputsEditing) {
       // Edit mode: patch the targeted run's name + inputs in place (backend enforces the pristine gate).
       sendToVSCode('editRun', { runName: runState.runName.trim() || undefined, inputs: runState.runInputValues, runId: runState.runEditRunId ?? undefined });

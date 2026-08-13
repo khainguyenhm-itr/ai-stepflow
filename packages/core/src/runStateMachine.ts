@@ -160,6 +160,16 @@ export function markCancelled(state: FlowRunState, flow: Flow, stepId: string, m
   return patchStep(state, flow, stepId, { executionStatus: 'cancelled', ...metrics }, { status: 'cancelled' });
 }
 
+/**
+ * A step whose `runIf` condition doesn't match this run's inputs: marked `completionStatus: 'done'`
+ * so dependents unlock exactly as after a real completion, but tagged `executionStatus: 'skipped'`
+ * so the UI and `verifyRun` never mistake it for actual completed work (it never ran, never produced
+ * anything).
+ */
+export function markSkipped(state: FlowRunState, flow: Flow, stepId: string, reason?: string): FlowRunState {
+  return patchStep(state, flow, stepId, { executionStatus: 'skipped', completionStatus: 'done' }, { status: 'skipped', message: reason });
+}
+
 export function applyAiReview(
   state: FlowRunState,
   flow: Flow,

@@ -116,8 +116,9 @@ ${renderPaletteVars()}
     .gx-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 5px; vertical-align: middle; background: var(--muted); }
     /* One shared legend for every colored status dot in the sidebar (GitNexus, MCP, library,
        plugins) — sits once at the bottom instead of repeating a sentence per row. */
-    .dot-legend { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; margin-top: 4px; padding: 8px 10px; border-top: 1px solid rgba(127,127,127,.07); font-size: 0.7308rem; color: var(--muted); }
-    .dot-legend .legend-dot { width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; display: inline-block; vertical-align: middle; }
+    .dot-legend { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; margin-top: 4px; padding: 8px 10px; border-top: 1px solid rgba(127,127,127,.07); font-size: 0.7308rem; color: var(--muted); white-space: nowrap; overflow-x: auto; }
+    .dot-legend > span { flex: 1 1 0; display: flex; align-items: center; justify-content: center; }
+    .dot-legend .legend-dot { width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; display: inline-block; vertical-align: middle; flex: 0 0 auto; }
     /* GitNexus row stacks vertically: status line (with ··· menu) on top, controls on a second line. */
     .gx-row { flex-direction: column; align-items: stretch; gap: 8px; }
     .gx-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
@@ -434,18 +435,17 @@ ${renderPaletteVars()}
   // Single semantic color set for every status dot in the sidebar (GitNexus, MCP, library items,
   // plugins), so the same meaning always renders the same color. Explained once in #sidebar-legend.
   const DOT = {
-    good: 'var(--success)',
+    good: 'var(--success, #3fb950)',
     warn: 'var(--vscode-charts-yellow, #d7a000)',
     bad: 'var(--vscode-charts-red, #f48771)',
-    neutral: 'var(--muted)'
+    neutral: 'var(--muted, #8b949e)'
   };
   const sidebarLegendEl = document.getElementById('sidebar-legend');
   if (sidebarLegendEl) {
     sidebarLegendEl.innerHTML = [
-      [DOT.good, 'Good / connected / installed'],
-      [DOT.warn, 'Needs attention'],
-      [DOT.bad, 'Failed / disabled'],
-      [DOT.neutral, 'Unknown / not set']
+      [DOT.good, 'Good'],
+      [DOT.warn, 'Attention'],
+      [DOT.bad, 'Failed']
     ].map(([color, label]) => '<span><span class="legend-dot" style="background:' + color + '"></span>' + label + '</span>').join('');
   }
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

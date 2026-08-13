@@ -1,14 +1,30 @@
-import { Flow, FlowRunState } from './types.js';
+import { Flow, FlowRunState, FlowStep } from './types.js';
 import * as machine from './runStateMachine.js';
-import { pickAutoAdvanceSteps, seedStartedSteps } from './runUtils.js';
+import { pickAutoAdvanceSteps, pickRunIfCandidates, seedStartedSteps } from './runUtils.js';
 
 /**
  * An action the host (Extension or CLI) should perform to advance the flow.
  */
-export type OrchestratorAction = 
+export type OrchestratorAction =
   | { type: 'launch_headless'; stepId: string }
   | { type: 'launch_interactive'; stepId: string }
-  | { type: 'park_interactive'; stepId: string };
+  | { type: 'park_interactive'; stepId: string }
+  | { type: 'skip'; stepId: string };
+
+/** Whether a step's `runIf` gate matches this run's inputs (no gate → always true). */
+export function stepRunIfSatisfied(step: FlowStep, inputs: Record<string, string> = {}): boolean {
+  const cond = step.runIf;
+  if (!cond) return true;
+  const raw = inputs[cond.input];
+  if (cond.equals !== undefined) return raw === cond.equals;
+  if (cond.min === undefined && cond.max === undefined) return true;
+  if (!raw || !raw.trim()) return false; // unset/blank — Number('') is 0, not NaN, so check this first
+  const num = Number(raw);
+  if (Number.isNaN(num)) return false; // can't evaluate numerically — fail closed, step gets skipped
+  if (cond.min !== undefined && num < cond.min) return false;
+  if (cond.max !== undefined && num > cond.max) return false;
+  return true;
+}
 
 /**
  * Pure orchestration logic that decides which steps to run next.
@@ -30,9 +46,21 @@ export class FlowOrchestrator {
    */
   getAutoAdvanceActions(): OrchestratorAction[] {
     const done = machine.doneStepIds(this.runState);
-    const readyIds = pickAutoAdvanceSteps(this.flow.steps, done, this._startedStepIds);
-    
     const actions: OrchestratorAction[] = [];
+
+    // runIf is evaluated over a superset of the normal ready set (roots included): skipping
+    // opens no terminal and does no work, so it isn't subject to the "never self-start a run"
+    // rule that keeps root steps out of ordinary auto-advance.
+    const skipCandidateIds = pickRunIfCandidates(this.flow.steps, done, this._startedStepIds);
+    for (const id of skipCandidateIds) {
+      const step = this.flow.steps.find(s => s.id === id);
+      if (step?.runIf && !stepRunIfSatisfied(step, this.runState.inputs)) {
+        actions.push({ type: 'skip', stepId: id });
+        this._startedStepIds.add(id);
+      }
+    }
+
+    const readyIds = pickAutoAdvanceSteps(this.flow.steps, done, this._startedStepIds);
     let interactiveLaunched = false;
 
     for (const id of readyIds) {

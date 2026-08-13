@@ -178,6 +178,9 @@ export const InlineRunner: React.FC<InlineRunnerProps> = ({
   const stepStatusBadge = (state: StepRunState | null | undefined) => {
     if (!state) return null;
     const { executionStatus, reviewStatus, completionStatus } = state;
+    // Checked before completionStatus==='done': a skipped step is marked done too (so its
+    // dependents unlock) but never actually ran, so it must never read as a real "done".
+    if (executionStatus === 'skipped') return <span className="badge"><Icon.SkipForward size={10} style={{ marginRight: 4 }} />skipped</span>;
     if (completionStatus === 'done') return <span className="badge success"><Icon.Check size={10} style={{ marginRight: 4 }} />done</span>;
     if (executionStatus === 'failed') return <span className="badge error"><Icon.X size={10} style={{ marginRight: 4 }} />failed</span>;
     if (reviewStatus === 'rejected') return <span className="badge error"><Icon.X size={10} style={{ marginRight: 4 }} />rejected</span>;

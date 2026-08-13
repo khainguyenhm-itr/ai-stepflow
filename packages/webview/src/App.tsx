@@ -606,6 +606,7 @@ const App: React.FC = () => {
         skills={skills}
         reviewKits={reviewKits}
         flowSteps={editingFlow?.steps || []}
+        flowInputs={editingFlow?.inputs || {}}
         onClose={() => { setEditingStep(null); if (stepEditFromBoard) setEditingFlow(null); }}
         onSave={saveStepEdit}
         onChange={patch => setEditingStep(prev => prev ? ({ ...prev, step: { ...prev.step, ...patch } }) : null)}

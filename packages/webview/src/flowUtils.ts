@@ -1,7 +1,9 @@
 import { applyDependencyLocks as applyCoreDependencyLocks } from '@claudesteps/core/runStateMachine';
+import { missingRequiredInputs as coreMissingRequiredInputs } from '@claudesteps/core/flowInputs';
 import { Flow, FlowStep, FlowRunState } from '@claudesteps/core/types';
 
 export const applyDependencyLocks = applyCoreDependencyLocks;
+export const missingRequiredInputs = coreMissingRequiredInputs;
 
 /** Run ids are ISO timestamps; show them as a readable local time. */
 export const formatRunTime = (iso: string) => {

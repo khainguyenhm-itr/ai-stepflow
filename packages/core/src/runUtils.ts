@@ -14,17 +14,22 @@ export interface ReadyStepInput {
  * Pick the steps that should auto-run next: those whose dependencies are all done,
  * that have not finished or started yet, and that actually declare dependencies
  * (root steps stay user-triggered so a run never starts itself).
+ *
+ * `includeRoots` lifts that root exclusion — used only to find `runIf`-skip candidates,
+ * where a root step must still be evaluated (skipping isn't "auto-running": it opens no
+ * terminal and does no work, so the "never self-start a run" rule doesn't apply to it).
  */
 export function computeReadySteps(
   steps: ReadyStepInput[],
   done: ReadonlySet<string>,
-  started: ReadonlySet<string>
+  started: ReadonlySet<string>,
+  opts: { includeRoots?: boolean } = {}
 ): string[] {
   const ready: string[] = [];
   for (const step of steps) {
     if (done.has(step.id) || started.has(step.id)) continue;
     const deps = step.dependsOn ?? [];
-    if (deps.length === 0) continue;
+    if (deps.length === 0 && !opts.includeRoots) continue;
     if (deps.every(d => done.has(d))) ready.push(step.id);
   }
   return ready;
@@ -58,6 +63,20 @@ export function pickAutoAdvanceSteps(
   started: ReadonlySet<string>
 ): string[] {
   return computeReadySteps(steps, done, started);
+}
+
+/**
+ * Every step (root included) whose dependencies are all done and that hasn't started or
+ * finished yet — the candidate set for `runIf` evaluation. A superset of
+ * {@link pickAutoAdvanceSteps} because a root step must still be checked for a `runIf` gate
+ * even though it's excluded from ordinary auto-launch.
+ */
+export function pickRunIfCandidates(
+  steps: ReadyStepInput[],
+  done: ReadonlySet<string>,
+  started: ReadonlySet<string>
+): string[] {
+  return computeReadySteps(steps, done, started, { includeRoots: true });
 }
 
 /**

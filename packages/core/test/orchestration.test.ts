@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   Flow,
   initRunState, markCompleted, markRunning, applyAiReview,
-  FlowOrchestrator
+  FlowOrchestrator, stepRunIfSatisfied
 } from '@claudesteps/core';
 
 // Every step is reviewed; the default is auto (AI) review.
@@ -19,6 +19,40 @@ function step(id: string, extra: Record<string, any> = {}) {
 function toDone(st: any, fl: Flow, id: string) {
   return applyAiReview(markCompleted(markRunning(st, fl, id), fl, id), fl, id, 'approved');
 }
+
+test('stepRunIfSatisfied: no condition always runs', () => {
+  assert.equal(stepRunIfSatisfied(step('a'), { level: '1' }), true);
+  assert.equal(stepRunIfSatisfied(step('a'), {}), true);
+});
+
+test('stepRunIfSatisfied: equals does exact string match', () => {
+  const s = step('a', { runIf: { input: 'level', equals: '2' } });
+  assert.equal(stepRunIfSatisfied(s, { level: '2' }), true);
+  assert.equal(stepRunIfSatisfied(s, { level: '1' }), false);
+  assert.equal(stepRunIfSatisfied(s, {}), false);
+});
+
+test('stepRunIfSatisfied: min/max is an inclusive numeric range', () => {
+  const s = step('a', { runIf: { input: 'level', min: 2, max: 3 } });
+  assert.equal(stepRunIfSatisfied(s, { level: '1' }), false);
+  assert.equal(stepRunIfSatisfied(s, { level: '2' }), true);
+  assert.equal(stepRunIfSatisfied(s, { level: '3' }), true);
+  assert.equal(stepRunIfSatisfied(s, { level: '4' }), false);
+});
+
+test('stepRunIfSatisfied: non-numeric value against min/max fails closed (skips)', () => {
+  const s = step('a', { runIf: { input: 'level', min: 2 } });
+  assert.equal(stepRunIfSatisfied(s, { level: 'oops' }), false);
+  assert.equal(stepRunIfSatisfied(s, {}), false);
+});
+
+test('stepRunIfSatisfied: an empty string value fails closed too — Number("") is 0, not NaN', () => {
+  // A max-only condition is the case that would otherwise be fooled: 0 <= 5 "passes" the check
+  // even though there was never a real value to evaluate.
+  const s = step('a', { runIf: { input: 'level', max: 5 } });
+  assert.equal(stepRunIfSatisfied(s, { level: '' }), false);
+  assert.equal(stepRunIfSatisfied(s, { level: '  ' }), false);
+});
 
 test('FlowOrchestrator identifies ready steps and respects interactive limits', () => {
   const flow: Flow = {
@@ -72,4 +106,42 @@ test('FlowOrchestrator does not re-launch already started steps', () => {
   // in the instance.
   const actions2 = orch.getAutoAdvanceActions();
   assert.equal(actions2.length, 0);
+});
+
+test('FlowOrchestrator skips a ROOT step whose runIf does not match — roots are normally excluded from auto-advance, but skip must still apply', () => {
+  const flow: Flow = {
+    id: 'f', name: 'f', description: '', inputs: {}, sourcePath: '/f.yaml',
+    steps: [step('a', { runIf: { input: 'level', equals: '2' } })]
+  };
+  const st = initRunState(flow, { runId: 'r1', inputs: { level: '1' } });
+  const orch = new FlowOrchestrator(flow, st);
+  const actions = orch.getAutoAdvanceActions();
+  assert.deepEqual(actions, [{ type: 'skip', stepId: 'a' }]);
+});
+
+test('FlowOrchestrator skips a dependent step whose runIf does not match, instead of launching it', () => {
+  const flow: Flow = {
+    id: 'f', name: 'f', description: '', inputs: {}, sourcePath: '/f.yaml',
+    steps: [
+      step('a'),
+      step('b', { dependsOn: ['a'], runIf: { input: 'level', equals: '2' } })
+    ]
+  };
+  let st = initRunState(flow, { runId: 'r1', inputs: { level: '1' } });
+  st = toDone(st, flow, 'a');
+  const orch = new FlowOrchestrator(flow, st);
+  const actions = orch.getAutoAdvanceActions();
+  assert.deepEqual(actions, [{ type: 'skip', stepId: 'b' }]);
+});
+
+test('FlowOrchestrator does not skip or re-skip a step whose runIf matches', () => {
+  const flow: Flow = {
+    id: 'f', name: 'f', description: '', inputs: {}, sourcePath: '/f.yaml',
+    steps: [step('a', { runIf: { input: 'level', equals: '1' } })]
+  };
+  const st = initRunState(flow, { runId: 'r1', inputs: { level: '1' } });
+  const orch = new FlowOrchestrator(flow, st);
+  // Root step, matches runIf → not a skip candidate; roots stay excluded from auto-launch too,
+  // so no action at all (same as a plain root step with no runIf).
+  assert.deepEqual(orch.getAutoAdvanceActions(), []);
 });

@@ -70,3 +70,17 @@ test('verifyRun reports missing files and markers', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('verifyRun never flags a skipped step — it never ran, so its produces were never expected', () => {
+  const { dir, flow, runState } = createFixture();
+  try {
+    // No docs/prd.md written at all — a step that actually ran would drift here.
+    runState.steps['step-1'] = { executionStatus: 'skipped', reviewStatus: 'pending', completionStatus: 'done' };
+    const report = verifyRun(flow, runState, dir);
+    assert.equal(report.ok, true);
+    assert.equal(report.checked, 0);
+    assert.equal(report.drift.length, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

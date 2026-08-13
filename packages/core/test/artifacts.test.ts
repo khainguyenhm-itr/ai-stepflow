@@ -46,6 +46,15 @@ test('validateRequires checks placeholder-resolved files', () => {
   }
 });
 
+test('validateRequires treats a bare input-key entry as missing when its value is empty', () => {
+  // "level" (no path separator, no placeholder braces) names a flow input directly —
+  // the step is declaring "I need the `level` input", not a file called "level".
+  const step = makeStep({ requires: ['level'] });
+  assert.equal(validateRequires(step, '/irrelevant', { level: '' }).ok, false);
+  assert.equal(validateRequires(step, '/irrelevant', { level: '   ' }).ok, false, 'whitespace-only must count as missing, same as empty');
+  assert.equal(validateRequires(step, '/irrelevant', { level: '2' }).ok, true);
+});
+
 test('validateProduces checks placeholder-resolved files and markers', () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'claudesteps-produces-'));
   try {

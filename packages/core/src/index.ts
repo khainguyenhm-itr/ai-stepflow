@@ -1,4 +1,5 @@
 export * from './types.js';
+export * from './flowInputs.js';
 export * from './runStateMachine.js';
 export * from './orchestration.js';
 export * from './runConfig.js';

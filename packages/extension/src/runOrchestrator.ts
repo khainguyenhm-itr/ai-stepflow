@@ -12,7 +12,7 @@ import { runKey, isRunKeyOf } from './runOrchestratorHelpers.js';
 import {
   Flow, FlowRunState, FlowStep, Skill,
   runClaudeStreaming, ClaudeStreamingRunOptions, ClaudeStreamingRunResult,
-  validateProducesFiles, verifyProducesContent, validateRequires,
+  validateProducesFiles, verifyProducesContent, validateRequires, missingRequiredInputs,
   renderRunReport,
   runValidator,
   renderVerifyReportMarkdown, verifyRun,
@@ -235,6 +235,10 @@ export class RunOrchestrator {
         message: historyEvent.message
       });
     }
+    // A brand-new run's root steps are otherwise never swept for `runIf` — nothing else calls
+    // _advanceReadySteps until a step finishes. No-op for flows with no `runIf` steps (existing
+    // root-exclusion in pickAutoAdvanceSteps still applies to actual launches).
+    this._advanceReadySteps(runState.runId);
   }
 
   /** Restore the latest persisted run on panel open, broadcasting it to the webview. */
@@ -255,6 +259,9 @@ export class RunOrchestrator {
     this._focusedFlow = flow;
     this._focusedRunId = runState.runId;
     this.post({ type: 'restoreRun', flow, runState });
+    // Re-sweep for `runIf` skip candidates on reopen (e.g. after an extension restart), same as
+    // adoptRunState — a no-op unless the flow declares runIf and this run hasn't resolved it yet.
+    this._advanceReadySteps(runState.runId);
   }
 
   /**
@@ -454,6 +461,11 @@ export class RunOrchestrator {
       s => (s.history?.length ?? 0) > 0 || (s.executionStatus !== 'ready' && s.executionStatus !== 'locked')
     );
     if (anyStepStarted) return;
+    const missing = missingRequiredInputs(rc.flow.inputs, inputs);
+    if (missing.length > 0) {
+      this._notify('error', `cannot save run: missing required input(s): ${missing.join(', ')}`);
+      return;
+    }
     const name = runName?.trim() || undefined;
     await this._setRunState(runId, s => ({ ...s, runName: name, inputs }));
     this.post({ type: 'restoreRun', flow: rc.flow, runState: rc.runState, previousRunId: runId });
@@ -1147,12 +1159,31 @@ export class RunOrchestrator {
           rc.parkedStepIds.add(action.stepId);
           this.post(this._withRun(runId, { type: 'stepUpdate', stepId: action.stepId, append: true, output: '\n[step ready — click "Run Step" to start]\n' }));
         }
+      } else if (action.type === 'skip') {
+        void this._skipStep(runId, action.stepId);
       } else if (action.type === 'park_interactive') {
         if (rc.parkedStepIds.has(action.stepId)) continue;
         rc.parkedStepIds.add(action.stepId);
         this.post(this._withRun(runId, { type: 'stepUpdate', stepId: action.stepId, append: true, output: '\n[step ready — waiting for terminal slot...]\n' }));
       }
     }
+  }
+
+  /**
+   * Mark a `runIf`-gated step skipped (instant, no terminal/AI involved), then re-advance so a
+   * skip that unlocked (or itself skips) a dependent cascades in the same tick.
+   */
+  private async _skipStep(runId: string, stepId: string): Promise<void> {
+    const rc = this._runs.get(runId);
+    if (!rc) return;
+    const step = rc.flow.steps.find(s => s.id === stepId);
+    const cond = step?.runIf;
+    const reason = cond
+      ? `runIf not met (${cond.input}${cond.equals !== undefined ? ` = ${cond.equals}` : ''}${cond.min !== undefined ? ` min:${cond.min}` : ''}${cond.max !== undefined ? ` max:${cond.max}` : ''})`
+      : 'runIf not met';
+    await this._setRunState(runId, s => machine.markSkipped(s, rc.flow, stepId, reason), { stepId, status: 'skipped', message: reason });
+    this.post(this._withRun(runId, { type: 'stepUpdate', stepId, append: true, output: `\n[step skipped — ${reason}]\n` }));
+    this._advanceReadySteps(runId);
   }
 
   /** Read session stats from Claude CLI's .jsonl files for an interactive step. Never throws. */

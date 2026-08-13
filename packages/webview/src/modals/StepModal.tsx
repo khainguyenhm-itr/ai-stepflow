@@ -1,5 +1,5 @@
 import React from 'react';
-import { FlowStep, Agent, Skill, ReviewKit } from '@claudesteps/core/types';
+import { FlowStep, Agent, Skill, ReviewKit, Flow } from '@claudesteps/core/types';
 import { Modal, Field, CheckRow } from '../components/primitives';
 import { getStepSkills } from '../flowUtils';
 import { SaveScope } from '../components/ScopeControls';
@@ -14,6 +14,7 @@ interface StepModalProps {
   skills: Skill[];
   reviewKits: ReviewKit[];
   flowSteps: FlowStep[];
+  flowInputs: Flow['inputs'];
   onClose: () => void;
   onSave: () => void;
   onChange: (patch: Partial<FlowStep>) => void;
@@ -30,6 +31,7 @@ export const StepModal: React.FC<StepModalProps> = ({
   skills,
   reviewKits,
   flowSteps,
+  flowInputs,
   onClose,
   onSave,
   onChange,
@@ -108,6 +110,54 @@ export const StepModal: React.FC<StepModalProps> = ({
             })}
           </div>
         </Field>
+        <Field label="Run condition" hint="optional — only run this step when a flow input matches; otherwise it's auto-skipped">
+          <select
+            className="select"
+            value={step.runIf?.input || ''}
+            onChange={e => {
+              const input = e.target.value;
+              // Fresh object, not a spread of the old condition: switching to a different input
+              // must not silently carry over an equals/min/max that was set for the previous one.
+              onChange({ runIf: input ? { input } : undefined });
+            }}
+          >
+            <option value="">(always run)</option>
+            {Object.keys(flowInputs || {}).length === 0 && <option value="" disabled>No flow inputs declared</option>}
+            {Object.entries(flowInputs || {}).map(([name, def]) => (
+              <option key={name} value={name}>{def.label || name}</option>
+            ))}
+          </select>
+        </Field>
+        {step.runIf?.input && (
+          <>
+            <Field label="Equals" hint="exact match against the input's value; leave blank to use Min/Max instead">
+              <input
+                className="input"
+                placeholder="e.g. 2"
+                value={step.runIf.equals ?? ''}
+                onChange={e => onChange({ runIf: { ...step.runIf!, equals: e.target.value || undefined } })}
+              />
+            </Field>
+            <Field label="Min / Max" hint="inclusive numeric range, used only when Equals is blank">
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  className="input"
+                  type="number"
+                  placeholder="min"
+                  value={step.runIf.min ?? ''}
+                  onChange={e => onChange({ runIf: { ...step.runIf!, min: e.target.value ? Number(e.target.value) : undefined } })}
+                />
+                <input
+                  className="input"
+                  type="number"
+                  placeholder="max"
+                  value={step.runIf.max ?? ''}
+                  onChange={e => onChange({ runIf: { ...step.runIf!, max: e.target.value ? Number(e.target.value) : undefined } })}
+                />
+              </div>
+            </Field>
+          </>
+        )}
         <Field label="Review" hint={step.review.type === 'ai' ? 'auto review — marked done automatically on pass' : 'human review — requires manual approval'}>
           <select
             className="select"

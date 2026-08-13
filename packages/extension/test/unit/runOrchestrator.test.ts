@@ -258,6 +258,44 @@ test('a changing artifact resets the quiet window instead of counting toward it'
   assert.equal(cbs.ready!('run-A', 'step-1'), false, 'a still-growing artifact was treated as quiescent');
 });
 
+test('a root step whose runIf does not match is auto-skipped on run creation, unlocking its dependent', async () => {
+  const { orch } = build();
+  const flow: Flow = {
+    id: 'f1', name: 'f1', description: '', sourcePath: '/repo/.claudesteps/flows/f1.yaml',
+    inputs: { level: { type: 'string', required: true, label: 'Level' } },
+    steps: [
+      { id: 'a', title: 'Hard step', agent: 'po', skill: 'prd', review: { required: true, type: 'human' }, runIf: { input: 'level', equals: '2' } },
+      { id: 'b', title: 'Step B', agent: 'po', skill: 'prd', review: { required: true, type: 'human' }, dependsOn: ['a'] },
+    ],
+  } as Flow;
+  const run = machine.initRunState(flow, { runId: 'run-1', projectPath, inputs: { level: '1' } });
+
+  orch.setFlowAndRunState(flow, undefined); // focus the flow so adoptRunState can resolve it by id
+  await orch.adoptRunState(run);
+
+  assert.equal(orch.runState?.steps.a.executionStatus, 'skipped');
+  assert.equal(orch.runState?.steps.a.completionStatus, 'done');
+  assert.equal(orch.runState?.steps.b.executionStatus, 'ready');
+});
+
+test('editRunMeta refuses to save when a required flow input is left blank', async () => {
+  const { orch, saved } = build();
+  const flow: Flow = {
+    id: 'f1', name: 'f1', description: '', sourcePath: '/repo/.claudesteps/flows/f1.yaml',
+    inputs: { level: { type: 'string', required: true, label: 'Level' } },
+    steps: [{ id: 'step-1', title: 'Step 1', agent: 'po', skill: 'prd', review: { required: true, type: 'human' } }],
+  } as Flow;
+  const run = makeRun(flow, 'run-1', projectPath);
+  orch.setFlowAndRunState(flow, run);
+
+  await orch.editRunMeta('my-run', {});
+  assert.equal(orch.runState?.inputs.level, undefined, 'blank required input must not be persisted');
+  assert.equal(saved.length, 0);
+
+  await orch.editRunMeta('my-run', { level: '2' });
+  assert.equal(orch.runState?.inputs.level, '2');
+});
+
 test('two runs of the same step id keep separate readiness snapshots', () => {
   const { orch, cbs } = build();
   const flow = makeFlow('f1', ['docs/plan.md']);

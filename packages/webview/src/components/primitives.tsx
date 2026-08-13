@@ -35,6 +35,7 @@ import {
   List,
   SlidersHorizontal,
   History,
+  SkipForward,
 } from 'lucide-react';
 
 /* Small native UI primitives styled after VS Code. */
@@ -174,4 +175,5 @@ export const Icon = {
   List,
   Sliders: SlidersHorizontal,
   History,
+  SkipForward,
 };
