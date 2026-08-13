@@ -113,8 +113,11 @@ ${renderPaletteVars()}
     .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; }
     .setting-row + .setting-row { border-top: 1px solid rgba(127,127,127,.07); }
     .setting-label { font-size: 0.8462rem; color: var(--fg); font-weight: 500; }
-    .setting-desc { font-size: 0.7692rem; color: var(--muted); margin-top: 1px; }
-    .gx-dot { display: none; width: 6px; height: 6px; border-radius: 50%; margin-right: 5px; vertical-align: middle; background: var(--muted); }
+    .gx-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 5px; vertical-align: middle; background: var(--muted); }
+    /* One shared legend for every colored status dot in the sidebar (GitNexus, MCP, library,
+       plugins) — sits once at the bottom instead of repeating a sentence per row. */
+    .dot-legend { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; margin-top: 4px; padding: 8px 10px; border-top: 1px solid rgba(127,127,127,.07); font-size: 0.7308rem; color: var(--muted); }
+    .dot-legend .legend-dot { width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; display: inline-block; vertical-align: middle; }
     /* GitNexus row stacks vertically: status line (with ··· menu) on top, controls on a second line. */
     .gx-row { flex-direction: column; align-items: stretch; gap: 8px; }
     .gx-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
@@ -328,30 +331,21 @@ ${renderPaletteVars()}
       </div>
       <div class="box" id="settings-panel" style="display:none">
         <div class="setting-row">
-          <div>
-            <div class="setting-label">AI Response Style</div>
-            <div class="setting-desc">Controls verbosity of AI step output</div>
-          </div>
+          <div class="setting-label">AI Response Style</div>
           <span class="select-wrap sm"><select id="ai-style-select" class="input sm">
             <option value="default">Default</option>
             <option value="concise">Concise</option>
           </select></span>
         </div>
         <div class="setting-row">
-          <div>
-            <div class="setting-label">Review Kit</div>
-            <div class="setting-desc">Kit the deep AI-review layer uses to judge artifacts</div>
-          </div>
+          <div class="setting-label">Review Kit</div>
           <span class="select-wrap sm"><select id="review-kit-select" class="input sm">
             <option value="">Default</option>
           </select></span>
         </div>
         <div class="setting-row gx-row" id="gitnexus-setting-row" style="display:none">
           <div class="gx-head">
-            <div style="min-width:0">
-              <div class="setting-label"><span id="gitnexus-dot" class="gx-dot"></span>GitNexus</div>
-              <div class="setting-desc" id="gitnexus-desc">Build the GitNexus knowledge graph</div>
-            </div>
+            <div class="setting-label"><span id="gitnexus-dot" class="gx-dot"></span>GitNexus</div>
             <details class="menu" id="gitnexus-menu">
               <summary class="menu-btn" title="More actions" aria-label="More">···</summary>
               <div class="menu-pop" id="gitnexus-menu-pop"></div>
@@ -380,6 +374,9 @@ ${renderPaletteVars()}
         <div id="runs"><span class="empty">No runs yet</span></div>
       </div>
     </section>
+
+    <!-- shared legend for every status dot in the sidebar (GitNexus, MCP, library, plugins) -->
+    <div class="dot-legend" id="sidebar-legend"></div>
 
   </div><!-- /.body -->
 </div><!-- /.shell -->
@@ -434,6 +431,23 @@ ${renderPaletteVars()}
     } catch (_) {}
   }
 
+  // Single semantic color set for every status dot in the sidebar (GitNexus, MCP, library items,
+  // plugins), so the same meaning always renders the same color. Explained once in #sidebar-legend.
+  const DOT = {
+    good: 'var(--success)',
+    warn: 'var(--vscode-charts-yellow, #d7a000)',
+    bad: 'var(--vscode-charts-red, #f48771)',
+    neutral: 'var(--muted)'
+  };
+  const sidebarLegendEl = document.getElementById('sidebar-legend');
+  if (sidebarLegendEl) {
+    sidebarLegendEl.innerHTML = [
+      [DOT.good, 'Good / connected / installed'],
+      [DOT.warn, 'Needs attention'],
+      [DOT.bad, 'Failed / disabled'],
+      [DOT.neutral, 'Unknown / not set']
+    ].map(([color, label]) => '<span><span class="legend-dot" style="background:' + color + '"></span>' + label + '</span>').join('');
+  }
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const fmtTime = iso => { const d = new Date(iso); return !isNaN(d.getTime()) ? d.toLocaleString() : esc(iso); };
   const fmtDate = iso => { const d = new Date(iso); if (isNaN(d.getTime())) return esc(iso); return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }); };
@@ -670,7 +684,7 @@ ${renderPaletteVars()}
             actsHtml = '<button class="pill accent" type="button" data-act="installDefault" data-kind="' + esc(item.kind) + '" data-filename="' + esc(item.filename) + '">Install</button>';
           }
           return '<div class="item' + (item.hasUpdate ? ' has-update' : '') + '">' +
-            '<span class="item-dot" style="background:' + (item.installed ? 'var(--success)' : 'var(--badge)') + '"></span>' +
+            '<span class="item-dot" style="background:' + (item.installed ? DOT.good : DOT.neutral) + '"></span>' +
             '<span class="item-body">' +
               '<span class="item-name" title="' + esc(item.filename.replace(/.md$/i, '')) + '">' + esc(item.filename.replace(/.md$/i, '')) + (item.hasUpdate ? '<span class="update-dot" title="Update available"></span>' : '') + '</span>' +
               '<span class="item-sub" title="' + esc(item.name) + '">' + esc(item.name) + '</span>' +
@@ -738,10 +752,10 @@ ${renderPaletteVars()}
   }
 
   const MCP_STATUS = {
-    'connected':  { color: 'var(--vscode-charts-green, #73c991)',   label: 'Connected',  rank: 0 },
-    'needs-auth': { color: 'var(--vscode-charts-yellow, #d7a000)',  label: 'Needs auth', rank: 1 },
-    'unknown':    { color: 'var(--muted, #888)',                     label: 'Unknown',    rank: 2 },
-    'failed':     { color: 'var(--vscode-charts-red, #f48771)',     label: 'Failed',     rank: 3 }
+    'connected':  { color: DOT.good,    label: 'Connected',  rank: 0 },
+    'needs-auth': { color: DOT.warn,    label: 'Needs auth', rank: 1 },
+    'unknown':    { color: DOT.neutral, label: 'Unknown',    rank: 2 },
+    'failed':     { color: DOT.bad,     label: 'Failed',     rank: 3 }
   };
 
   function setMcpData(list) {
@@ -774,10 +788,9 @@ ${renderPaletteVars()}
   function updateGitnexusRow() {
     const row = document.getElementById('gitnexus-setting-row');
     const dot = document.getElementById('gitnexus-dot');
-    const desc = document.getElementById('gitnexus-desc');
     const btn = document.getElementById('gitnexus-analyze-btn');
     const menuPop = document.getElementById('gitnexus-menu-pop');
-    if (!row || !dot || !desc || !btn || !menuPop) return;
+    if (!row || !dot || !btn || !menuPop) return;
 
     // Gated on the MCP connection: until GitNexus is connected (set up in Overview) there's nothing
     // to query, so the row stays hidden and Overview owns the "connect" step.
@@ -789,8 +802,8 @@ ${renderPaletteVars()}
 
     // ---- Transient: a run is in flight ----
     if (gitnexusAnalyzing) {
-      dot.style.display = 'none';
-      desc.textContent = 'Analyzing…';
+      dot.style.background = DOT.neutral;
+      dot.title = 'Analyzing…';
       btn.style.display = ''; btn.disabled = true; btn.textContent = 'Analyzing…';
       menuPop.innerHTML = '';
       return;
@@ -803,22 +816,24 @@ ${renderPaletteVars()}
     if (t) parts.push('indexed ' + t);
     const grp = gitnexusStatus.currentGroup ? ' · group: ' + gitnexusStatus.currentGroup : '';
     const meta = (parts.length ? ' · ' + parts.join(' · ') : '') + grp;
-    const AMBER = 'var(--vscode-charts-yellow, #d7a000)';
 
+    // The dot's color always matches the shared legend at the bottom of the sidebar; the full
+    // detail (file count, indexed time, active group) lives in its hover tooltip instead of a
+    // per-state sentence on the row.
     if (!indexed) {
       // Never analyzed → Analyze is the primary action; group choice lives in the ··· menu.
-      dot.style.display = 'none';
-      desc.textContent = 'Not indexed — click Analyze (or pick a group from ···)';
+      dot.style.background = DOT.neutral;
+      dot.title = 'Not indexed — click Analyze (or pick a group from ···)';
       btn.style.display = ''; btn.textContent = 'Analyze';
     } else if (stale) {
       // Indexed but code moved on (new commit, branch switch, or an edit since analyze) → re-analyze.
-      dot.style.display = 'inline-block'; dot.style.background = AMBER;
-      desc.textContent = 'Out of date — re-analyze recommended' + meta;
+      dot.style.background = DOT.warn;
+      dot.title = 'Out of date — re-analyze recommended' + meta;
       btn.style.display = ''; btn.textContent = 'Re-analyze';
     } else {
       // Indexed and fresh → nothing to do; re-analyze still available from the ··· menu.
-      dot.style.display = 'inline-block'; dot.style.background = 'var(--success)';
-      desc.textContent = 'Up to date' + meta;
+      dot.style.background = DOT.good;
+      dot.title = 'Up to date' + meta;
       btn.style.display = 'none';
     }
 
@@ -881,10 +896,9 @@ ${renderPaletteVars()}
       const canBrowserAuth = isClaudeAi && s.status === 'needs-auth';
       const canRetryLocal = s.status === 'failed' && !isHttp && !isClaudeAi;
       return '<div class="item">' +
-        '<span class="item-dot" title="' + esc(s.status) + '" style="background:' + st.color + '"></span>' +
+        '<span class="item-dot" title="' + esc(st.label) + '" style="background:' + st.color + '"></span>' +
         '<span class="item-body">' +
           '<span class="item-name" title="' + esc(s.name) + '">' + esc(s.name) + '</span>' +
-          '<span class="item-sub">' + esc(st.label) + '</span>' +
         '</span>' +
         '<span class="item-acts">' +
           '<button class="pill" type="button" data-act="mcpDetails" data-name="' + esc(s.name) + '">Details</button>' +
@@ -927,7 +941,7 @@ ${renderPaletteVars()}
       el.innerHTML = rows.map(p =>
         '<div class="item">' +
         '<span class="item-dot" title="' + (p.enabled ? 'Enabled' : 'Disabled') + '" style="background:' +
-          (p.enabled ? 'var(--vscode-charts-green, #73c991)' : 'var(--vscode-charts-red, #f48771)') + '"></span>' +
+          (p.enabled ? DOT.good : DOT.bad) + '"></span>' +
         '<span class="item-body">' +
           '<span class="item-name" title="' + esc(p.name) + ' · v' + esc(p.version) + '">' + esc(p.name) + '</span>' +
           '<span class="item-sub">' + esc(p.scope) + ' · v' + esc(p.version) + '</span>' +
@@ -948,7 +962,7 @@ ${renderPaletteVars()}
       if (!rows.length) { el.innerHTML = '<span class="empty">No match for &ldquo;' + esc(q) + '&rdquo;</span>'; return; }
       el.innerHTML = rows.map(p =>
         '<div class="item">' +
-        '<span class="item-dot" style="background:var(--muted)"></span>' +
+        '<span class="item-dot" style="background:' + DOT.neutral + '"></span>' +
         '<span class="item-body">' +
           '<span class="item-name" title="' + esc(p.id) + '">' + esc(p.name) + '</span>' +
           '<span class="item-sub" title="' + esc(p.description || p.id) + '">' + esc(p.description || p.id) + '</span>' +

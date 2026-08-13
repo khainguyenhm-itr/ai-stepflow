@@ -290,7 +290,6 @@ export const FlowBoard: React.FC<FlowBoardProps> = ({
         <td className="name-cell">
           <div className="dname">
             <span className="dn">{flow.name}</span>
-            <span className="dsub">{flow.description || 'No description.'}</span>
           </div>
         </td>
         <td className="mono muted">{runSummaries.length} {runSummaries.length === 1 ? 'run' : 'runs'}</td>
