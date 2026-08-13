@@ -5,7 +5,6 @@ import { ConfigManager } from './configManager.js';
 import { CockpitPanel } from './webviewPanel.js';
 import { StateManager } from './stateManager.js';
 import { SidebarProvider } from './sidebarProvider.js';
-import { AccountManager } from './accountManager.js';
 import { registerAstGraph } from './astGraph/index.js';
 import { ensureLocalExcludeEntry } from './astGraph/scanner.js';
 
@@ -20,10 +19,7 @@ export function activate(context: vscode.ExtensionContext) {
     // Sidebar dashboard: active run, library counts, MCP servers, generated files.
     // Defensively handle version access
     const version = String(context.extension?.packageJSON?.version || '0.0.7');
-    const accountManager = new AccountManager({
-      storePath: join(context.globalStorageUri.fsPath, 'claude-accounts.json'),
-    });
-    const sidebar = new SidebarProvider(context.extensionUri, configManager, stateManager, version, accountManager);
+    const sidebar = new SidebarProvider(context.extensionUri, configManager, stateManager, version);
     context.subscriptions.push(
       vscode.window.registerWebviewViewProvider(SidebarProvider.viewType, sidebar)
     );
@@ -101,44 +97,6 @@ export function activate(context: vscode.ExtensionContext) {
     gxWatcher.onDidChange(refreshSidebarOnly);
     gxWatcher.onDidDelete(refreshSidebarOnly);
     context.subscriptions.push(gxWatcher);
-
-    // Auto-save a *new* Claude login as a switchable account. Claude rewrites ~/.claude.json on login;
-    // when the active login is one we have not saved yet, snapshot it silently (no button needed). A
-    // switch or an already-known login is a no-op (autoSaveIfNewLogin skips by fingerprint).
-    if (accountManager.isSupported()) {
-      // Seed the active-login memory so a logout happening before any ~/.claude.json change still
-      // knows which saved account to forget.
-      void accountManager.noteActiveAccount();
-      // On every ~/.claude.json change (login, switch, or logout), reconcile saved accounts and
-      // ALWAYS refresh the sidebar — so the active highlight, a newly auto-saved account, and a
-      // logout removal all propagate to *every* open window, not just the one that changed.
-      const syncAccounts = debounce(() => {
-        void accountManager.reconcileOnChange().then(({ autoSaved, removed, switchedTo }) => {
-          if (autoSaved) vscode.window.showInformationMessage(`ClaudeSteps: auto-saved Claude account ${autoSaved.email}.`);
-          if (removed && switchedTo) vscode.window.showInformationMessage(`ClaudeSteps: logged out of ${removed} — switched to ${switchedTo}.`);
-          else if (switchedTo) vscode.window.showInformationMessage(`ClaudeSteps: logged out — switched to ${switchedTo}.`);
-          else if (removed) vscode.window.showInformationMessage(`ClaudeSteps: logged out — removed saved account ${removed}.`);
-        }).catch(() => undefined).finally(() => void sidebar.refresh(false));
-      }, 500);
-      const claudeJsonWatcher = vscode.workspace.createFileSystemWatcher(
-        new vscode.RelativePattern(vscode.Uri.file(homedir()), '.claude.json')
-      );
-      claudeJsonWatcher.onDidCreate(syncAccounts);
-      claudeJsonWatcher.onDidChange(syncAccounts);
-      claudeJsonWatcher.onDidDelete(syncAccounts);
-      context.subscriptions.push(claudeJsonWatcher);
-
-      // The saved-account store lives in globalStorage, shared by every window. Watch it so a save
-      // or removal done in one window repaints the switcher in all the others.
-      const storeWatcher = vscode.workspace.createFileSystemWatcher(
-        new vscode.RelativePattern(vscode.Uri.file(context.globalStorageUri.fsPath), 'claude-accounts.json')
-      );
-      const refreshOnStore = debounce(() => void sidebar.refresh(false), 300);
-      storeWatcher.onDidCreate(refreshOnStore);
-      storeWatcher.onDidChange(refreshOnStore);
-      storeWatcher.onDidDelete(refreshOnStore);
-      context.subscriptions.push(storeWatcher);
-    }
 
     // Re-attach the cockpit after a window reload instead of showing a dead panel.
     context.subscriptions.push(

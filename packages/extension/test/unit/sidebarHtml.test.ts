@@ -37,16 +37,3 @@ test('the passed version is rendered into the header', () => {
   const html = getSidebarHtml(stubWebview(), { fsPath: '/ext' } as any, '1.2.3');
   assert.match(html, /v1\.2\.3/);
 });
-
-test('sidebar Settings includes the Claude Account switcher (switch-only; logout auto-removes)', () => {
-  const html = getSidebarHtml(stubWebview(), { fsPath: '/ext' } as any, '9.9.9');
-  assert.match(html, /id="account-select"/);
-  // no manual account management in the UI — auto-save on login, auto-remove on logout
-  assert.doesNotMatch(html, /id="account-save-btn"/);
-  assert.doesNotMatch(html, /id="account-remove-btn"/);
-  assert.doesNotMatch(html, /accountSaveCurrent/);
-  assert.doesNotMatch(html, /accountRemovePick/);
-  assert.doesNotMatch(html, /__remove__/);
-  // switching is the only account action the client posts
-  assert.match(html, /accountSwitch/);
-});

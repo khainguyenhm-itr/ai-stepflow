@@ -119,7 +119,6 @@ ${renderPaletteVars()}
     .gx-row { flex-direction: column; align-items: stretch; gap: 8px; }
     .gx-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
     .gx-ctl { display: flex; align-items: center; gap: 6px; }
-    .account-ctl { display: flex; align-items: center; gap: 6px; }
 
     /* ── section ── */
     .sec { margin-top: 8px; }
@@ -211,9 +210,6 @@ ${renderPaletteVars()}
     /* ── select dropdowns ── */
     .select-wrap { position: relative; display: inline-block; min-width: 90px; }
     .select-wrap.sm { min-width: 80px; }
-    /* Account switcher: wider so a full email fits, capped so it doesn't crowd the label. */
-    .account-select-wrap { min-width: 150px; max-width: 220px; }
-    .account-select-wrap select { text-overflow: ellipsis; }
     .gx-ctl .select-wrap { flex: 1 1 auto; min-width: 0; display: block; }
     .select-wrap::after { content: ''; position: absolute; right: 9px; top: 50%; transform: translateY(-50%); width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid #aaa; pointer-events: none; }
     .input { width: 100%; height: 22px; padding: 0 24px 0 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--panel-2); color: var(--fg); font-size: 0.9231rem; font-family: inherit; outline: none; appearance: none; -webkit-appearance: none; cursor: pointer; box-shadow: inset 0 1px 2px rgba(0,0,0,.2); }
@@ -331,15 +327,6 @@ ${renderPaletteVars()}
         </button>
       </div>
       <div class="box" id="settings-panel" style="display:none">
-        <div class="setting-row" id="account-setting-row">
-          <div>
-            <div class="setting-label">Claude Account</div>
-            <div class="setting-desc">Active login — switching applies to all Claude on this machine</div>
-          </div>
-          <div class="account-ctl">
-            <span class="select-wrap sm account-select-wrap"><select id="account-select" class="input sm"></select></span>
-          </div>
-        </div>
         <div class="setting-row">
           <div>
             <div class="setting-label">AI Response Style</div>
@@ -1109,7 +1096,6 @@ ${renderPaletteVars()}
         const styleSelect = document.getElementById('ai-style-select');
         if (styleSelect && m.uiPrefs) styleSelect.value = m.uiPrefs['ai:responseStyle'] || 'default';
         renderReviewKits(m.reviewKits || [], (m.uiPrefs || {})['review:activeKit'] || '');
-        renderAccounts(m.accounts);
       } else if (m.type === 'mcp') {
         mcpReceived = true;
         setMcpData(m.mcp);
@@ -1148,30 +1134,6 @@ ${renderPaletteVars()}
 
   document.getElementById('review-kit-select').addEventListener('change', function() {
     vscode.postMessage({ type: 'savePref', key: 'review:activeKit', value: this.value });
-  });
-
-  // Populate the account switcher. accounts === null => unsupported platform (hide the row).
-  function renderAccounts(accounts) {
-    const row = document.getElementById('account-setting-row');
-    const sel = document.getElementById('account-select');
-    if (!row || !sel) return;
-    if (accounts == null) { row.style.display = 'none'; return; }
-    row.style.display = '';
-    if (!accounts.length) {
-      sel.innerHTML = '<option value="" disabled selected>No saved accounts</option>';
-      return;
-    }
-    const hasActive = accounts.some(a => a.active);
-    const placeholder = hasActive ? '' : '<option value="" disabled selected>&#8212; external login &#8212;</option>';
-    const options = accounts.map(a =>
-      '<option value="' + esc(a.name) + '"' + (a.active ? ' selected data-active="1"' : '') + '>' + esc(a.email) + '</option>'
-    ).join('');
-    // Switch-only: there is no manual remove action — logging out of an account auto-removes it.
-    sel.innerHTML = placeholder + options;
-  }
-
-  document.getElementById('account-select').addEventListener('change', function() {
-    if (this.value) vscode.postMessage({ type: 'accountSwitch', name: this.value });
   });
 
   document.getElementById('gitnexus-analyze-btn').addEventListener('click', function() {

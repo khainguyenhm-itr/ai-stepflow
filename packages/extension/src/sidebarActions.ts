@@ -9,7 +9,6 @@ import { StateManager } from './stateManager.js';
 import { reconnectRemoteMcpServer, findMcpConfigFile } from './mcp.js';
 import type { McpServer } from './mcp.js';
 import { installPlugin, updatePlugin, uninstallPlugin, pluginDetails } from './plugins.js';
-import type { AccountManager } from './accountManager.js';
 
 /** GitNexus index + group state for the current project (read cheaply from ~/.gitnexus). */
 export interface GitnexusStatus {
@@ -33,8 +32,7 @@ export class SidebarActions {
     private readonly stateManager: StateManager,
     private readonly refresh: (probeMcp: boolean) => Promise<void>,
     private readonly getView: () => vscode.WebviewView | undefined,
-    private readonly getCachedMcp: () => McpServer[],
-    private readonly accounts: AccountManager
+    private readonly getCachedMcp: () => McpServer[]
   ) {}
 
   /** Install, update, or uninstall a plugin with a progress notification, then re-probe the catalog. */
@@ -378,17 +376,6 @@ export class SidebarActions {
       this.joinGroupCmds(group, status, fresh),
       fresh ? `Switching to group "${group}"…` : `Re-analyzing & switching to "${group}"…`
     );
-  }
-
-  /** Make a saved account the active login (global to the whole machine). */
-  async switchAccount(name: string): Promise<void> {
-    try {
-      await this.accounts.switchTo(name);
-      vscode.window.showInformationMessage(`ClaudeSteps: switched to ${name}. Running Claude sessions keep the old login until restarted.`);
-      await this.refresh(false);
-    } catch (e) {
-      vscode.window.showErrorMessage(`ClaudeSteps: ${e instanceof Error ? e.message : String(e)}`);
-    }
   }
 
   /** Deletes a run file, its report, and audit log entries after confirmation. */
