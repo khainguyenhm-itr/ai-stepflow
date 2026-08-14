@@ -149,7 +149,11 @@ export function runClaudeStreaming(opts: ClaudeStreamingRunOptions, spawnFn: Spa
 
   args.push(opts.userMessage);
 
-  const child = spawnFn('claude', args, { cwd: opts.projectPath || undefined, env: process.env });
+  // stdin explicitly closed ('ignore'): with the default 'pipe' the child inherits an open,
+  // never-written, never-closed stdin, and the claude CLI can't tell that apart from a slow
+  // piped command — it stalls up to 3s waiting for input ("Warning: no stdin data received in
+  // 3s...") on every single headless call. Closing it gives an immediate EOF instead.
+  const child = spawnFn('claude', args, { cwd: opts.projectPath || undefined, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
 
   const completed = new Promise<ClaudeStreamingRunResult>(resolve => {
     let buf = '';
