@@ -145,3 +145,66 @@ test('FlowOrchestrator does not skip or re-skip a step whose runIf matches', () 
   // so no action at all (same as a plain root step with no runIf).
   assert.deepEqual(orch.getAutoAdvanceActions(), []);
 });
+
+// ---------------------------------------------------------------------------
+// getRunIfSkipActions — the runIf-only sweep.
+//
+// Opening the cockpit must resolve `runIf` gates WITHOUT launching anything: a launch is a
+// side effect the user did not ask for, and it hijacks the step's terminal so the user's own
+// "Run Step" click can no longer open a clean session.
+// ---------------------------------------------------------------------------
+
+test('getRunIfSkipActions never launches: a ready dependent step yields no action', () => {
+  const flow: Flow = {
+    id: 'f', name: 'f', description: '', inputs: {}, sourcePath: '/f.yaml',
+    steps: [step('a'), step('b', { dependsOn: ['a'] })]
+  };
+  let st = initRunState(flow, { runId: 'r1', inputs: {} });
+  st = toDone(st, flow, 'a');
+
+  // Proof the step really is launchable — otherwise this test would pass vacuously.
+  assert.deepEqual(
+    new FlowOrchestrator(flow, st).getAutoAdvanceActions(),
+    [{ type: 'launch_interactive', stepId: 'b' }]
+  );
+  assert.deepEqual(new FlowOrchestrator(flow, st).getRunIfSkipActions(), []);
+});
+
+test('getRunIfSkipActions never parks: two ready dependents yield no action', () => {
+  const flow: Flow = {
+    id: 'f', name: 'f', description: '', inputs: {}, sourcePath: '/f.yaml',
+    steps: [step('a'), step('b', { dependsOn: ['a'] }), step('c', { dependsOn: ['a'] })]
+  };
+  let st = initRunState(flow, { runId: 'r1', inputs: {} });
+  st = toDone(st, flow, 'a');
+  assert.deepEqual(new FlowOrchestrator(flow, st).getRunIfSkipActions(), []);
+});
+
+test('getRunIfSkipActions still skips a ROOT step whose runIf does not match', () => {
+  const flow: Flow = {
+    id: 'f', name: 'f', description: '', inputs: {}, sourcePath: '/f.yaml',
+    steps: [step('a', { runIf: { input: 'level', equals: '2' } })]
+  };
+  const st = initRunState(flow, { runId: 'r1', inputs: { level: '1' } });
+  assert.deepEqual(
+    new FlowOrchestrator(flow, st).getRunIfSkipActions(),
+    [{ type: 'skip', stepId: 'a' }]
+  );
+});
+
+test('getRunIfSkipActions skips a ready dependent whose runIf does not match, without launching its ready sibling', () => {
+  const flow: Flow = {
+    id: 'f', name: 'f', description: '', inputs: {}, sourcePath: '/f.yaml',
+    steps: [
+      step('a'),
+      step('b', { dependsOn: ['a'], runIf: { input: 'level', equals: '2' } }),
+      step('c', { dependsOn: ['a'] })
+    ]
+  };
+  let st = initRunState(flow, { runId: 'r1', inputs: { level: '1' } });
+  st = toDone(st, flow, 'a');
+  assert.deepEqual(
+    new FlowOrchestrator(flow, st).getRunIfSkipActions(),
+    [{ type: 'skip', stepId: 'b' }]
+  );
+});

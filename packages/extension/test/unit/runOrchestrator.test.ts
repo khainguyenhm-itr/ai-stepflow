@@ -29,25 +29,30 @@ function fakeTerminals() {
     end?: (runId: string, stepId: string) => void;
     ready?: (runId: string, stepId: string) => boolean | undefined;
   } = {};
+  // Every interactive launch, so a test can assert a step was (or was NOT) started.
+  const launches: { prompt: string; stepId?: string; runId?: string }[] = [];
   const terminals = {
     onDidCloseRunningStep: (cb: (r: string, s: string) => void) => { cbs.close = cb; },
     onDidEndRunningStep: (cb: (r: string, s: string) => void) => { cbs.end = cb; },
     onCheckStepReady: (cb: (r: string, s: string) => boolean | undefined) => { cbs.ready = cb; },
-    runInTerminal: async () => {},
+    runInTerminal: async (
+      prompt: string, _projectPath: string, _agent?: unknown, _submit?: boolean,
+      stepId?: string, _sessionId?: string, runId?: string
+    ) => { launches.push({ prompt, stepId, runId }); },
     cancelStep: () => true,
     dispose: () => {},
   } as unknown as TerminalManager;
-  return { terminals, cbs };
+  return { terminals, cbs, launches };
 }
 
-function fakeStateManager() {
+function fakeStateManager(latestRun?: FlowRunState) {
   const saved: FlowRunState[] = [];
   const manager = {
     saveRun: async (run: FlowRunState) => { saved.push(structuredClone(run)); },
     appendAuditLog: async () => {},
     clearAuditLog: async () => {},
     loadAuditLog: async () => [],
-    loadLatestRun: async () => undefined,
+    loadLatestRun: async () => latestRun,
     saveReport: async () => '',
     saveReviewReport: async () => '',
     deleteRunFile: async () => {},
@@ -57,12 +62,12 @@ function fakeStateManager() {
   return { manager, saved };
 }
 
-function fakeConfig(projectPath: string) {
+function fakeConfig(projectPath: string, flows: Flow[] = [], agents: { name: string }[] = []) {
   return {
     getProjectPath: () => projectPath,
-    loadAgents: async () => [],
+    loadAgents: async () => agents,
     loadSkills: async () => [],
-    loadFlows: async () => [],
+    loadFlows: async () => flows,
     loadUiPrefs: async () => ({}),
   } as unknown as ConfigManager;
 }
@@ -85,17 +90,17 @@ function makeRun(flow: Flow, runId: string, projectPath: string): FlowRunState {
 let projectPath: string;
 let posted: HostMessage[];
 
-function build() {
-  const { terminals, cbs } = fakeTerminals();
-  const state = fakeStateManager();
+function build(opts: { latestRun?: FlowRunState; flows?: Flow[]; agents?: { name: string }[] } = {}) {
+  const { terminals, cbs, launches } = fakeTerminals();
+  const state = fakeStateManager(opts.latestRun);
   posted = [];
   const orch = new RunOrchestrator(
-    fakeConfig(projectPath),
+    fakeConfig(projectPath, opts.flows, opts.agents),
     state.manager,
     terminals,
     (message: HostMessage) => { posted.push(message); }
   );
-  return { orch, cbs, saved: state.saved };
+  return { orch, cbs, saved: state.saved, launches };
 }
 
 beforeEach(() => {
@@ -276,6 +281,73 @@ test('a root step whose runIf does not match is auto-skipped on run creation, un
   assert.equal(orch.runState?.steps.a.executionStatus, 'skipped');
   assert.equal(orch.runState?.steps.a.completionStatus, 'done');
   assert.equal(orch.runState?.steps.b.executionStatus, 'ready');
+});
+
+// ---------------------------------------------------------------------------
+// Reopening the cockpit must not start work.
+//
+// `restore()` runs on the webview's 'ready' message — every panel open and window reload — and
+// targets loadLatestRun(), which is not necessarily the run the user is looking at. Launching a
+// step there fires work the user never asked for AND claims the step's `${runId}::${stepId}`
+// terminal, so the user's own "Run Step" click can no longer open a clean session.
+// ---------------------------------------------------------------------------
+
+/** Two AI-reviewed steps, `b` depending on `a` — `b` auto-launches the moment `a` is done. */
+function makeChainFlow(): Flow {
+  return {
+    id: 'f1', name: 'f1', description: '', sourcePath: '/repo/.claudesteps/flows/f1.yaml',
+    inputs: {},
+    steps: [
+      { id: 'a', title: 'Step A', agent: 'po', skill: 'prd', review: { required: true, type: 'ai' } },
+      { id: 'b', title: 'Step B', agent: 'po', skill: 'prd', review: { required: true, type: 'ai' }, dependsOn: ['a'] },
+    ],
+  } as Flow;
+}
+
+test('restore does not launch the next ready step — reopening the panel must start no work', async () => {
+  const flow = makeChainFlow();
+  let run = machine.initRunState(flow, { runId: 'run-1', projectPath, inputs: {} });
+  run = machine.applyAiReview(machine.markCompleted(machine.markRunning(run, flow, 'a'), flow, 'a'), flow, 'a', 'approved');
+  const { orch, launches } = build({ latestRun: run, flows: [flow], agents: [{ name: 'po' }] });
+
+  await orch.restore();
+  // Let any `void`-ed launch promise settle before asserting.
+  await new Promise(resolve => setImmediate(resolve));
+
+  assert.deepEqual(launches, [], 'reopening the panel launched a step');
+  assert.equal(orch.runState?.steps.b.executionStatus, 'ready');
+});
+
+test('adoptRunState does not launch a step when a run is created', async () => {
+  const flow = makeChainFlow();
+  let run = machine.initRunState(flow, { runId: 'run-1', projectPath, inputs: {} });
+  run = machine.applyAiReview(machine.markCompleted(machine.markRunning(run, flow, 'a'), flow, 'a'), flow, 'a', 'approved');
+  const { orch, launches } = build({ flows: [flow], agents: [{ name: 'po' }] });
+
+  await orch.adoptRunState(run);
+  await new Promise(resolve => setImmediate(resolve));
+
+  assert.deepEqual(launches, [], 'adopting a run launched a step');
+});
+
+test('a runIf skip still cascades on reopen without launching the step it unlocked', async () => {
+  const flow: Flow = {
+    id: 'f1', name: 'f1', description: '', sourcePath: '/repo/.claudesteps/flows/f1.yaml',
+    inputs: { level: { type: 'string', required: true, label: 'Level' } },
+    steps: [
+      { id: 'a', title: 'Gated', agent: 'po', skill: 'prd', review: { required: true, type: 'ai' }, runIf: { input: 'level', equals: '2' } },
+      { id: 'b', title: 'Step B', agent: 'po', skill: 'prd', review: { required: true, type: 'ai' }, dependsOn: ['a'] },
+    ],
+  } as Flow;
+  const run = machine.initRunState(flow, { runId: 'run-1', projectPath, inputs: { level: '1' } });
+  const { orch, launches } = build({ latestRun: run, flows: [flow], agents: [{ name: 'po' }] });
+
+  await orch.restore();
+  await new Promise(resolve => setImmediate(resolve));
+
+  assert.equal(orch.runState?.steps.a.executionStatus, 'skipped', 'runIf gate was not resolved on reopen');
+  assert.equal(orch.runState?.steps.b.executionStatus, 'ready', 'the skip did not unlock its dependent');
+  assert.deepEqual(launches, [], 'the unlocked dependent was launched');
 });
 
 test('editRunMeta refuses to save when a required flow input is left blank', async () => {

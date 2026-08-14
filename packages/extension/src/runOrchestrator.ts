@@ -235,10 +235,9 @@ export class RunOrchestrator {
         message: historyEvent.message
       });
     }
-    // A brand-new run's root steps are otherwise never swept for `runIf` — nothing else calls
-    // _advanceReadySteps until a step finishes. No-op for flows with no `runIf` steps (existing
-    // root-exclusion in pickAutoAdvanceSteps still applies to actual launches).
-    this._advanceReadySteps(runState.runId);
+    // A brand-new run's root steps are otherwise never swept for `runIf` — nothing else resolves
+    // the gates until a step finishes. Skip-only: creating a run must never start work.
+    this._sweepRunIfSkips(runState.runId);
   }
 
   /** Restore the latest persisted run on panel open, broadcasting it to the webview. */
@@ -261,7 +260,10 @@ export class RunOrchestrator {
     this.post({ type: 'restoreRun', flow, runState });
     // Re-sweep for `runIf` skip candidates on reopen (e.g. after an extension restart), same as
     // adoptRunState — a no-op unless the flow declares runIf and this run hasn't resolved it yet.
-    this._advanceReadySteps(runState.runId);
+    // Skip-only by design: `restore()` runs on every panel open and targets loadLatestRun(), which
+    // is not necessarily the run the user is looking at, so launching here would start work the
+    // user never asked for and claim the step's terminal ahead of their own "Run Step" click.
+    this._sweepRunIfSkips(runState.runId);
   }
 
   /**
@@ -1170,10 +1172,26 @@ export class RunOrchestrator {
   }
 
   /**
-   * Mark a `runIf`-gated step skipped (instant, no terminal/AI involved), then re-advance so a
-   * skip that unlocked (or itself skips) a dependent cascades in the same tick.
+   * Resolve a run's `runIf` gates WITHOUT launching anything: skip every gated step whose condition
+   * does not match. Used where the gates must be settled but no work may start — run creation and
+   * panel reopen. The skips still cascade, since one skip can unlock (or itself gate) a dependent.
    */
-  private async _skipStep(runId: string, stepId: string): Promise<void> {
+  private _sweepRunIfSkips(runId: string): void {
+    const rc = this._runs.get(runId);
+    if (!rc) return;
+    const orch = new machine.FlowOrchestrator(rc.flow, rc.runState);
+    const actions = orch.getRunIfSkipActions();
+    rc.startedStepIds = orch.getStartedStepIds();
+    for (const action of actions) void this._skipStep(runId, action.stepId, false);
+  }
+
+  /**
+   * Mark a `runIf`-gated step skipped (instant, no terminal/AI involved), then re-derive against
+   * the updated state so a skip that unlocked (or itself skips) a dependent cascades in the same
+   * tick. `launchAfter: false` keeps that cascade skip-only, for the callers that must not start
+   * work (see {@link _sweepRunIfSkips}).
+   */
+  private async _skipStep(runId: string, stepId: string, launchAfter = true): Promise<void> {
     const rc = this._runs.get(runId);
     if (!rc) return;
     const step = rc.flow.steps.find(s => s.id === stepId);
@@ -1183,7 +1201,8 @@ export class RunOrchestrator {
       : 'runIf not met';
     await this._setRunState(runId, s => machine.markSkipped(s, rc.flow, stepId, reason), { stepId, status: 'skipped', message: reason });
     this.post(this._withRun(runId, { type: 'stepUpdate', stepId, append: true, output: `\n[step skipped — ${reason}]\n` }));
-    this._advanceReadySteps(runId);
+    if (launchAfter) this._advanceReadySteps(runId);
+    else this._sweepRunIfSkips(runId);
   }
 
   /** Read session stats from Claude CLI's .jsonl files for an interactive step. Never throws. */

@@ -41,25 +41,39 @@ export class FlowOrchestrator {
   }
 
   /**
-   * Identifies steps ready to run according to the DAG. All steps run interactively
-   * (one at a time) to avoid terminal clutter; the rest are parked.
+   * The `runIf` sweep on its own: every step whose gate does not match this run's inputs, as
+   * `skip` actions — and nothing else. It NEVER returns a launch or a park.
+   *
+   * Hosts use this where the gates must be resolved without starting work: on run creation and on
+   * panel reopen. Launching there would be work the user never asked for, and it also claims the
+   * step's terminal, so the user's own "Run Step" click could no longer open a clean session.
+   *
+   * runIf is evaluated over a superset of the normal ready set (roots included): skipping opens no
+   * terminal and does no work, so it isn't subject to the "never self-start a run" rule that keeps
+   * root steps out of ordinary auto-advance.
    */
-  getAutoAdvanceActions(): OrchestratorAction[] {
+  getRunIfSkipActions(): OrchestratorAction[] {
     const done = machine.doneStepIds(this.runState);
     const actions: OrchestratorAction[] = [];
-
-    // runIf is evaluated over a superset of the normal ready set (roots included): skipping
-    // opens no terminal and does no work, so it isn't subject to the "never self-start a run"
-    // rule that keeps root steps out of ordinary auto-advance.
-    const skipCandidateIds = pickRunIfCandidates(this.flow.steps, done, this._startedStepIds);
-    for (const id of skipCandidateIds) {
+    for (const id of pickRunIfCandidates(this.flow.steps, done, this._startedStepIds)) {
       const step = this.flow.steps.find(s => s.id === id);
       if (step?.runIf && !stepRunIfSatisfied(step, this.runState.inputs)) {
         actions.push({ type: 'skip', stepId: id });
         this._startedStepIds.add(id);
       }
     }
+    return actions;
+  }
 
+  /**
+   * Identifies steps ready to run according to the DAG. All steps run interactively
+   * (one at a time) to avoid terminal clutter; the rest are parked.
+   */
+  getAutoAdvanceActions(): OrchestratorAction[] {
+    // Skips first, and they feed `_startedStepIds`, so a gated step is never also launched below.
+    const actions: OrchestratorAction[] = this.getRunIfSkipActions();
+
+    const done = machine.doneStepIds(this.runState);
     const readyIds = pickAutoAdvanceSteps(this.flow.steps, done, this._startedStepIds);
     let interactiveLaunched = false;
 
