@@ -419,6 +419,12 @@ export const useAppLogic = () => {
           chatState.setFlowAiMessages(prev => [...prev, { role: 'assistant', content: message.reply }]);
         }
         break;
+      case 'flowSaveCancelled':
+        // The host refused the save (a live run would have to be reset). Reopen the builder with
+        // the user's draft so the edit is not lost.
+        buildState.setEditingFlow(message.flow);
+        buildState.setBuilderError('Not saved — a live run of this flow would have to be reset.');
+        break;
       case 'adhocRuns':
         setAdhocRuns(message.runs || []);
         break;

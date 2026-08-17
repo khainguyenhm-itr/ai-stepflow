@@ -58,6 +58,7 @@ export type HostMessage =
   | { type: 'fileImported'; kind: 'review'; item: { name: string; description: string; content: string } }
   | { type: 'draftGenerated'; kind: 'agent' | 'skill'; name?: string; description?: string; content?: string; reply?: string; error?: string }
   | { type: 'flowGenerated'; flow?: Flow; reply?: string; error?: string }
+  | { type: 'flowSaveCancelled'; flow: Flow }
   | { type: 'navigateToTab'; tab: 'flows' | 'agents' | 'skills' | 'reviews' | 'overview' }
   | { type: 'revealRun'; flowId: string; runId: string }
   | { type: 'adhocRuns'; kind: 'agent' | 'skill'; name: string; runs: AdhocRun[] }

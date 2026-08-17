@@ -119,10 +119,20 @@ export class CockpitPanel {
         await this._handleOpenFile(message.path);
         return;
       case 'saveFlow': {
+        // A live run of this flow may already have consumed the part being edited; decide before
+        // anything is written, so a declined prompt leaves the file untouched.
+        const decision = await this._runner.reviewFlowEdit(message.flow);
+        if (decision === 'cancelled') {
+          // Hand the draft back — the webview clears its builder as soon as it posts.
+          this.postMessage({ type: 'flowSaveCancelled', flow: message.flow });
+          return;
+        }
         const isGlobal = typeof message.isGlobal === 'boolean'
           ? message.isGlobal
           : this.configManager.isGlobalSourcePath(message.flow.sourcePath);
         await this.configManager.saveFlow(message.flow, isGlobal);
+        if (decision === 'reset') await this._runner.resetRunsForFlow(message.flow);
+        else await this._runner.syncFlowIntoLiveRuns(message.flow);
         await this._sendAllData();
         vscode.window.showInformationMessage(`Flow '${message.flow.name}' saved.`);
         return;
