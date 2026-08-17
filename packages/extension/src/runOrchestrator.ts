@@ -494,6 +494,36 @@ export class RunOrchestrator {
     return [...this._runs].filter(([, rc]) => rc.flow.id === flowId && !rc.runState.isClosed);
   }
 
+  /** The confirm button label, exported as a constant so the test and the handler cannot drift. */
+  static readonly RESET_AND_SAVE = 'Reset & Save';
+
+  /**
+   * Decide what saving `newFlow` means for the runs that are live right now. Safe edits pass
+   * straight through; an edit that touches work a run has already consumed asks the user to accept
+   * a full reset first, and a declined prompt means the flow must not be written at all.
+   */
+  async reviewFlowEdit(newFlow: Flow): Promise<'safe' | 'reset' | 'cancelled'> {
+    const blocked: string[] = [];
+    for (const [, rc] of this._liveRunsOfFlow(newFlow.id)) {
+      const impact = machine.assessFlowEdit(rc.flow, newFlow, rc.runState);
+      if (impact.safe) continue;
+      const stepReasons = impact.changes.filter(c => c.blocking).map(c => `${c.stepId} (${c.kind})`);
+      const reasons = [...stepReasons, ...impact.blockingFlowFields.map(f => `flow ${f} changed`)];
+      blocked.push(`• ${rc.runState.runName || rc.runState.runId}: ${reasons.join(', ')}`);
+    }
+    if (blocked.length === 0) return 'safe';
+
+    const choice = await vscode.window.showWarningMessage(
+      `'${newFlow.name}' was edited in a part that has already run.`,
+      {
+        modal: true,
+        detail: `${blocked.join('\n')}\n\nSaving requires resetting ${blocked.length === 1 ? 'this run' : 'these runs'}: their artifacts, audit log, report and review reports are deleted and they restart from scratch.`
+      },
+      RunOrchestrator.RESET_AND_SAVE
+    );
+    return choice === RunOrchestrator.RESET_AND_SAVE ? 'reset' : 'cancelled';
+  }
+
   /**
    * Adopt an edited flow into every live run of it, for an edit already classified safe (it only
    * touches steps the run has not consumed — see `assessFlowEdit`). Added steps join the run as

@@ -507,3 +507,37 @@ test('resetting for an edited flow ignores runs of other flows', async () => {
   assert.equal(orch.runState?.runId, 'run-B', 'the other flow keeps its runId');
 });
 
+test('reviewing an edit with no live run is safe without prompting', async () => {
+  const { orch } = build();
+  assert.equal(await orch.reviewFlowEdit(makeChainFlow('f1', ['a', 'b'])), 'safe');
+  assert.equal(recorder.warnMessages.length, 0);
+});
+
+test('reviewing an edit that only adds later work is safe without prompting', async () => {
+  const { orch } = build();
+  const flow = makeChainFlow('f1', ['a', 'b']);
+  const run = makeRun(flow, 'run-1', projectPath);
+  run.steps.a = { ...run.steps.a, completionStatus: 'done' };
+  orch.setFlowAndRunState(flow, run);
+
+  assert.equal(await orch.reviewFlowEdit(makeChainFlow('f1', ['a', 'b', 'c'])), 'safe');
+  assert.equal(recorder.warnMessages.length, 0);
+});
+
+test('reviewing an edit that touches consumed work warns and reports the confirmation', async () => {
+  const { orch } = build();
+  const flow = makeChainFlow('f1', ['a', 'b']);
+  const run = makeRun(flow, 'run-1', projectPath);
+  run.steps.a = { ...run.steps.a, completionStatus: 'done' };
+  orch.setFlowAndRunState(flow, run);
+  const edited = makeChainFlow('f1', ['a', 'b']);
+  edited.steps[0] = { ...edited.steps[0], agent: 'architect' };
+
+  recorder.warnResult = 'Reset & Save';
+  assert.equal(await orch.reviewFlowEdit(edited), 'reset');
+  assert.equal(recorder.warnMessages.length, 1);
+
+  recorder.warnResult = undefined;
+  assert.equal(await orch.reviewFlowEdit(edited), 'cancelled');
+});
+
