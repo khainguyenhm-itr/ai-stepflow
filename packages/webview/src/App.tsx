@@ -45,6 +45,7 @@ const App: React.FC = () => {
     editingStep, setEditingStep,
     stepEditFromBoard, setStepEditFromBoard,
     stepIsNew, setStepIsNew,
+    setFlowSaveOrigin,
     stepError,
     builderError, setBuilderError,
     newInputName, setNewInputName,
@@ -261,6 +262,8 @@ const App: React.FC = () => {
                 dependsOn: (step.dependsOn || []).filter(id => id !== removed?.id)
               }))
             };
+            // No editor is open here, so a refused save must not pop one — see flowSaveOrigin.
+            setFlowSaveOrigin({ from: 'board' });
             sendToVSCode('saveFlow', { flow: newFlow, isGlobal: getFlowScope(flow) === 'global' });
           }}
           onSetActiveStep={setOpenStepId}

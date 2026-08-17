@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Flow, FlowStep } from '@claudesteps/core/types';
 import { SaveScope } from './types';
+import { FlowSaveOrigin } from './flowSaveOrigin';
 
 export const useBuilderState = () => {
   const [editingFlow, setEditingFlow] = useState<Flow | null>(null);
@@ -11,6 +12,8 @@ export const useBuilderState = () => {
   const [stepError, setStepError] = useState<string | null>(null);
   const [builderError, setBuilderError] = useState<string | null>(null);
   const [newInputName, setNewInputName] = useState('');
+  /** Where the in-flight `saveFlow` post came from, so a refusal restores exactly that context. */
+  const [flowSaveOrigin, setFlowSaveOrigin] = useState<FlowSaveOrigin | null>(null);
 
   const [agentModalOpen, setAgentModalOpen] = useState(false);
   const [skillModalOpen, setSkillModalOpen] = useState(false);
@@ -43,6 +46,7 @@ export const useBuilderState = () => {
     stepError, setStepError,
     builderError, setBuilderError,
     newInputName, setNewInputName,
+    flowSaveOrigin, setFlowSaveOrigin,
     agentModalOpen, setAgentModalOpen,
     skillModalOpen, setSkillModalOpen,
     reviewModalOpen, setReviewModalOpen,

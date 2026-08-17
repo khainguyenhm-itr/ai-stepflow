@@ -15,6 +15,7 @@ import { useRunState } from './appState/useRunState';
 import { useBuilderState } from './appState/useBuilderState';
 import { useChatState } from './appState/useChatState';
 import { SaveScope } from './appState/types';
+import { flowSaveCancelledState } from './appState/flowSaveOrigin';
 import {
   parseScopeFilter as parseFilter,
   parseViewFilter,
@@ -419,12 +420,21 @@ export const useAppLogic = () => {
           chatState.setFlowAiMessages(prev => [...prev, { role: 'assistant', content: message.reply }]);
         }
         break;
-      case 'flowSaveCancelled':
-        // The host refused the save (a live run would have to be reset). Reopen the builder with
-        // the user's draft so the edit is not lost.
-        buildState.setEditingFlow(message.flow);
-        buildState.setBuilderError('Not saved — a live run of this flow would have to be reset.');
+      case 'flowSaveCancelled': {
+        // The host refused the save (a live run would have to be reset). Restore exactly the
+        // editing context the save was posted from — a board-level removal had none, so the view is
+        // left alone rather than popping a builder the user never opened.
+        const restored = flowSaveCancelledState(buildState.flowSaveOrigin, message.flow);
+        buildState.setFlowSaveOrigin(null);
+        if (!restored) break;
+        buildState.setEditingFlow(restored.editingFlow);
+        buildState.setEditingStep(restored.editingStep);
+        buildState.setStepEditFromBoard(restored.stepEditFromBoard);
+        buildState.setStepIsNew(restored.stepIsNew);
+        buildState.setBuilderError(restored.builderError);
+        buildState.setStepError(restored.stepError);
         break;
+      }
       case 'adhocRuns':
         setAdhocRuns(message.runs || []);
         break;
@@ -735,6 +745,7 @@ export const useAppLogic = () => {
       buildState.setBuilderError(error);
       return;
     }
+    buildState.setFlowSaveOrigin({ from: 'builder' });
     sendToVSCode('saveFlow', {
       flow: { ...buildState.editingFlow, aiConversation: chatState.flowAiMessages },
       isGlobal: buildState.editingFlowScope === 'global'
@@ -766,6 +777,11 @@ export const useAppLogic = () => {
         buildState.setStepError(error);
         return;
       }
+      buildState.setFlowSaveOrigin({
+        from: 'stepEditor',
+        step: { step: buildState.editingStep.step, index: buildState.editingStep.index },
+        stepIsNew: buildState.stepIsNew,
+      });
       sendToVSCode('saveFlow', { flow: newFlow, isGlobal: buildState.editingFlowScope === 'global' });
       buildState.setEditingStep(null);
       buildState.setStepError(null);
