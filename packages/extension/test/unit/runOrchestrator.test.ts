@@ -31,6 +31,8 @@ function fakeTerminals() {
   } = {};
   // Every interactive launch, so a test can assert a step was (or was NOT) started.
   const launches: { prompt: string; stepId?: string; runId?: string }[] = [];
+  // Every cancel, so a test can assert a step's live work was terminated.
+  const cancelled: { runId?: string; stepId: string }[] = [];
   const terminals = {
     onDidCloseRunningStep: (cb: (r: string, s: string) => void) => { cbs.close = cb; },
     onDidEndRunningStep: (cb: (r: string, s: string) => void) => { cbs.end = cb; },
@@ -39,27 +41,30 @@ function fakeTerminals() {
       prompt: string, _projectPath: string, _agent?: unknown, _submit?: boolean,
       stepId?: string, _sessionId?: string, runId?: string
     ) => { launches.push({ prompt, stepId, runId }); },
-    cancelStep: () => true,
+    cancelStep: (runId: string | undefined, stepId: string) => { cancelled.push({ runId, stepId }); return true; },
     dispose: () => {},
   } as unknown as TerminalManager;
-  return { terminals, cbs, launches };
+  return { terminals, cbs, launches, cancelled };
 }
 
-function fakeStateManager(latestRun?: FlowRunState) {
+function fakeStateManager(latestRun?: FlowRunState, onSaveRun?: () => Promise<void> | void) {
   const saved: FlowRunState[] = [];
+  // Recorded so the removed-step cleanup (audit entries + review reports) can be asserted.
+  const cleared: { flowId: string; runId: string; stepIds?: string[] }[] = [];
+  const reviewsDeleted: { runId: string; stepIds: string[] }[] = [];
   const manager = {
-    saveRun: async (run: FlowRunState) => { saved.push(structuredClone(run)); },
+    saveRun: async (run: FlowRunState) => { saved.push(structuredClone(run)); await onSaveRun?.(); },
     appendAuditLog: async () => {},
-    clearAuditLog: async () => {},
+    clearAuditLog: async (flowId: string, runId: string, stepIds?: string[]) => { cleared.push({ flowId, runId, stepIds }); },
     loadAuditLog: async () => [],
     loadLatestRun: async () => latestRun,
     saveReport: async () => '',
     saveReviewReport: async () => '',
     deleteRunFile: async () => {},
     deleteReportFile: async () => {},
-    deleteReviewReports: async () => {},
+    deleteReviewReports: async (run: FlowRunState, stepIds: string[]) => { reviewsDeleted.push({ runId: run.runId, stepIds }); },
   } as unknown as StateManager;
-  return { manager, saved };
+  return { manager, saved, cleared, reviewsDeleted };
 }
 
 function fakeConfig(projectPath: string, flows: Flow[] = [], agents: { name: string }[] = []) {
@@ -90,9 +95,9 @@ function makeRun(flow: Flow, runId: string, projectPath: string): FlowRunState {
 let projectPath: string;
 let posted: HostMessage[];
 
-function build(opts: { latestRun?: FlowRunState; flows?: Flow[]; agents?: { name: string }[] } = {}) {
-  const { terminals, cbs, launches } = fakeTerminals();
-  const state = fakeStateManager(opts.latestRun);
+function build(opts: { latestRun?: FlowRunState; flows?: Flow[]; agents?: { name: string }[]; onSaveRun?: () => Promise<void> | void } = {}) {
+  const { terminals, cbs, launches, cancelled } = fakeTerminals();
+  const state = fakeStateManager(opts.latestRun, opts.onSaveRun);
   posted = [];
   const orch = new RunOrchestrator(
     fakeConfig(projectPath, opts.flows, opts.agents),
@@ -100,7 +105,7 @@ function build(opts: { latestRun?: FlowRunState; flows?: Flow[]; agents?: { name
     terminals,
     (message: HostMessage) => { posted.push(message); }
   );
-  return { orch, cbs, saved: state.saved, launches };
+  return { orch, cbs, saved: state.saved, launches, cancelled, cleared: state.cleared, reviewsDeleted: state.reviewsDeleted };
 }
 
 beforeEach(() => {
@@ -494,17 +499,23 @@ test('resetting for an edited flow deletes the artifacts of a step the edit remo
 });
 
 test('resetting for an edited flow ignores runs of other flows', async () => {
-  const { orch } = build();
+  const { orch, cleared } = build();
   const flowA = makeChainFlow('f1', ['a']);
   const flowB = makeChainFlow('f2', ['a']);
-  const runB = makeRun(flowB, 'run-B', projectPath);
-  orch.setFlowAndRunState(flowB, runB);
+  orch.setFlowAndRunState(flowB, makeRun(flowB, 'run-B', projectPath));
   orch.setFlowAndRunState(flowA, makeRun(flowA, 'run-A', projectPath));
 
   await orch.resetRunsForFlow(makeChainFlow('f1', ['a', 'b']));
 
-  orch.setFlowAndRunState(flowB, runB);
-  assert.equal(orch.runState?.runId, 'run-B', 'the other flow keeps its runId');
+  // Assert through the effects a reset actually has: it wipes the audit log and re-mints the runId
+  // (broadcast as `previousRunId`). Re-focusing run-B would prove nothing — the focus call rebuilds
+  // its context either way.
+  assert.ok(cleared.some(c => c.runId === 'run-A'), 'the edited flow\'s own run was not reset');
+  assert.equal(cleared.some(c => c.runId === 'run-B'), false, "the other flow's run was reset too");
+  assert.equal(
+    posted.some(m => m.type === 'restoreRun' && (m as any).previousRunId === 'run-B'), false,
+    "the other flow's run was re-minted by the reset"
+  );
 });
 
 test('reviewing an edit with no live run is safe without prompting', async () => {
@@ -541,3 +552,178 @@ test('reviewing an edit that touches consumed work warns and reports the confirm
   assert.equal(await orch.reviewFlowEdit(edited), 'cancelled');
 });
 
+
+test('resetting after a flow rename deletes the artifacts the run made under the OLD name', async () => {
+  const { orch } = build();
+  const flow = makeChainFlow('f1', ['a', 'b']);
+  flow.name = 'Flow One';
+  flow.steps[0] = { ...flow.steps[0], produces: ['plan.md'] };
+  const run = makeRun(flow, 'run-1', projectPath);
+  run.steps.a = { ...run.steps.a, completionStatus: 'done' };
+  orch.setFlowAndRunState(flow, run);
+
+  // A `produces` entry with no `/` resolves under `.claudesteps/output/{flow}/{runSlug}/`.
+  const artifact = path.join(
+    machine.flowOutputDir('Flow One', projectPath, machine.runOutputSlug(undefined, 'run-1')),
+    'plan.md'
+  );
+  mkdirSync(path.dirname(artifact), { recursive: true });
+  writeFileSync(artifact, 'the work this run already did');
+
+  // Renaming the flow is a blocking edit precisely because it moves the output directory.
+  const renamed = makeChainFlow('f1', ['a', 'b']);
+  renamed.name = 'Flow Two';
+  renamed.steps[0] = { ...renamed.steps[0], produces: ['plan.md'] };
+
+  await orch.resetRunsForFlow(renamed);
+
+  assert.equal(existsSync(artifact), false, 'the reset resolved the artifacts against the NEW flow name and orphaned them');
+});
+
+test('resetting deletes the artifacts a modified step declared BEFORE the edit', async () => {
+  const { orch } = build();
+  const flow = makeChainFlow('f1', ['a', 'b']);
+  flow.steps[0] = { ...flow.steps[0], produces: ['docs/old.md'] };
+  const run = makeRun(flow, 'run-1', projectPath);
+  run.steps.a = { ...run.steps.a, completionStatus: 'done' };
+  orch.setFlowAndRunState(flow, run);
+
+  const old = path.join(projectPath, 'docs', 'old.md');
+  mkdirSync(path.dirname(old), { recursive: true });
+  writeFileSync(old, 'produced under the previous declaration');
+
+  const edited = makeChainFlow('f1', ['a', 'b']);
+  edited.steps[0] = { ...edited.steps[0], produces: ['docs/new.md'] };
+
+  await orch.resetRunsForFlow(edited);
+
+  assert.equal(existsSync(old), false, "the reset only looked at the edited step's NEW produces list");
+});
+
+test('resetting for an edited flow deletes the review report of a step the edit removed', async () => {
+  const { orch, reviewsDeleted } = build();
+  const flow = makeChainFlow('f1', ['a', 'b']);
+  orch.setFlowAndRunState(flow, makeRun(flow, 'run-1', projectPath));
+
+  await orch.resetRunsForFlow(makeChainFlow('f1', ['a']));
+
+  const call = reviewsDeleted.find(r => r.runId === 'run-1');
+  assert.ok(call, 'no review reports were deleted at all');
+  assert.ok(call!.stepIds.includes('b'), "the removed step's review report was left behind");
+});
+
+test('a step removed by a safe edit has its live work terminated before it is dropped', async () => {
+  const { orch, cancelled } = build();
+  const flow = makeChainFlow('f1', ['a', 'b']);
+  const run = makeRun(flow, 'run-1', projectPath);
+  // The step was only `ready` when the edit was classified; by the time the save lands it is running.
+  run.steps.b = { ...run.steps.b, executionStatus: 'running' };
+  orch.setFlowAndRunState(flow, run);
+
+  await orch.syncFlowIntoLiveRuns(makeChainFlow('f1', ['a']));
+
+  assert.ok(
+    cancelled.some(c => c.runId === 'run-1' && c.stepId === 'b'),
+    'the removed step was dropped with its terminal still alive'
+  );
+  assert.equal(orch.runState!.steps.b, undefined);
+});
+
+test('syncing an edit keeps a modified step\'s progress — only added steps get fresh state', async () => {
+  const { orch } = build();
+  const flow = makeChainFlow('f1', ['a', 'b']);
+  const run = makeRun(flow, 'run-1', projectPath);
+  run.steps.a = { ...run.steps.a, completionStatus: 'done', output: 'a output' };
+  run.steps.b = { ...run.steps.b, executionStatus: 'completed', reviewStatus: 'waiting_human', output: 'b output' };
+  orch.setFlowAndRunState(flow, run);
+
+  const edited = makeChainFlow('f1', ['a', 'b', 'c']);
+  edited.steps[1] = { ...edited.steps[1], agent: 'architect', title: 'B, reworded' };
+
+  await orch.syncFlowIntoLiveRuns(edited);
+
+  const state = orch.runState!;
+  assert.equal(state.steps.b.output, 'b output', 'the modified step lost its progress');
+  assert.equal(state.steps.b.executionStatus, 'completed');
+  assert.equal(state.steps.b.reviewStatus, 'waiting_human');
+  assert.equal(state.steps.a.completionStatus, 'done');
+  assert.equal(state.steps.c.output, '', 'the added step must start fresh');
+});
+
+test('syncing an edit clears the removed step\'s audit entries and review reports', async () => {
+  const { orch, cleared, reviewsDeleted } = build();
+  const flow = makeChainFlow('f1', ['a', 'b']);
+  orch.setFlowAndRunState(flow, makeRun(flow, 'run-1', projectPath));
+
+  await orch.syncFlowIntoLiveRuns(makeChainFlow('f1', ['a']));
+
+  assert.deepEqual(cleared.filter(c => c.runId === 'run-1').map(c => c.stepIds), [['b']]);
+  assert.deepEqual(reviewsDeleted, [{ runId: 'run-1', stepIds: ['b'] }]);
+});
+
+// ---------------------------------------------------------------------------
+// Pairing a persisted run state with a flow edited while the run was not resident.
+// ---------------------------------------------------------------------------
+
+test('pairing a persisted run with a flow that gained a step gives that step a locked entry', () => {
+  const { orch } = build();
+  // Saved before 'b' existed — e.g. the flow was edited after a window reload dropped this run.
+  const stale = makeRun(makeChainFlow('f1', ['a']), 'run-1', projectPath);
+
+  orch.setFlowAndRunState(makeChainFlow('f1', ['a', 'b']), stale);
+
+  const entry = orch.runState!.steps.b;
+  assert.ok(entry, 'the added step has no state entry — every transition on it would be silently dropped');
+  assert.equal(entry.executionStatus, 'locked', 'the added step is runnable despite its dependency being unfinished');
+  assert.equal(entry.completionStatus, 'not_ready');
+});
+
+test('pairing a persisted run with a flow that lost a step drops the orphan entry', () => {
+  const { orch } = build();
+  const stale = makeRun(makeChainFlow('f1', ['a', 'b']), 'run-1', projectPath);
+
+  orch.setFlowAndRunState(makeChainFlow('f1', ['a']), stale);
+
+  assert.deepEqual(Object.keys(orch.runState!.steps), ['a']);
+});
+
+test('an edit never swaps the flow ahead of the run state it belongs to', async () => {
+  let release: (() => void) | undefined;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let holdNextSave = false;
+  const { orch } = build({ onSaveRun: async () => { if (holdNextSave) { holdNextSave = false; await held; } } });
+  const flow = makeChainFlow('f1', ['a']);
+  orch.setFlowAndRunState(flow, makeRun(flow, 'run-1', projectPath));
+
+  // Occupy this run's state queue with a transition that cannot finish yet.
+  holdNextSave = true;
+  const pending = orch.setAutoEnter(true);
+  const sync = orch.syncFlowIntoLiveRuns(makeChainFlow('f1', ['a', 'b']));
+  await new Promise(resolve => setImmediate(resolve));
+
+  // While the earlier transition drains, the flow must not already hold a step that has no entry
+  // in the run state — an in-flight step completing here would read that inconsistent pair.
+  assert.equal(orch.currentFlow!.steps.length, 1, 'the flow was swapped while the old run state was still live');
+  assert.deepEqual(Object.keys(orch.runState!.steps), ['a']);
+
+  release!();
+  await Promise.all([pending, sync]);
+  assert.equal(orch.currentFlow!.steps.length, 2);
+  assert.deepEqual(Object.keys(orch.runState!.steps).sort(), ['a', 'b']);
+});
+
+test('an edit that finishes a run announces the completion once, not twice', async () => {
+  const { orch } = build();
+  const flow = makeChainFlow('f1', ['a', 'b']);
+  const run = makeRun(flow, 'run-1', projectPath);
+  run.steps.a = { ...run.steps.a, completionStatus: 'done' };
+  orch.setFlowAndRunState(flow, run);
+
+  // Removing the only unfinished step leaves every remaining step done.
+  await orch.syncFlowIntoLiveRuns(makeChainFlow('f1', ['a']));
+  // Any later transition on the run must not re-announce the same completion.
+  await orch.setAutoEnter(true);
+
+  const completions = recorder.infoMessages.filter(m => m.includes('completed — all'));
+  assert.equal(completions.length, 1, 'the run-completed notice fired twice');
+});

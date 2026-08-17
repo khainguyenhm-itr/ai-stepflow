@@ -106,12 +106,21 @@ export class RunOrchestrator {
     return this._focusedRunId ? this._runs.get(this._focusedRunId) : undefined;
   }
 
-  /** Build a fresh RunCtx with clean per-run bookkeeping (bookkeeping is born with the run). */
+  /**
+   * Build a fresh RunCtx with clean per-run bookkeeping (bookkeeping is born with the run).
+   *
+   * This is the single seam where a run state (possibly persisted from an earlier session, when the
+   * flow could have been edited behind its back) is paired with a flow, so it is also where the two
+   * are reconciled: every flow step gets an entry and orphan entries are dropped. Without it a step
+   * added while the run was not resident has no state entry, `patchStep` silently drops every
+   * transition on it, and `_advanceReadySteps` can still launch it.
+   */
   private _newRunCtx(flow: Flow, runState: FlowRunState): RunCtx {
+    const reconciled = machine.reconcileRunSteps(flow, runState);
     return {
       flow,
-      runState,
-      startedStepIds: machine.seedStartedSteps(runState.steps),
+      runState: reconciled,
+      startedStepIds: machine.seedStartedSteps(reconciled.steps),
       parkedStepIds: new Set<string>(),
       autoRetryStepIds: new Set<string>(),
       stepStartTimes: new Map<string, Date>(),
@@ -227,7 +236,9 @@ export class RunOrchestrator {
       }
     }
     this._focusedRunId = runState.runId;
-    await this.stateManager.saveRun(runState);
+    // Persist what the run context actually holds — _newRunCtx may have reconciled the step map
+    // against the flow, and disk must not keep the unreconciled copy.
+    await this.stateManager.saveRun(this._runs.get(runState.runId)?.runState ?? runState);
     if (historyEvent) {
       await this.stateManager.appendAuditLog(runState.flowId, runState.runId, historyEvent.stepId, {
         timestamp: historyEvent.timestamp,
@@ -257,7 +268,9 @@ export class RunOrchestrator {
     else this._runs.set(runState.runId, this._newRunCtx(flow, runState));
     this._focusedFlow = flow;
     this._focusedRunId = runState.runId;
-    this.post({ type: 'restoreRun', flow, runState });
+    // Broadcast the context's state, not the raw one loaded from disk: _newRunCtx may have
+    // reconciled its step map against the flow this run is being paired with.
+    this.post({ type: 'restoreRun', flow, runState: this._runs.get(runState.runId)?.runState ?? runState });
     // Re-sweep for `runIf` skip candidates on reopen (e.g. after an extension restart), same as
     // adoptRunState — a no-op unless the flow declares runIf and this run hasn't resolved it yet.
     // Skip-only by design: `restore()` runs on every panel open and targets loadLatestRun(), which
@@ -484,6 +497,26 @@ export class RunOrchestrator {
     }
   }
 
+  /**
+   * Terminate whatever ONE step of `runId` has in flight — its headless child and its interactive
+   * terminal — without touching the rest of the run. The per-step counterpart of
+   * {@link _killRunChildren}, used when a step is about to be dropped from a live run.
+   */
+  private _killStepWork(runId: string, stepId: string): void {
+    const key = this._rk(runId, stepId);
+    const child = this._runChildrenByStep.get(key);
+    if (child) {
+      // Keep the cancelled marker: the child's exit handler still has to see it and skip its
+      // failure transition on a step that no longer exists.
+      this._cancelledStepIds.add(key);
+      child.kill();
+    } else {
+      // Nothing in flight — drop any stale marker so a later step reusing this id isn't skipped.
+      this._cancelledStepIds.delete(key);
+    }
+    this.terminals.cancelStep(runId, stepId);
+  }
+
   /** Drop a dead run's `${runId}::*` entries from the global cancelled set. */
   private _purgeRunKeys(runId: string): void {
     for (const key of [...this._cancelledStepIds]) if (isRunKeyOf(key, runId)) this._cancelledStepIds.delete(key);
@@ -533,40 +566,42 @@ export class RunOrchestrator {
   async syncFlowIntoLiveRuns(newFlow: Flow): Promise<void> {
     for (const [runId, rc] of this._liveRunsOfFlow(newFlow.id)) {
       const removedIds = rc.flow.steps.filter(s => !newFlow.steps.some(n => n.id === s.id)).map(s => s.id);
-      rc.flow = newFlow;
 
-      // Bookkeeping is keyed by stepId; a removed step must not leave entries behind that a later
-      // step with the same id would inherit.
-      for (const id of removedIds) {
-        rc.startedStepIds.delete(id);
-        rc.parkedStepIds.delete(id);
-        rc.autoRetryStepIds.delete(id);
-        rc.stepStartTimes.delete(id);
-        rc.readinessSnapshots.delete(id);
-        rc.outputChunkBuffer.delete(id);
-        this._cancelledStepIds.delete(this._rk(runId, id));
-      }
+      // A step that was merely `ready` when the edit was classified can be `running` by the time the
+      // save lands (the classification, the file write and the modal all happen first). Dropping its
+      // state entry while its process is alive would orphan that process, so terminate it first —
+      // a removed step must never leave live work behind.
+      for (const id of removedIds) this._killStepWork(runId, id);
 
+      // The flow swap, the bookkeeping cleanup and the state rewrite all happen inside the run's own
+      // state queue. Done outside it, `rc.flow` would briefly hold steps with no entry in
+      // `rc.runState.steps` while an earlier transition drains, and a step completing in that window
+      // would read the inconsistent pair (and could be launched untracked).
       await this._setRunState(runId, prev => {
-        const steps: Record<string, StepRunState> = {};
-        for (const step of newFlow.steps) {
-          steps[step.id] = prev.steps[step.id] ?? {
-            executionStatus: 'ready',
-            reviewStatus: 'pending',
-            completionStatus: 'not_ready',
-            output: ''
-          };
+        const live = this._runs.get(runId);
+        if (live) {
+          live.flow = newFlow;
+          // Bookkeeping is keyed by stepId; a removed step must not leave entries behind that a later
+          // step with the same id would inherit.
+          for (const id of removedIds) {
+            live.startedStepIds.delete(id);
+            live.parkedStepIds.delete(id);
+            live.autoRetryStepIds.delete(id);
+            live.stepStartTimes.delete(id);
+            live.readinessSnapshots.delete(id);
+            live.outputChunkBuffer.delete(id);
+          }
+          // The run may have gained unfinished work, so let the completion notice fire again. Set
+          // before the state lands, or the notice this very update triggers would be re-armed and
+          // could fire a second time.
+          live.completedNotified = false;
         }
         return {
-          ...prev,
+          ...machine.reconcileRunSteps(newFlow, prev),
           flowName: newFlow.name,
           source: newFlow.sourcePath,
-          steps: machine.applyDependencyLocks(newFlow, steps)
         };
       });
-
-      // The run may have gained unfinished work, so let the completion notice fire again.
-      rc.completedNotified = false;
 
       await Promise.all([
         removedIds.length ? this.stateManager.clearAuditLog(newFlow.id, runId, removedIds) : Promise.resolve(),
@@ -582,9 +617,28 @@ export class RunOrchestrator {
     }
   }
 
+  /**
+   * Everything a reset of `runId` has to erase, resolved against the flow the run ACTUALLY ran
+   * under. Callers that swap the run's flow first (a confirmed mid-run edit) must capture this
+   * before the swap, or the paths resolve under the new flow's name and nothing is deleted.
+   * `extraSteps` carries steps a flow edit removed — gone from the flow, still on disk.
+   */
+  private _resetTargets(runId: string, extraSteps: FlowStep[] = []): { stepIds: string[]; files: string[]; outputDir: string } {
+    const rc = this._runs.get(runId);
+    if (!rc) return { stepIds: [], files: [], outputDir: '' };
+    const projectPath = this.configManager.getProjectPath() || '';
+    const stepIds = [...new Set([...rc.flow.steps.map(s => s.id), ...extraSteps.map(s => s.id)])];
+    return {
+      stepIds,
+      files: this._producedFilePaths(runId, stepIds, extraSteps),
+      outputDir: machine.flowOutputDir(rc.flow.name, projectPath, this._runSlug(runId)),
+    };
+  }
+
   /** Reset a run (targets `explicitRunId`, else the focused run) to a fresh state, terminating its in-flight processes.
-   *  `opts.extraSteps` carries steps that a concurrent flow edit removed, so their artifacts are cleared too. */
-  async resetRun(explicitRunId?: string, opts: { extraSteps?: FlowStep[] } = {}): Promise<void> {
+   *  `opts.extraSteps` carries steps that a concurrent flow edit removed, so their artifacts are cleared too.
+   *  `opts.targets` overrides what gets erased, for callers that already swapped the run's flow. */
+  async resetRun(explicitRunId?: string, opts: { extraSteps?: FlowStep[]; targets?: { stepIds: string[]; files: string[]; outputDir: string } } = {}): Promise<void> {
     const oldRunId = explicitRunId ?? this._focusedRunId;
     const rc = oldRunId ? this._runs.get(oldRunId) : undefined;
     if (!oldRunId || !rc) return;
@@ -593,11 +647,10 @@ export class RunOrchestrator {
     const oldRunState = rc.runState;
 
     // Capture this run's artifacts BEFORE the state swap (reset mints a new runId → new slug).
-    const projectPath = this.configManager.getProjectPath() || '';
-    const extraSteps = opts.extraSteps ?? [];
-    const artifactStepIds = [...new Set([...flow.steps.map(s => s.id), ...extraSteps.map(s => s.id)])];
-    const runArtifacts = this._producedFilePaths(oldRunId, artifactStepIds, extraSteps);
-    const runOutputDir = machine.flowOutputDir(flow.name, projectPath, this._runSlug(oldRunId));
+    const targets = opts.targets ?? this._resetTargets(oldRunId, opts.extraSteps ?? []);
+    const artifactStepIds = targets.stepIds;
+    const runArtifacts = targets.files;
+    const runOutputDir = targets.outputDir;
 
     // Only this run's headless children — a concurrent run's work is left untouched.
     this._killRunChildren(oldRunId);
@@ -619,7 +672,9 @@ export class RunOrchestrator {
       this.stateManager.clearAuditLog(flow.id, oldRunId),
       this.stateManager.deleteRunFile(oldRunState),
       this.stateManager.deleteReportFile(oldRunState),
-      this.stateManager.deleteReviewReports(oldRunState, flow.steps.map(s => s.id)),
+      // artifactStepIds, not flow.steps: a step the edit removed still has a review report on disk,
+      // and the reset modal promises those are deleted too.
+      this.stateManager.deleteReviewReports(oldRunState, artifactStepIds),
     ]);
     this.post({ type: 'resetAuditLog', flowId: flow.id, runId: oldRunId });
 
@@ -648,8 +703,13 @@ export class RunOrchestrator {
     for (const [runId, rc] of this._liveRunsOfFlow(newFlow.id)) {
       // Steps the edit deleted: gone from the new flow, but their artifacts are still on disk.
       const removedSteps = rc.flow.steps.filter(s => !newFlow.steps.some(n => n.id === s.id));
+      // Resolve what to erase against the OLD flow — the one this run actually ran under. Resolving
+      // after the swap would look for the artifacts under the NEW flow name / the NEW `produces`
+      // list, find nothing, and silently orphan everything the run had written (exactly what the
+      // `name` blocking rule exists to prevent).
+      const targets = this._resetTargets(runId, removedSteps);
       rc.flow = newFlow;
-      await this.resetRun(runId, { extraSteps: removedSteps });
+      await this.resetRun(runId, { extraSteps: removedSteps, targets });
     }
   }
 

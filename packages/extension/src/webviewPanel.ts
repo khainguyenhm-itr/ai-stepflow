@@ -123,8 +123,11 @@ export class CockpitPanel {
         // anything is written, so a declined prompt leaves the file untouched.
         const decision = await this._runner.reviewFlowEdit(message.flow);
         if (decision === 'cancelled') {
-          // Hand the draft back — the webview clears its builder as soon as it posts.
+          // Hand the draft back — the webview clears its editing state as soon as it posts.
           this.postMessage({ type: 'flowSaveCancelled', flow: message.flow });
+          // A save posted straight from the run board has no editor to reopen and carry the
+          // refusal, so it is surfaced here instead of silently doing nothing.
+          vscode.window.showWarningMessage(`Flow '${message.flow.name}' was not saved — a live run of it would have to be reset.`);
           return;
         }
         const isGlobal = typeof message.isGlobal === 'boolean'
