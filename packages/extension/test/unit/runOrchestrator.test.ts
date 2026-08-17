@@ -436,6 +436,39 @@ test('syncing a safe edit drops a removed step from the run state', async () => 
   assert.deepEqual(Object.keys(orch.runState!.steps).sort(), ['a', 'b']);
 });
 
+test('syncing an edit that only adds a dependency locks the dependent step', async () => {
+  const { orch } = build();
+  // Two independent steps: nothing gates 'b', so it starts ready.
+  const flow = makeChainFlow('f1', ['a', 'b']);
+  flow.steps[1] = { ...flow.steps[1], dependsOn: [] };
+  orch.setFlowAndRunState(flow, makeRun(flow, 'run-1', projectPath));
+  assert.equal(orch.runState!.steps.b.executionStatus, 'ready');
+
+  // Same steps, same count — only the edges changed, so nothing is added or removed.
+  await orch.syncFlowIntoLiveRuns(makeChainFlow('f1', ['a', 'b']));
+
+  assert.equal(
+    orch.runState!.steps.b.executionStatus, 'locked',
+    'the new dependency was ignored — the step stays runnable out of DAG order'
+  );
+});
+
+test('syncing an edit that only removes a dependency unlocks the dependent step', async () => {
+  const { orch } = build();
+  const flow = makeChainFlow('f1', ['a', 'b']);
+  orch.setFlowAndRunState(flow, makeRun(flow, 'run-1', projectPath));
+  assert.equal(orch.runState!.steps.b.executionStatus, 'locked');
+
+  const edited = makeChainFlow('f1', ['a', 'b']);
+  edited.steps[1] = { ...edited.steps[1], dependsOn: [] };
+  await orch.syncFlowIntoLiveRuns(edited);
+
+  assert.equal(
+    orch.runState!.steps.b.executionStatus, 'ready',
+    'the step stays locked on a dependency the edit removed'
+  );
+});
+
 test('syncing an edit leaves runs of other flows untouched', async () => {
   const { orch } = build();
   const flowA = makeChainFlow('f1', ['a']);
@@ -685,6 +718,37 @@ test('pairing a persisted run with a flow that lost a step drops the orphan entr
   orch.setFlowAndRunState(makeChainFlow('f1', ['a']), stale);
 
   assert.deepEqual(Object.keys(orch.runState!.steps), ['a']);
+});
+
+test('re-pairing an ALREADY-RESIDENT run with a flow that gained a step reconciles it too', () => {
+  const { orch } = build();
+  const flow = makeChainFlow('f1', ['a']);
+  const stale = makeRun(flow, 'run-1', projectPath);
+  orch.setFlowAndRunState(flow, stale); // the run is now resident
+
+  // Re-paired (switchRun / loadFlow) with the flow as it now stands on disk.
+  orch.setFlowAndRunState(makeChainFlow('f1', ['a', 'b']), stale);
+
+  const entry = orch.runState!.steps.b;
+  assert.ok(entry, 'the added step has no state entry — every transition on it would be silently dropped');
+  assert.equal(entry.executionStatus, 'locked', 'the added step is runnable despite its dependency being unfinished');
+});
+
+test('restore re-pairs an already-resident run with the flow it is restored against', async () => {
+  const flow = makeChainFlow('f1', ['a']);
+  const stale = makeRun(flow, 'run-1', projectPath);
+  const edited = makeChainFlow('f1', ['a', 'b']);
+  const { orch } = build({ latestRun: stale, flows: [edited] });
+  orch.setFlowAndRunState(flow, stale);          // resident…
+  orch.setFlowAndRunState(undefined, undefined); // …but no longer focused
+
+  await orch.restore();
+
+  const entry = orch.runState!.steps.b;
+  assert.ok(entry, 'the added step has no state entry after restore');
+  assert.equal(entry.executionStatus, 'locked');
+  const restored = posted.filter(m => m.type === 'restoreRun').pop() as { runState: FlowRunState } | undefined;
+  assert.ok(restored?.runState.steps.b, 'the webview was handed the unreconciled state');
 });
 
 test('an edit never swaps the flow ahead of the run state it belongs to', async () => {

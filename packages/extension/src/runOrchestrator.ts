@@ -132,6 +132,24 @@ export class RunOrchestrator {
     };
   }
 
+  /**
+   * Pair `runState` with `flow` in the run registry, whether or not the run is already resident.
+   * Every path that pairs the two goes through here, so the reconciliation `_newRunCtx` does for a
+   * fresh context can never be skipped by a caller that happens to find the run already in the map —
+   * a re-pair installs an on-disk state against a possibly-edited flow just the same.
+   */
+  private _pairRun(flow: Flow, runState: FlowRunState): RunCtx {
+    const existing = this._runs.get(runState.runId);
+    if (existing) {
+      existing.flow = flow;
+      existing.runState = machine.reconcileRunSteps(flow, runState);
+      return existing;
+    }
+    const rc = this._newRunCtx(flow, runState);
+    this._runs.set(runState.runId, rc);
+    return rc;
+  }
+
   constructor(
     private readonly configManager: ConfigManager,
     private readonly stateManager: StateManager,
@@ -199,9 +217,7 @@ export class RunOrchestrator {
   setFlowAndRunState(flow: Flow | undefined, runState: FlowRunState | undefined): void {
     this._focusedFlow = flow;
     if (flow && runState) {
-      const existing = this._runs.get(runState.runId);
-      if (existing) { existing.flow = flow; existing.runState = runState; }
-      else this._runs.set(runState.runId, this._newRunCtx(flow, runState));
+      this._pairRun(flow, runState);
       this._focusedRunId = runState.runId;
     } else {
       // Selecting a flow with no run open: keep other runs live, just clear the focused run.
@@ -263,14 +279,12 @@ export class RunOrchestrator {
       flow = flows.find(f => f.id === runState!.flowId);
     }
     if (!flow || !runState) return;
-    const existing = this._runs.get(runState.runId);
-    if (existing) { existing.flow = flow; existing.runState = runState; }
-    else this._runs.set(runState.runId, this._newRunCtx(flow, runState));
+    const rc = this._pairRun(flow, runState);
     this._focusedFlow = flow;
     this._focusedRunId = runState.runId;
-    // Broadcast the context's state, not the raw one loaded from disk: _newRunCtx may have
-    // reconciled its step map against the flow this run is being paired with.
-    this.post({ type: 'restoreRun', flow, runState: this._runs.get(runState.runId)?.runState ?? runState });
+    // Broadcast the context's state, not the raw one loaded from disk: pairing may have reconciled
+    // its step map against the flow this run is being paired with.
+    this.post({ type: 'restoreRun', flow, runState: rc.runState });
     // Re-sweep for `runIf` skip candidates on reopen (e.g. after an extension restart), same as
     // adoptRunState — a no-op unless the flow declares runIf and this run hasn't resolved it yet.
     // Skip-only by design: `restore()` runs on every panel open and targets loadLatestRun(), which
@@ -596,8 +610,14 @@ export class RunOrchestrator {
           // could fire a second time.
           live.completedNotified = false;
         }
+        // Locks are re-applied unconditionally, not just when reconcile repaired something: an edit
+        // that only rewires `dependsOn` between existing steps leaves the step map already agreeing
+        // with the flow, so `reconcileRunSteps` returns it untouched — and the new edges would never
+        // reach the lock states.
+        const reconciled = machine.reconcileRunSteps(newFlow, prev);
         return {
-          ...machine.reconcileRunSteps(newFlow, prev),
+          ...reconciled,
+          steps: machine.applyDependencyLocks(newFlow, reconciled.steps),
           flowName: newFlow.name,
           source: newFlow.sourcePath,
         };
