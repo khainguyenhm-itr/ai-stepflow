@@ -69,7 +69,9 @@ export type WebviewMessage =
   | { type: 'ready' }
   | { type: 'loadFlow'; flow: Flow; runState?: FlowRunState }
   | { type: 'openFile'; path: string }
-  | { type: 'saveFlow'; flow: Flow; isGlobal?: boolean }
+  /** `flowSaveOrigin` says which webview surface posted the save, so a refusal is reported where the
+   *  user can see it: 'builder'/'stepEditor' reopen with an inline error, 'board' has no surface. */
+  | { type: 'saveFlow'; flow: Flow; isGlobal?: boolean; flowSaveOrigin?: 'builder' | 'stepEditor' | 'board' }
   | { type: 'createAgent'; agent: AgentInput; isGlobal?: boolean }
   | { type: 'updateAgent'; agent: AgentInput; isGlobal?: boolean; originalSourcePath?: string }
   | { type: 'createSkill'; skill: SkillInput; isGlobal?: boolean; importSourceDir?: string }
@@ -154,7 +156,7 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   exportRunReport: m => m.runId === undefined || isString(m.runId),
   loadFlow: m => isFlowLike(m.flow) && (m.runState === undefined || isFlowRunStateShape(m.runState)),
   openFile: m => isString(m.path),
-  saveFlow: m => isFlowLike(m.flow),
+  saveFlow: m => isFlowLike(m.flow) && (m.flowSaveOrigin === undefined || isString(m.flowSaveOrigin)),
   createAgent: m => isAgentLike(m.agent),
   updateAgent: m => isAgentLike(m.agent),
   createSkill: m => isSkillLike(m.skill) && (m.importSourceDir === undefined || isString(m.importSourceDir)),

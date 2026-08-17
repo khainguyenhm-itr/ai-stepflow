@@ -65,6 +65,9 @@ test('saveFlow validates the flow element-deep, not just "is an object"', () => 
   assert.equal(validateMessage({ type: 'saveFlow', flow: { ...flow, steps: [{ title: 'no id' }] } }), null);
   assert.equal(validateMessage({ type: 'saveFlow', flow: { ...flow, steps: ['nope'] } }), null);
   assert.equal(validateMessage({ type: 'saveFlow', flow: { ...flow, steps: 'nope' } }), null);
+  // The host decides whether a refused save needs a toast from this, so it has to survive validation.
+  const stamped = validateMessage({ type: 'saveFlow', flow, flowSaveOrigin: 'board' });
+  assert.equal((stamped as { flowSaveOrigin?: string })?.flowSaveOrigin, 'board');
 });
 
 test('agent and skill payloads are validated on every handler that writes them to disk', () => {

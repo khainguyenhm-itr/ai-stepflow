@@ -748,7 +748,8 @@ export const useAppLogic = () => {
     buildState.setFlowSaveOrigin({ from: 'builder' });
     sendToVSCode('saveFlow', {
       flow: { ...buildState.editingFlow, aiConversation: chatState.flowAiMessages },
-      isGlobal: buildState.editingFlowScope === 'global'
+      isGlobal: buildState.editingFlowScope === 'global',
+      flowSaveOrigin: 'builder'
     });
     buildState.setEditingFlow(null);
     buildState.setEditingStep(null);
@@ -782,7 +783,7 @@ export const useAppLogic = () => {
         step: { step: buildState.editingStep.step, index: buildState.editingStep.index },
         stepIsNew: buildState.stepIsNew,
       });
-      sendToVSCode('saveFlow', { flow: newFlow, isGlobal: buildState.editingFlowScope === 'global' });
+      sendToVSCode('saveFlow', { flow: newFlow, isGlobal: buildState.editingFlowScope === 'global', flowSaveOrigin: 'stepEditor' });
       buildState.setEditingStep(null);
       buildState.setStepError(null);
       buildState.setStepEditFromBoard(false);

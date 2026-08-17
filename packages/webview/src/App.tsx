@@ -264,7 +264,7 @@ const App: React.FC = () => {
             };
             // No editor is open here, so a refused save must not pop one — see flowSaveOrigin.
             setFlowSaveOrigin({ from: 'board' });
-            sendToVSCode('saveFlow', { flow: newFlow, isGlobal: getFlowScope(flow) === 'global' });
+            sendToVSCode('saveFlow', { flow: newFlow, isGlobal: getFlowScope(flow) === 'global', flowSaveOrigin: 'board' });
           }}
           onSetActiveStep={setOpenStepId}
           onRunStep={runActiveStep}

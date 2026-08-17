@@ -126,8 +126,12 @@ export class CockpitPanel {
           // Hand the draft back — the webview clears its editing state as soon as it posts.
           this.postMessage({ type: 'flowSaveCancelled', flow: message.flow });
           // A save posted straight from the run board has no editor to reopen and carry the
-          // refusal, so it is surfaced here instead of silently doing nothing.
-          vscode.window.showWarningMessage(`Flow '${message.flow.name}' was not saved — a live run of it would have to be reset.`);
+          // refusal, so it is surfaced here instead of silently doing nothing. The builder and the
+          // step editor DO reopen with an inline error, so a toast there would say it twice.
+          // An unstamped origin reopens nothing either, so it gets the toast too.
+          if (message.flowSaveOrigin !== 'builder' && message.flowSaveOrigin !== 'stepEditor') {
+            vscode.window.showWarningMessage(`Flow '${message.flow.name}' was not saved — a live run of it would have to be reset.`);
+          }
           return;
         }
         const isGlobal = typeof message.isGlobal === 'boolean'
