@@ -59,6 +59,28 @@ export function initRunState(flow: Flow, opts: { runId: string; runName?: string
 }
 
 /**
+ * Pair a run state with a (possibly edited) flow: give every flow step an entry, drop entries for
+ * steps the flow no longer has, and re-apply dependency locks. Without this a persisted run opened
+ * against an edited flow carries a step map that no longer matches the flow, and `patchStep`
+ * silently drops every transition on a step that has no entry. Returns the state unchanged when
+ * the two already agree, so a pairing that needs no repair keeps its identity.
+ */
+export function reconcileRunSteps(flow: Flow, state: FlowRunState): FlowRunState {
+  const steps: Record<string, StepRunState> = {};
+  let changed = Object.keys(state.steps).length !== flow.steps.length;
+  for (const step of flow.steps) {
+    const prev = state.steps[step.id];
+    if (prev) steps[step.id] = prev;
+    else {
+      steps[step.id] = { executionStatus: 'ready', reviewStatus: 'pending', completionStatus: 'not_ready', output: '' };
+      changed = true;
+    }
+  }
+  if (!changed) return state;
+  return { ...state, steps: applyDependencyLocks(flow, steps) };
+}
+
+/**
  * Replace one step's state and re-apply dependency locks across the run. When an
  * `event` is given it is appended (immutably) to the step's audit `history`, so every
  * meaningful transition leaves a timestamped trace the report and UI can render.

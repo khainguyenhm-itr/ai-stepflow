@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   Flow,
   initRunState, markRunning, markCompleted, markFailed, markCancelled, markSkipped,
-  applyHumanReview, applyAiReview, markDone, doneStepIds, lockStatesEqual, resetStep
+  applyHumanReview, applyAiReview, markDone, doneStepIds, lockStatesEqual, resetStep, reconcileRunSteps
 } from '@claudesteps/core';
 
 // Every step is reviewed; the default is auto (AI) review.
@@ -223,4 +223,51 @@ test('lockStatesEqual detects executionStatus changes and ignores key order', ()
   // A different set of step ids → not equal.
   const fewer = { a: st.steps.a };
   assert.equal(lockStatesEqual(st.steps, fewer), false);
+});
+
+// ---------------------------------------------------------------------------
+// Pairing a persisted run state with a flow that changed behind its back.
+// ---------------------------------------------------------------------------
+
+test('reconcileRunSteps adds a fresh entry for a flow step the state is missing, correctly locked', () => {
+  const st = initRunState(flow, { runId: 'r1' });
+  const missingB = { ...st, steps: { a: st.steps.a } };
+
+  const reconciled = reconcileRunSteps(flow, missingB);
+
+  assert.ok(reconciled.steps.b, 'the step the run state never knew about has no entry');
+  assert.equal(reconciled.steps.b.completionStatus, 'not_ready');
+  // 'b' depends on 'a', which is not done — the fresh entry must be locked, not runnable.
+  assert.equal(reconciled.steps.b.executionStatus, 'locked');
+});
+
+test('reconcileRunSteps unlocks an added step whose dependency is already done', () => {
+  let st = initRunState(flow, { runId: 'r1' });
+  st = toDone(st, flow, 'a');
+  const missingB = { ...st, steps: { a: st.steps.a } };
+
+  assert.equal(reconcileRunSteps(flow, missingB).steps.b.executionStatus, 'ready');
+});
+
+test('reconcileRunSteps drops an entry for a step the flow no longer has', () => {
+  const st = initRunState(flow, { runId: 'r1' });
+  const withOrphan = { ...st, steps: { ...st.steps, gone: { ...st.steps.a } } };
+
+  const reconciled = reconcileRunSteps(flow, withOrphan);
+
+  assert.equal(reconciled.steps.gone, undefined);
+  assert.deepEqual(Object.keys(reconciled.steps).sort(), ['a', 'b']);
+});
+
+test('reconcileRunSteps preserves the progress of steps that are still in the flow', () => {
+  let st = initRunState(flow, { runId: 'r1' });
+  st = toDone(st, flow, 'a');
+  const missingB = { ...st, steps: { a: st.steps.a } };
+
+  assert.deepEqual(reconcileRunSteps(flow, missingB).steps.a, st.steps.a);
+});
+
+test('reconcileRunSteps returns the state untouched when flow and state already agree', () => {
+  const st = initRunState(flow, { runId: 'r1' });
+  assert.equal(reconcileRunSteps(flow, st), st);
 });
