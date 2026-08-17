@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { RunOrchestrator } from '../../src/runOrchestrator.js';
@@ -457,5 +457,53 @@ test('syncing an edit refreshes the focused run view with the new flow', async (
   const restore = posted.filter(m => m.type === 'restoreRun');
   assert.equal(restore.length, 1);
   assert.equal((restore[0] as any).flow.steps.length, 2);
+});
+
+test('resetting for an edited flow rebuilds every live run from the new flow', async () => {
+  const { orch } = build();
+  const flow = makeChainFlow('f1', ['a', 'b']);
+  const run = makeRun(flow, 'run-1', projectPath);
+  run.steps.a = { ...run.steps.a, completionStatus: 'done', output: 'old work' };
+  orch.setFlowAndRunState(flow, run);
+
+  await orch.resetRunsForFlow(makeChainFlow('f1', ['a', 'b', 'c']));
+
+  const state = orch.runState!;
+  assert.notEqual(state.runId, 'run-1', 'reset mints a new runId');
+  assert.equal(state.steps.a.completionStatus, 'not_ready', 'progress cleared');
+  assert.equal(state.steps.a.output, '');
+  assert.ok(state.steps.c, 'new step present');
+  assert.equal(orch.currentFlow?.steps.length, 3);
+});
+
+test('resetting for an edited flow deletes the artifacts of a step the edit removed', async () => {
+  const { orch } = build();
+  // Plain filename `produces` entries resolve under the per-run output folder (see
+  // `resolveFlowPath`), same convention as the `docs/plan.md` fixtures above — so the fixture is
+  // written there, not at the project root.
+  const doomed = path.join(projectPath, 'docs', 'doomed.md');
+  const flow = makeChainFlow('f1', ['a', 'b']);
+  flow.steps[1] = { ...flow.steps[1], produces: ['docs/doomed.md'] };
+  mkdirSync(path.dirname(doomed), { recursive: true });
+  writeFileSync(doomed, 'artifact from the removed step');
+  orch.setFlowAndRunState(flow, makeRun(flow, 'run-1', projectPath));
+
+  await orch.resetRunsForFlow(makeChainFlow('f1', ['a']));
+
+  assert.equal(existsSync(doomed), false, "the removed step's artifact is deleted");
+});
+
+test('resetting for an edited flow ignores runs of other flows', async () => {
+  const { orch } = build();
+  const flowA = makeChainFlow('f1', ['a']);
+  const flowB = makeChainFlow('f2', ['a']);
+  const runB = makeRun(flowB, 'run-B', projectPath);
+  orch.setFlowAndRunState(flowB, runB);
+  orch.setFlowAndRunState(flowA, makeRun(flowA, 'run-A', projectPath));
+
+  await orch.resetRunsForFlow(makeChainFlow('f1', ['a', 'b']));
+
+  orch.setFlowAndRunState(flowB, runB);
+  assert.equal(orch.runState?.runId, 'run-B', 'the other flow keeps its runId');
 });
 

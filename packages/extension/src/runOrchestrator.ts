@@ -552,8 +552,9 @@ export class RunOrchestrator {
     }
   }
 
-  /** Reset a run (targets `explicitRunId`, else the focused run) to a fresh state, terminating its in-flight processes. */
-  async resetRun(explicitRunId?: string): Promise<void> {
+  /** Reset a run (targets `explicitRunId`, else the focused run) to a fresh state, terminating its in-flight processes.
+   *  `opts.extraSteps` carries steps that a concurrent flow edit removed, so their artifacts are cleared too. */
+  async resetRun(explicitRunId?: string, opts: { extraSteps?: FlowStep[] } = {}): Promise<void> {
     const oldRunId = explicitRunId ?? this._focusedRunId;
     const rc = oldRunId ? this._runs.get(oldRunId) : undefined;
     if (!oldRunId || !rc) return;
@@ -563,7 +564,9 @@ export class RunOrchestrator {
 
     // Capture this run's artifacts BEFORE the state swap (reset mints a new runId → new slug).
     const projectPath = this.configManager.getProjectPath() || '';
-    const runArtifacts = this._producedFilePaths(oldRunId, flow.steps.map(s => s.id));
+    const extraSteps = opts.extraSteps ?? [];
+    const artifactStepIds = [...new Set([...flow.steps.map(s => s.id), ...extraSteps.map(s => s.id)])];
+    const runArtifacts = this._producedFilePaths(oldRunId, artifactStepIds, extraSteps);
     const runOutputDir = machine.flowOutputDir(flow.name, projectPath, this._runSlug(oldRunId));
 
     // Only this run's headless children — a concurrent run's work is left untouched.
@@ -604,6 +607,19 @@ export class RunOrchestrator {
     // Dispose any running terminal only after freshState is in place.
     for (const [stepId, state] of Object.entries(oldSteps)) {
       if (state.executionStatus === 'running') this.terminals.cancelStep(oldRunId, stepId);
+    }
+  }
+
+  /**
+   * Reset every live run of `newFlow` so they restart from the edited flow. Used when a mid-run
+   * edit touched work the runs had already consumed and the user confirmed the reset.
+   */
+  async resetRunsForFlow(newFlow: Flow): Promise<void> {
+    for (const [runId, rc] of this._liveRunsOfFlow(newFlow.id)) {
+      // Steps the edit deleted: gone from the new flow, but their artifacts are still on disk.
+      const removedSteps = rc.flow.steps.filter(s => !newFlow.steps.some(n => n.id === s.id));
+      rc.flow = newFlow;
+      await this.resetRun(runId, { extraSteps: removedSteps });
     }
   }
 
@@ -799,7 +815,7 @@ export class RunOrchestrator {
    * Absolute paths of every file the given steps declare in `produces`, resolved for the CURRENT
    * run (flow name + run slug + inputs). Used to delete a run's/step's artifacts on reset.
    */
-  private _producedFilePaths(runId: string, stepIds: string[]): string[] {
+  private _producedFilePaths(runId: string, stepIds: string[], extraSteps: FlowStep[] = []): string[] {
     const rc = this._runs.get(runId);
     if (!rc) return [];
     const flow = rc.flow;
@@ -809,7 +825,9 @@ export class RunOrchestrator {
     const legacySlug = this._legacyRunSlug(runId);
     const paths = new Set<string>();
     for (const id of stepIds) {
-      const step = flow.steps.find(s => s.id === id);
+      // `extraSteps` carries steps an edit deleted from the flow — their artifacts still exist on
+      // disk and a reset must clear them too.
+      const step = flow.steps.find(s => s.id === id) ?? extraSteps.find(s => s.id === id);
       if (!step) continue;
       for (const p of machine.resolveTemplates(step.produces, inputs)) {
         // Locate where the artifact actually is (an agent may have nested it), so a per-step
