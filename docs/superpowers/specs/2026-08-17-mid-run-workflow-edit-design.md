@@ -159,3 +159,24 @@ gathering produced files.
 - Runs already closed or finished (`isClosed`) are never touched — their history stays as
   recorded.
 - No partial "reset from the affected step onward" mode; the confirmed reset is whole-run.
+
+## Known limitations
+
+- **The gate only sees runs resident in this window.** `_liveRunsOfFlow` filters `RunOrchestrator._runs`,
+  which holds runs created or opened in this session. A flow edited in another VS Code window, or
+  hand-edited on disk, never reaches this code path, so its live runs are neither assessed nor
+  reconciled. What a persisted run does get, when it is later paired with a flow, is a step-map
+  reconciliation (`reconcileRunSteps` in `_newRunCtx`): flow steps missing from the state gain a
+  fresh entry, orphan entries are dropped, and dependency locks are re-applied — enough that no
+  transition is silently dropped. It is deliberately *not* a reset or a re-prompt: an edit made
+  while a run was not resident is outside what this design decided.
+- **The `trustLevel` blocking clause is currently unreachable.** `assessFlowEdit` treats a changed
+  `flow.trustLevel` as blocking, but `ConfigManager.saveFlow` never writes that field today, so an
+  edit can never differ on it. The rule is kept because it is correct the moment the field becomes
+  writable.
+- **Manual verification must cover all three save call sites.** The script in `task-5-report.md`
+  exercises the flow builder's Save only. Two other call sites post `saveFlow` and hit exactly the
+  same gate, with different cancel behaviour: the step editor opened from the run board
+  (`saveStepEdit` with `stepEditFromBoard`), and the board-level step removal (`onRemoveStep` in
+  `App.tsx`, which has no editor open — a refusal there must leave the view untouched rather than
+  opening a builder). Both need to be walked through the reset and the cancel branch.
