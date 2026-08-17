@@ -489,6 +489,69 @@ export class RunOrchestrator {
     for (const key of [...this._cancelledStepIds]) if (isRunKeyOf(key, runId)) this._cancelledStepIds.delete(key);
   }
 
+  /** Every run of `flowId` still live in this session (closed runs are already out of `_runs`). */
+  private _liveRunsOfFlow(flowId: string): [string, RunCtx][] {
+    return [...this._runs].filter(([, rc]) => rc.flow.id === flowId && !rc.runState.isClosed);
+  }
+
+  /**
+   * Adopt an edited flow into every live run of it, for an edit already classified safe (it only
+   * touches steps the run has not consumed — see `assessFlowEdit`). Added steps join the run as
+   * fresh, removed steps are erased from the state and from this run's bookkeeping, and dependency
+   * locks are recomputed so the DAG reflects the new edges.
+   */
+  async syncFlowIntoLiveRuns(newFlow: Flow): Promise<void> {
+    for (const [runId, rc] of this._liveRunsOfFlow(newFlow.id)) {
+      const removedIds = rc.flow.steps.filter(s => !newFlow.steps.some(n => n.id === s.id)).map(s => s.id);
+      rc.flow = newFlow;
+
+      // Bookkeeping is keyed by stepId; a removed step must not leave entries behind that a later
+      // step with the same id would inherit.
+      for (const id of removedIds) {
+        rc.startedStepIds.delete(id);
+        rc.parkedStepIds.delete(id);
+        rc.autoRetryStepIds.delete(id);
+        rc.stepStartTimes.delete(id);
+        rc.readinessSnapshots.delete(id);
+        rc.outputChunkBuffer.delete(id);
+        this._cancelledStepIds.delete(this._rk(runId, id));
+      }
+
+      await this._setRunState(runId, prev => {
+        const steps: Record<string, StepRunState> = {};
+        for (const step of newFlow.steps) {
+          steps[step.id] = prev.steps[step.id] ?? {
+            executionStatus: 'ready',
+            reviewStatus: 'pending',
+            completionStatus: 'not_ready',
+            output: ''
+          };
+        }
+        return {
+          ...prev,
+          flowName: newFlow.name,
+          source: newFlow.sourcePath,
+          steps: machine.applyDependencyLocks(newFlow, steps)
+        };
+      });
+
+      // The run may have gained unfinished work, so let the completion notice fire again.
+      rc.completedNotified = false;
+
+      await Promise.all([
+        removedIds.length ? this.stateManager.clearAuditLog(newFlow.id, runId, removedIds) : Promise.resolve(),
+        removedIds.length ? this.stateManager.deleteReviewReports(rc.runState, removedIds) : Promise.resolve(),
+      ]);
+
+      // `runStateChanged` (posted by _setRunState) keeps background runs current, but the focused
+      // view also holds the FLOW — only `restoreRun` refreshes that.
+      if (this._focusedRunId === runId) this.post({ type: 'restoreRun', flow: newFlow, runState: rc.runState });
+
+      // A newly added step may be gated by runIf; resolve it now rather than at the next advance.
+      this._sweepRunIfSkips(runId);
+    }
+  }
+
   /** Reset a run (targets `explicitRunId`, else the focused run) to a fresh state, terminating its in-flight processes. */
   async resetRun(explicitRunId?: string): Promise<void> {
     const oldRunId = explicitRunId ?? this._focusedRunId;

@@ -293,7 +293,7 @@ test('a root step whose runIf does not match is auto-skipped on run creation, un
 // ---------------------------------------------------------------------------
 
 /** Two AI-reviewed steps, `b` depending on `a` — `b` auto-launches the moment `a` is done. */
-function makeChainFlow(): Flow {
+function makeAiReviewChainFlow(): Flow {
   return {
     id: 'f1', name: 'f1', description: '', sourcePath: '/repo/.claudesteps/flows/f1.yaml',
     inputs: {},
@@ -305,7 +305,7 @@ function makeChainFlow(): Flow {
 }
 
 test('restore does not launch the next ready step — reopening the panel must start no work', async () => {
-  const flow = makeChainFlow();
+  const flow = makeAiReviewChainFlow();
   let run = machine.initRunState(flow, { runId: 'run-1', projectPath, inputs: {} });
   run = machine.applyAiReview(machine.markCompleted(machine.markRunning(run, flow, 'a'), flow, 'a'), flow, 'a', 'approved');
   const { orch, launches } = build({ latestRun: run, flows: [flow], agents: [{ name: 'po' }] });
@@ -319,7 +319,7 @@ test('restore does not launch the next ready step — reopening the panel must s
 });
 
 test('adoptRunState does not launch a step when a run is created', async () => {
-  const flow = makeChainFlow();
+  const flow = makeAiReviewChainFlow();
   let run = machine.initRunState(flow, { runId: 'run-1', projectPath, inputs: {} });
   run = machine.applyAiReview(machine.markCompleted(machine.markRunning(run, flow, 'a'), flow, 'a'), flow, 'a', 'approved');
   const { orch, launches } = build({ flows: [flow], agents: [{ name: 'po' }] });
@@ -381,5 +381,81 @@ test('two runs of the same step id keep separate readiness snapshots', () => {
   // Both runs share a stepId; neither may inherit the other's snapshot.
   assert.equal(cbs.ready!('run-A', 'step-1'), false);
   assert.equal(cbs.ready!('run-B', 'step-1'), false);
+});
+
+// ---------------------------------------------------------------------------
+// Mid-run workflow edits
+// ---------------------------------------------------------------------------
+
+/** A flow with the given step ids chained a → b → c, so dependency locks are exercised. */
+function makeChainFlow(id: string, stepIds: string[]): Flow {
+  return {
+    id,
+    name: id,
+    description: '',
+    inputs: {},
+    steps: stepIds.map((sid, i) => ({
+      id: sid, title: sid, agent: 'po', skill: 'prd',
+      dependsOn: i === 0 ? undefined : [stepIds[i - 1]],
+      review: { required: true, type: 'human' },
+    })),
+    sourcePath: `/repo/.claudesteps/flows/${id}.yaml`,
+  } as Flow;
+}
+
+test('syncing a safe edit adds the new step to every live run and re-applies locks', async () => {
+  const { orch, saved } = build();
+  const flow = makeChainFlow('f1', ['a', 'b']);
+  const run = makeRun(flow, 'run-1', projectPath);
+  run.steps.a = { ...run.steps.a, completionStatus: 'done' };
+  orch.setFlowAndRunState(flow, run);
+
+  await orch.syncFlowIntoLiveRuns(makeChainFlow('f1', ['a', 'b', 'c']));
+
+  const state = orch.runState!;
+  assert.ok(state.steps.c, 'new step present in run state');
+  assert.equal(state.steps.c.executionStatus, 'locked'); // depends on b, which is not done
+  assert.equal(state.steps.a.completionStatus, 'done', 'existing progress preserved');
+  assert.equal(orch.currentFlow?.steps.length, 3, 'in-memory flow replaced');
+  assert.ok(saved.some(s => s.runId === 'run-1' && !!s.steps.c), 'run file persisted');
+});
+
+test('syncing a safe edit drops a removed step from the run state', async () => {
+  const { orch } = build();
+  const flow = makeChainFlow('f1', ['a', 'b', 'c']);
+  orch.setFlowAndRunState(flow, makeRun(flow, 'run-1', projectPath));
+
+  await orch.syncFlowIntoLiveRuns(makeChainFlow('f1', ['a', 'b']));
+
+  assert.equal(orch.runState!.steps.c, undefined);
+  assert.deepEqual(Object.keys(orch.runState!.steps).sort(), ['a', 'b']);
+});
+
+test('syncing an edit leaves runs of other flows untouched', async () => {
+  const { orch } = build();
+  const flowA = makeChainFlow('f1', ['a']);
+  const flowB = makeChainFlow('f2', ['a']);
+  orch.setFlowAndRunState(flowB, makeRun(flowB, 'run-B', projectPath));
+  orch.setFlowAndRunState(flowA, makeRun(flowA, 'run-A', projectPath));
+
+  await orch.syncFlowIntoLiveRuns(makeChainFlow('f1', ['a', 'b']));
+
+  orch.setFlowAndRunState(flowB, undefined);
+  assert.equal(orch.currentFlow?.id, 'f2');
+  // run-B never gained the new step
+  const bStates = posted.filter(m => m.type === 'runStateChanged' && (m as any).runState.runId === 'run-B');
+  assert.equal(bStates.length, 0);
+});
+
+test('syncing an edit refreshes the focused run view with the new flow', async () => {
+  const { orch } = build();
+  const flow = makeChainFlow('f1', ['a']);
+  orch.setFlowAndRunState(flow, makeRun(flow, 'run-1', projectPath));
+
+  await orch.syncFlowIntoLiveRuns(makeChainFlow('f1', ['a', 'b']));
+
+  const restore = posted.filter(m => m.type === 'restoreRun');
+  assert.equal(restore.length, 1);
+  assert.equal((restore[0] as any).flow.steps.length, 2);
 });
 
