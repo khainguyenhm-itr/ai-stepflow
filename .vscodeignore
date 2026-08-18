@@ -1,6 +1,5 @@
 .vscode/**
 .vscode-test/**
-.ast-graph/**
 .claude-flow/**
 .git/**
 out/test/**

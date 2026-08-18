@@ -148,17 +148,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             case 'mcpDetails':
               if (message.mcpName) await this._actions.showMcpDetails(message.mcpName);
               return;
-            case 'astScan':
-              await vscode.commands.executeCommand('claudesteps.astGraph.rescan');
-              await this.refresh(true);
-              return;
-            case 'astRegister':
-              await vscode.commands.executeCommand('claudesteps.astGraph.reregisterMcp');
-              await this.refresh(true);
-              return;
-            case 'openAstSettings':
-              await vscode.commands.executeCommand('workbench.action.openSettings', 'claudesteps.astGraph');
-              return;
             case 'gitnexusAnalyze':
               await this._actions.runGitnexusAnalyze(message.group);
               return;

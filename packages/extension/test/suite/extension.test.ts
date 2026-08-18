@@ -15,9 +15,7 @@ describe('ClaudeSteps integration (real VS Code host)', () => {
     for (const id of [
       'claudesteps.openOverview',
       'claudesteps.refreshAll',
-      'claudesteps.installDefaults',
-      'claudesteps.astGraph.rescan',
-      'claudesteps.astGraph.reregisterMcp'
+      'claudesteps.installDefaults'
     ]) {
       assert.ok(commands.includes(id), `command "${id}" should be registered`);
     }
@@ -28,13 +26,9 @@ describe('ClaudeSteps integration (real VS Code host)', () => {
     await vscode.commands.executeCommand('claudesteps.refreshAll');
   });
 
-  it('can create a mock flow and trigger validation safely via E2E orchestration', async () => {
-    // Attempt to invoke the command without crashing. 
-    // Testing deep UI requires webview driver, but we verify the command wiring here.
+  it('keeps the extension active after the cockpit commands run', async () => {
     const ext = vscode.extensions.getExtension(EXTENSION_ID);
     assert.ok(ext, 'Extension should still be active');
-    
-    // Simulate resolving a flow to test AST or graph connections
-    await vscode.commands.executeCommand('claudesteps.astGraph.rescan');
+    assert.ok(ext!.isActive, 'extension should remain active');
   });
 });

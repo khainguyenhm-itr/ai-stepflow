@@ -71,7 +71,6 @@ function buildSidebarHtml() {
         { name: 'csf-skill-review',    kind: 'skills', description: 'Review code changes',            installed: false, inUse: false, filename: 'csf-skill-review.md' }
       ],
       mcp: [
-        { name: 'ast-graph', status: 'connected',  type: 'local', transport: 'stdio' },
         { name: 'gitnexus',  status: 'needs-auth', type: 'local', transport: 'stdio' }
       ],
       plugins: [],

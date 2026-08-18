@@ -90,44 +90,11 @@
         "title": "Install Default Agents & Skills",
         "category": "ClaudeSteps",
         "icon": "$(cloud-download)"
-      },
-      {
-        "command": "claudesteps.astGraph.install",
-        "title": "Install AST Graph",
-        "category": "ClaudeSteps",
-        "icon": "$(cloud-download)"
-      },
-      {
-        "command": "claudesteps.astGraph.rescan",
-        "title": "Rescan AST Graph",
-        "category": "ClaudeSteps",
-        "icon": "$(type-hierarchy)"
-      },
-      {
-        "command": "claudesteps.astGraph.reregisterMcp",
-        "title": "Re-register AST Graph MCP Server",
-        "category": "ClaudeSteps"
       }
     ],
     "configuration": {
       "title": "ClaudeSteps",
       "properties": {
-        "claudesteps.astGraph.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Index the workspace with ast-graph and expose it to Claude as an MCP server, so step runs answer structural code questions with a cheap graph query instead of grep+read."
-        },
-        "claudesteps.astGraph.autoRescanDebounceSeconds": {
-          "type": "number",
-          "default": 5,
-          "minimum": 1,
-          "description": "How long to wait after a source file save before re-indexing the AST graph."
-        },
-        "claudesteps.astGraph.binaryPath": {
-          "type": "string",
-          "default": "",
-          "description": "Absolute path to an ast-graph executable to use instead of downloading the bundled build. Set this on platforms with no prebuilt binary (e.g. Linux arm64) after installing ast-graph yourself. When set, the download and checksum verification are skipped."
-        },
         "claudesteps.run.timeoutSeconds": {
           "type": "number",
           "default": 600,
@@ -144,7 +111,7 @@
           "type": "array",
           "items": { "type": "string" },
           "default": [],
-          "description": "MCP servers (by name, as configured in your ~/.claude.json) to make available to headless step runs and AI reviews. Default is empty: headless runs carry NO MCP servers, which keeps their tool/instruction context — and token cost — minimal. Add names (e.g. \"ast-graph\") only for servers a headless step genuinely needs. Does not affect interactive terminal steps, which always use your full MCP config."
+          "description": "MCP servers (by name, as configured in your ~/.claude.json) to make available to headless step runs and AI reviews. Default is empty: headless runs carry NO MCP servers, which keeps their tool/instruction context — and token cost — minimal. Add names (e.g. \"gitnexus\") only for servers a headless step genuinely needs. Does not affect interactive terminal steps, which always use your full MCP config."
         }
       }
     },

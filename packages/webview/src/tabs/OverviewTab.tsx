@@ -7,9 +7,6 @@ import { Tab, ScopeFilter } from '../hooks/appState/types';
 export type RunnableCommand =
   | 'claudesteps.installDefaults'
   | 'claudesteps.refreshAll'
-  | 'claudesteps.astGraph.install'
-  | 'claudesteps.astGraph.rescan'
-  | 'claudesteps.astGraph.reregisterMcp'
   | 'workbench.action.openSettings';
 
 interface RunSummary {
@@ -223,12 +220,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   // The 'all' chart still shows the last 14 daily bars, so label the Trend section by what it actually plots.
   const trendLabel = range === 'all' ? 'last 14 days' : rangeLabel;
 
-  const gitnexusConnected = connectedMcpServers.some(s => /gitnexus|ast-graph/i.test(s));
-  // The Connect action registers the GitNexus MCP specifically — gate it on gitnexus alone (NOT
-  // ast-graph) so it stays consistent with the sidebar's gitnexus-only row gating.
-  const gitnexusMcpConnected = connectedMcpServers.some(s => /gitnexus/i.test(s));
-  // AST graph is installed once its MCP server is registered; before that, offer an Install button.
-  const astConnected = connectedMcpServers.some(s => /ast-graph/i.test(s));
+  const gitnexusConnected = connectedMcpServers.some(s => /gitnexus/i.test(s));
 
   return (
     <div className="page ov-page">
@@ -372,7 +364,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                   : 'No MCP servers connected'}
                 {' · '}
                 <span className={gitnexusConnected ? 'ov-ok' : 'ov-warn'}>
-                  GitNexus/ast-graph {gitnexusConnected ? 'connected' : 'not connected'}
+                  GitNexus {gitnexusConnected ? 'connected' : 'not connected'}
                 </span>
               </div>
             </div>
@@ -381,7 +373,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             </button>
           </div>
 
-          {!gitnexusMcpConnected && (
+          {!gitnexusConnected && (
             <div className="ov-setting-row">
               <div className="ov-setting-main">
                 <div className="ov-setting-name">
@@ -423,25 +415,11 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           <div className="ov-setting-row">
             <div className="ov-setting-main">
               <div className="ov-setting-name">
-                <span className="btn-glyph"><Icon.Zap size={14} /></span>AST graph &amp; run settings
+                <span className="btn-glyph"><Icon.Zap size={14} /></span>Run settings
               </div>
-              <div className="muted small">
-                <span className={astConnected ? 'ov-ok' : 'ov-warn'}>
-                  {astConnected ? 'Installed' : 'Not installed'}
-                </span>
-                {' · downloads the ast-graph CLI, indexes this workspace, and exposes it as an MCP server'}
-              </div>
+              <div className="muted small">Models, max turns, headless MCP servers, and review defaults</div>
             </div>
             <div className="btn-group">
-              {!astConnected ? (
-                <button className="btn primary" onClick={() => onRunCommand('claudesteps.astGraph.install')} title="Install AST graph (download CLI + index workspace)">
-                  <span className="btn-glyph"><Icon.Download size={14} /></span>Install
-                </button>
-              ) : (
-                <button className="btn" onClick={() => onRunCommand('claudesteps.astGraph.rescan')} title="Rescan AST graph">
-                  <span className="btn-glyph"><Icon.RotateCw size={14} /></span>Rescan
-                </button>
-              )}
               <button className="btn" onClick={() => onRunCommand('workbench.action.openSettings')} title="Open ClaudeSteps settings">
                 <span className="btn-glyph"><Icon.Settings size={14} /></span>Settings
               </button>

@@ -119,9 +119,6 @@ export type WebviewMessage =
 export const RUNNABLE_COMMANDS = [
   'claudesteps.installDefaults',
   'claudesteps.refreshAll',
-  'claudesteps.astGraph.install',
-  'claudesteps.astGraph.rescan',
-  'claudesteps.astGraph.reregisterMcp',
   'workbench.action.openSettings'
 ] as const;
 export type RunnableCommand = (typeof RUNNABLE_COMMANDS)[number];

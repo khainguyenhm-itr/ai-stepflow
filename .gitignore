@@ -14,7 +14,6 @@ coverage/
 .nyc_output/
 
 # AppData / Temporary files
-.ast-graph/
 .claude-flow/runs/
 .vscode-test/
 

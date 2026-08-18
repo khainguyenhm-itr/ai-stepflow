@@ -92,8 +92,6 @@ All commands live under the **ClaudeSteps** category in the Command Palette.
 | `ClaudeSteps: Open Cockpit` | Open the cockpit |
 | `ClaudeSteps: Refresh All` | Reload agents, skills, and flows from disk |
 | `ClaudeSteps: Install Default Agents & Skills` | Install the bundled SDLC agents, skills, and rules into `~/.claude` |
-| `ClaudeSteps: Rescan AST Graph` | Re-index the workspace with `ast-graph` |
-| `ClaudeSteps: Re-register AST Graph MCP Server` | Re-register the `ast-graph` MCP server |
 
 ## License
 

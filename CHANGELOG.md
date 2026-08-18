@@ -18,9 +18,6 @@ is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   The previous quoting escaped for POSIX but wrapped Windows arguments in double quotes, where
   PowerShell expands `$(...)` and backticks — a prompt could execute commands. Quoting is now
   shell-aware (`detectShellKind`/`quoteShellArgs`) and covers PowerShell and cmd correctly.
-- **The `ast-graph` download fails closed.** A missing pinned checksum used to fall back to
-  fetching the expected hash from the same host that served the archive, which verifies nothing.
-  An unverifiable target is now refused, and a test asserts every target pins a real SHA256.
 - CI audits the dependencies that actually ship (`npm audit --omit=dev`).
 
 ### Changed
@@ -68,8 +65,6 @@ is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   alias is resolved by the CLI at run time. Note the cockpit's cost estimate reads
   `sessionStats.PRICING` by model prefix, which has no Opus 5 entry and falls back to Sonnet
   rates — an Opus run's reported cost is understated until that table gains the prefix.
-- `claudesteps.astGraph.binaryPath` setting to point at a locally-installed
-  `ast-graph` on platforms with no prebuilt binary (skips download + checksum).
 - A spawn failure for `claude` now names the cause (e.g. "claude CLI not found on
   PATH") instead of surfacing as a bare non-zero exit.
 - **AI review.** A step set to *Auto review* runs a real reviewer (`claude -p`)
@@ -105,4 +100,14 @@ is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - CI runs on every branch (it previously gated `main` only, so most commits ran no checks).
 
 ### Removed
+- **The AST graph integration is gone.** `packages/extension/src/astGraph/` (binary downloader,
+  scanner, MCP registration, CLAUDE.md hint), the three `claudesteps.astGraph.*` commands, the
+  three `claudesteps.astGraph.*` settings, and the cockpit's AST row are all removed; the Overview
+  row that hosted them is now plain *Run settings*. Structural code questions are answered by
+  whatever MCP server the user configures (e.g. GitNexus) instead of a bundled indexer.
+  `ensureLocalExcludeEntry` — the only generic piece — moved to `src/localGitExclude.ts` and no
+  longer excludes `.ast-graph/`. An existing install leaves artifacts behind that this version does
+  NOT clean up: the `claudesteps:ast-graph` block in a repo's `.claude/CLAUDE.md`, the `ast-graph`
+  MCP server registered with the Claude CLI (`claude mcp remove ast-graph`), and the repo's
+  `.ast-graph/` directory.
 - Dropped the unused `js-yaml` dependency in favor of `yaml`.
