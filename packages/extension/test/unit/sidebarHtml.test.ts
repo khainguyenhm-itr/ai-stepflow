@@ -37,3 +37,17 @@ test('the passed version is rendered into the header', () => {
   const html = getSidebarHtml(stubWebview(), { fsPath: '/ext' } as any, '1.2.3');
   assert.match(html, /v1\.2\.3/);
 });
+
+/**
+ * The MCP switch and its sign-out menu item only work if the click handler and the message names
+ * the extension listens for line up. Both live in the same generated string, so a rename on one
+ * side is silent — these pin the contract.
+ */
+test('the MCP row exposes a switch that posts toggleMcp, and a sign-out that posts mcpLogout', () => {
+  const html = getSidebarHtml(stubWebview(), { fsPath: '/ext' } as any, '1.0.0');
+  assert.match(html, /data-act="mcpToggle"/, 'rows must render a toggle control');
+  assert.match(html, /type: 'toggleMcp', mcpName: name, enable/, 'the toggle must post toggleMcp');
+  assert.match(html, /data-act="mcpLogout"/, 'the more-menu must offer sign out');
+  assert.match(html, /type: 'mcpLogout', mcpName: name/, 'sign out must post mcpLogout');
+  assert.match(html, /\.switch\.on \{/, 'the switch needs an on-state style to read as on/off');
+});

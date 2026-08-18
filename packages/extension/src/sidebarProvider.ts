@@ -5,6 +5,7 @@ import { ConfigManager } from './configManager.js';
 import type { BundledKind } from './configManager.js';
 import { StateManager } from './stateManager.js';
 import { listMcpServers } from './mcp.js';
+import { withDisabledMcpServers } from './mcpToggle.js';
 import type { McpServer } from './mcp.js';
 import { listPluginCatalog, togglePlugin } from './plugins.js';
 import type { PluginInfo, AvailablePlugin } from './plugins.js';
@@ -148,6 +149,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             case 'mcpDetails':
               if (message.mcpName) await this._actions.showMcpDetails(message.mcpName);
               return;
+            case 'toggleMcp':
+              if (message.mcpName && typeof message.enable === 'boolean') {
+                await this._actions.setMcpEnabled(message.mcpName, message.enable);
+              }
+              return;
+            case 'mcpLogout':
+              if (message.mcpName) await this._actions.signOutMcp(message.mcpName);
+              return;
             case 'gitnexusAnalyze':
               await this._actions.runGitnexusAnalyze(message.group);
               return;
@@ -287,7 +296,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       if (probeMcp) {
         // Both probes spawn the `claude` CLI (slow cold start), so keep them off the
         // critical path: the dashboard paints immediately, then each result is pushed in.
-        void listMcpServers(this.configManager.getProjectPath()).then(mcp => {
+        const mcpCwd = this.configManager.getProjectPath();
+        void listMcpServers(mcpCwd).then(servers => {
+          // The CLI cannot see servers the toggle has parked, so merge them back in as 'disabled'.
+          const mcp = withDisabledMcpServers(servers, mcpCwd);
           this._cachedMcp = mcp;
           this._view?.webview.postMessage({ type: 'mcp', mcp });
         }).catch(err => {

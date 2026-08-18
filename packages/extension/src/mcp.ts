@@ -3,12 +3,23 @@ import { readFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 
-export type McpStatus = 'connected' | 'needs-auth' | 'failed' | 'unknown';
+/**
+ * `disabled` is ours, not the CLI's: a server the user parked via the sidebar toggle. Its config
+ * is stashed away (see mcpToggle.ts) so `claude mcp list` no longer reports it at all.
+ */
+export type McpStatus = 'connected' | 'needs-auth' | 'failed' | 'unknown' | 'disabled';
+
+/** Which config bucket in `~/.claude.json` declares a server: global, or this project only. */
+export type McpScope = 'user' | 'local';
 
 export interface McpServer {
   name: string;
   status: McpStatus;
   target?: string;
+  /** Set when the server is declared in `~/.claude.json` — i.e. the toggle can park it. */
+  scope?: McpScope;
+  /** False for plugin- and account-provided servers, which we must not touch. */
+  manageable?: boolean;
 }
 
 /**

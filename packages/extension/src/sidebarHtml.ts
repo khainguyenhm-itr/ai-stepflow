@@ -173,6 +173,18 @@ ${renderPaletteVars()}
     .icon-update { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1px solid transparent; border-radius: var(--r-sm); background: transparent; color: var(--vscode-charts-yellow, #d7ba7d); font-size: 1.077rem; line-height: 1; cursor: pointer; font-family: inherit; }
     .icon-update:hover { border-color: var(--vscode-charts-yellow, #d7ba7d); background: var(--hover); }
 
+    /* ── toggle switch (MCP enable/disable) ── */
+    .switch { position: relative; width: 24px; height: 13px; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); cursor: pointer; flex: 0 0 auto; transition: background .12s, border-color .12s; }
+    .switch::after { content: ''; position: absolute; top: 1px; left: 1px; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); transition: transform .12s, background .12s; }
+    .switch.on { background: var(--btn); border-color: var(--btn); }
+    .switch.on::after { transform: translateX(11px); background: var(--btn-fg); }
+    .switch[disabled] { opacity: .4; cursor: default; }
+    /* The switch reports state, so it stays visible; the other actions keep their hover gate. */
+    .item.mcp-item .item-acts { opacity: 1; }
+    .item.mcp-item .item-acts > :not(.switch) { opacity: 0; transition: opacity .1s; }
+    .item.mcp-item:hover .item-acts > :not(.switch),
+    .item.mcp-item.menu-open .item-acts > :not(.switch) { opacity: 1; }
+
     /* ── pill action buttons ── */
     .pill { display: inline-flex; align-items: center; justify-content: center; height: 22px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--r-sm); background: transparent; color: var(--fg); font-size: 0.8077rem; font-weight: 600; cursor: pointer; white-space: nowrap; font-family: inherit; transition: background .1s, border-color .1s; }
     .pill:hover { background: var(--hover); }
@@ -732,8 +744,11 @@ ${renderPaletteVars()}
     'connected':  { color: DOT.good,    label: 'Connected',  rank: 0 },
     'needs-auth': { color: DOT.warn,    label: 'Needs auth', rank: 1 },
     'unknown':    { color: DOT.neutral, label: 'Unknown',    rank: 2 },
-    'failed':     { color: DOT.bad,     label: 'Failed',     rank: 3 }
+    'failed':     { color: DOT.bad,     label: 'Failed',     rank: 3 },
+    'disabled':   { color: DOT.neutral, label: 'Disabled',   rank: 4 }
   };
+  // A parked server is still installed — just switched off — so it lives in the Installed tab.
+  const isInstalledMcp = s => s.status === 'connected' || s.status === 'disabled';
 
   function setMcpData(list) {
     mcpServers = (list || []).slice();
@@ -841,18 +856,17 @@ ${renderPaletteVars()}
       el.innerHTML = '<span class="empty">No MCP connections installed</span>';
       return;
     }
+    const inTab = s => activeMcpTab === 'installed' ? isInstalledMcp(s) : !isInstalledMcp(s);
     const rows = mcpServers
-      .filter(s => activeMcpTab === 'installed' ? s.status === 'connected' : s.status !== 'connected')
+      .filter(inTab)
       .filter(s => !q || s.name.toLowerCase().includes(q))
       .sort((a, b) =>
         (MCP_STATUS[a.status] || MCP_STATUS.unknown).rank - (MCP_STATUS[b.status] || MCP_STATUS.unknown).rank
         || a.name.localeCompare(b.name));
-    if (activeMcpTab === 'installed' && !connected) {
-      el.innerHTML = '<span class="empty">No MCP connections installed</span>';
-      return;
-    }
-    if (activeMcpTab === 'available' && !mcpServers.some(s => s.status !== 'connected')) {
-      el.innerHTML = '<span class="empty">No available MCP connections</span>';
+    if (!mcpServers.some(inTab)) {
+      el.innerHTML = '<span class="empty">' +
+        (activeMcpTab === 'installed' ? 'No MCP connections installed' : 'No available MCP connections') +
+        '</span>';
       return;
     }
     if (!rows.length) {
@@ -864,15 +878,28 @@ ${renderPaletteVars()}
       const tgt = s.target || '';
       const isHttp = tgt.toLowerCase().startsWith('http://') || tgt.toLowerCase().startsWith('https://') || tgt.toUpperCase().endsWith('(HTTP)');
       const isClaudeAi = s.name.startsWith('claude.ai ');
+      const off = s.status === 'disabled';
       const canReconnect = (s.status === 'failed' || s.status === 'needs-auth') && tgt && isHttp && !isClaudeAi;
       const canBrowserAuth = isClaudeAi && s.status === 'needs-auth';
       const canRetryLocal = s.status === 'failed' && !isHttp && !isClaudeAi;
-      return '<div class="item">' +
+      // Only servers declared in ~/.claude.json can be parked; plugin- and account-provided ones
+      // are owned elsewhere, so they get no switch.
+      const canToggle = !!s.manageable;
+      // Signing out only means something where credentials exist — i.e. remote servers.
+      const canSignOut = !off && (isHttp || isClaudeAi);
+      const scopeNote = s.scope === 'local' ? 'this project' : 'all projects';
+      return '<div class="item mcp-item">' +
         '<span class="item-dot" title="' + esc(st.label) + '" style="background:' + st.color + '"></span>' +
         '<span class="item-body">' +
-          '<span class="item-name" title="' + esc(s.name) + '">' + esc(s.name) + '</span>' +
+          '<span class="item-name" title="' + esc(s.name) + ' — ' + esc(st.label) + '">' + esc(s.name) + '</span>' +
         '</span>' +
         '<span class="item-acts">' +
+          (canToggle
+            ? '<button class="switch' + (off ? '' : ' on') + '" type="button" role="switch" aria-checked="' + (off ? 'false' : 'true') + '"' +
+              ' data-act="mcpToggle" data-name="' + esc(s.name) + '" data-enable="' + off + '"' +
+              ' aria-label="' + (off ? 'Enable' : 'Disable') + ' ' + esc(s.name) + '"' +
+              ' title="' + (off ? 'Enable — credentials are kept, so it reconnects without signing in again' : 'Disable for ' + scopeNote + ' — config and credentials are kept') + '"></button>'
+            : '') +
           '<button class="pill" type="button" data-act="mcpDetails" data-name="' + esc(s.name) + '">Details</button>' +
           (canReconnect
             ? '<button class="pill accent" type="button" data-act="mcpReconnect" data-name="' + esc(s.name) + '" data-target="' + esc(tgt) + '">' +
@@ -884,6 +911,9 @@ ${renderPaletteVars()}
           (canRetryLocal
             ? '<button class="pill accent" type="button" data-act="refresh" title="Re-probe this server">Retry</button>'
             : '') +
+          actionMenu(canSignOut
+            ? [menuItem('Sign out', 'data-act="mcpLogout" data-name="' + esc(s.name) + '" title="Clear stored credentials — the server returns to the signed-out state"', true)]
+            : []) +
         '</span>' +
         '</div>';
     }).join('');
@@ -956,6 +986,16 @@ ${renderPaletteVars()}
         const menu = btn.closest('.menu');
         if (menu) menu.open = false;
 
+        // The switch carries its own state in a class — a spinner would replace it, so flip it
+        // optimistically and lock the row until the refresh lands.
+        if (act === 'mcpToggle') {
+          const enable = btn.getAttribute('data-enable') === 'true';
+          btn.classList.toggle('on', enable);
+          btn.closest('.item')?.querySelectorAll('button').forEach(b => b.disabled = true);
+          vscode.postMessage({ type: 'toggleMcp', mcpName: name, enable });
+          return;
+        }
+
         if (locks) {
           btn.closest('.item')?.querySelectorAll('button').forEach(b => b.disabled = true);
           const label = act === 'install' ? 'Installing…' : act === 'update' ? 'Updating…'
@@ -977,6 +1017,7 @@ ${renderPaletteVars()}
         else if (act === 'uninstall') vscode.postMessage({ type: 'uninstallPlugin', pluginId: id, pluginName: name });
         else if (act === 'mcpReconnect') vscode.postMessage({ type: 'reconnectMcp', mcpName: name, mcpTarget: btn.getAttribute('data-target') });
         else if (act === 'mcpDetails') vscode.postMessage({ type: 'mcpDetails', mcpName: name });
+        else if (act === 'mcpLogout') vscode.postMessage({ type: 'mcpLogout', mcpName: name });
         else if (act === 'openRun') vscode.postMessage({ type: 'openRun', flowId: btn.getAttribute('data-flow-id'), runId: btn.getAttribute('data-run-id') });
         else if (act === 'openFile') vscode.postMessage({ type: 'openFile', path: btn.getAttribute('data-path') });
         else if (act === 'deleteRun') vscode.postMessage({ type: 'deleteRun', path: btn.getAttribute('data-path') });

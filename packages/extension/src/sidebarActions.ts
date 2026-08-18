@@ -8,6 +8,7 @@ import { ConfigManager } from './configManager.js';
 import { StateManager } from './stateManager.js';
 import { reconnectRemoteMcpServer, findMcpConfigFile } from './mcp.js';
 import type { McpServer } from './mcp.js';
+import { setMcpServerEnabled, mcpLogout } from './mcpToggle.js';
 import { installPlugin, updatePlugin, uninstallPlugin, pluginDetails } from './plugins.js';
 
 /** GitNexus index + group state for the current project (read cheaply from ~/.gitnexus). */
@@ -93,6 +94,48 @@ export class SidebarActions {
     ].join('\n');
     const doc = await vscode.workspace.openTextDocument({ language: 'plaintext', content });
     await vscode.window.showTextDocument(doc, { preview: true });
+  }
+
+  /**
+   * Park an MCP server (enable=false) or bring it back (enable=true). Scope is the server's own:
+   * a user-scope server goes quiet in every project, a local-scope one only in this workspace.
+   * Credentials are untouched, so re-enabling an authenticated server reconnects without a re-login.
+   */
+  async setMcpEnabled(name: string, enable: boolean): Promise<void> {
+    const cwd = this.configManager.getProjectPath();
+    const res = setMcpServerEnabled(name, enable, cwd);
+    if (res.ok) {
+      const reach = res.scope === 'user' ? 'all projects' : 'this project';
+      vscode.window.showInformationMessage(
+        `ClaudeSteps: MCP server '${name}' ${enable ? 'enabled' : `disabled for ${reach}`}.`
+      );
+    } else {
+      vscode.window.showErrorMessage(`ClaudeSteps: failed to ${enable ? 'enable' : 'disable'} '${name}'. ${res.error}`);
+    }
+    await this.refresh(true);
+  }
+
+  /** Clear the server's stored credentials so it returns to the signed-out ("needs auth") state. */
+  async signOutMcp(name: string): Promise<void> {
+    const choice = await vscode.window.showWarningMessage(
+      `Sign out of MCP server '${name}'?`,
+      { modal: true, detail: 'Its stored credentials are cleared. The server stays configured, but you must authenticate again before it can connect.' },
+      'Sign out'
+    );
+    if (choice !== 'Sign out') return;
+    await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: `Signing out of MCP server '${name}'…`,
+      cancellable: false
+    }, async () => {
+      const res = await mcpLogout(name, this.configManager.getProjectPath());
+      if (res.ok) {
+        vscode.window.showInformationMessage(`ClaudeSteps: signed out of '${name}'.`);
+      } else {
+        vscode.window.showErrorMessage(`ClaudeSteps: failed to sign out of '${name}'. ${res.error}`);
+      }
+      await this.refresh(true);
+    });
   }
 
   /** Retry a failed remote MCP server from the sidebar using its current target. */
