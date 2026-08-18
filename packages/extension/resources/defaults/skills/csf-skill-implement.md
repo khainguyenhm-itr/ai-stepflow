@@ -21,3 +21,14 @@ Implement the feature per the PRD and TDD.
 - Every AC in the PRD must have at least one test that covers it.
 
 Write implementation files as required. No separate output file needed unless specified in Mandatory Output Files.
+
+## Parallel fan-out
+Independent work runs concurrently: dispatch one subagent per slice **in a single message**, then draw the conclusion yourself from their reports.
+
+**Slice this by**: Reading existing code — one subsystem, module, or similar-implementation hunt per slice.
+
+- Independent slices only. Anything that depends on another slice's result stays sequential.
+- Subagents investigate and report (findings + `file:line`); **you** do every write, so each Mandatory Output File keeps exactly one writer.
+- Give each subagent its own explicit scope and ask for a compact report, not a file dump.
+- Under a `sandboxed` flow subagents inherit the deny list (no Bash/WebFetch/WebSearch) — keep them read-only.
+- One slice, or work you finish in two or three reads? Do it yourself — dispatching costs more than it saves.

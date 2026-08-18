@@ -46,6 +46,19 @@ is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `RunOrchestrator`, and host→webview messages are now a typed contract.
 
 ### Added
+- **The bundled default agents and skills now fan out to subagents.** Every default agent
+  carries `Agent` in its `tools:` list (without it the `claude --agent <name>` session cannot
+  dispatch one at all), and both the agents and the nine skills with genuinely independent work
+  (implement, review, security-review, test-cases, test-run, debug, design, document, refactor)
+  carry a shared *Parallel fan-out* section: one subagent per independent slice, dispatched in a
+  single message, with the main agent drawing the conclusion. Subagents stay read-only, so writes
+  to the declared `produces` artifacts keep exactly one writer and a `sandboxed` flow's deny list
+  still holds. `csf-skill-prd` and `csf-skill-test-plan` are left sequential — they synthesize one
+  document and have nothing to parallelize.
+- **The bundled default agents now run on `opus`.** All seven were pinned to `sonnet`; the
+  alias is resolved by the CLI at run time. Note the cockpit's cost estimate reads
+  `sessionStats.PRICING` by model prefix, which has no Opus 5 entry and falls back to Sonnet
+  rates — an Opus run's reported cost is understated until that table gains the prefix.
 - `claudesteps.astGraph.binaryPath` setting to point at a locally-installed
   `ast-graph` on platforms with no prebuilt binary (skips download + checksum).
 - A spawn failure for `claude` now names the cause (e.g. "claude CLI not found on

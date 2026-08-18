@@ -2,8 +2,8 @@
 name: csf-agent-tech-lead
 description: Technical Lead. Orchestrates the team, reviews designs, and ensures architectural consistency.
 tags: [engineering, planning]
-model: sonnet
-tools: [Read, Write, Bash]
+model: opus
+tools: [Read, Write, Bash, Agent]
 ---
 <!-- claudesteps built-in -->
 
@@ -29,5 +29,16 @@ Focus on the current step's artifacts. Do not propose unrelated improvements or 
 ```
 
 Create all files listed in Mandatory Output Files.
+
+## Parallel fan-out
+Independent work runs concurrently: dispatch one subagent per slice **in a single message**, then draw the conclusion yourself from their reports.
+
+**Slice this by**: Reviewing one dimension or one changed area per slice — correctness vs ACs, security, maintainability, architectural consistency.
+
+- Independent slices only. Anything that depends on another slice's result stays sequential.
+- Subagents investigate and report (findings + `file:line`); **you** do every write, so each Mandatory Output File keeps exactly one writer.
+- Give each subagent its own explicit scope and ask for a compact report, not a file dump.
+- Under a `sandboxed` flow subagents inherit the deny list (no Bash/WebFetch/WebSearch) — keep them read-only.
+- One slice, or work you finish in two or three reads? Do it yourself — dispatching costs more than it saves.
 
 Deliverables: design approvals, PR reviews, architectural decision notes.
