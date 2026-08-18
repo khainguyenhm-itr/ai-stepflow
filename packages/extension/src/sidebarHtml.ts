@@ -173,17 +173,8 @@ ${renderPaletteVars()}
     .icon-update { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1px solid transparent; border-radius: var(--r-sm); background: transparent; color: var(--vscode-charts-yellow, #d7ba7d); font-size: 1.077rem; line-height: 1; cursor: pointer; font-family: inherit; }
     .icon-update:hover { border-color: var(--vscode-charts-yellow, #d7ba7d); background: var(--hover); }
 
-    /* ── toggle switch (MCP enable/disable) ── */
-    .switch { position: relative; width: 24px; height: 13px; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); cursor: pointer; flex: 0 0 auto; transition: background .12s, border-color .12s; }
-    .switch::after { content: ''; position: absolute; top: 1px; left: 1px; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); transition: transform .12s, background .12s; }
-    .switch.on { background: var(--btn); border-color: var(--btn); }
-    .switch.on::after { transform: translateX(11px); background: var(--btn-fg); }
-    .switch[disabled] { opacity: .4; cursor: default; }
-    /* The switch reports state, so it stays visible; the other actions keep their hover gate. */
-    .item.mcp-item .item-acts { opacity: 1; }
-    .item.mcp-item .item-acts > :not(.switch) { opacity: 0; transition: opacity .1s; }
-    .item.mcp-item:hover .item-acts > :not(.switch),
-    .item.mcp-item.menu-open .item-acts > :not(.switch) { opacity: 1; }
+    /* A parked server reads as off from its name, so it needs no always-on control. */
+    .item.mcp-item .item-name.off { opacity: .55; }
 
     /* ── pill action buttons ── */
     .pill { display: inline-flex; align-items: center; justify-content: center; height: 22px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--r-sm); background: transparent; color: var(--fg); font-size: 0.8077rem; font-weight: 600; cursor: pointer; white-space: nowrap; font-family: inherit; transition: background .1s, border-color .1s; }
@@ -883,7 +874,7 @@ ${renderPaletteVars()}
       const canBrowserAuth = isClaudeAi && s.status === 'needs-auth';
       const canRetryLocal = s.status === 'failed' && !isHttp && !isClaudeAi;
       // Only servers declared in ~/.claude.json can be parked; plugin- and account-provided ones
-      // are owned elsewhere, so they get no switch.
+      // are owned elsewhere, so they get no enable/disable action.
       const canToggle = !!s.manageable;
       // Signing out only means something where credentials exist — i.e. remote servers.
       const canSignOut = !off && (isHttp || isClaudeAi);
@@ -891,15 +882,9 @@ ${renderPaletteVars()}
       return '<div class="item mcp-item">' +
         '<span class="item-dot" title="' + esc(st.label) + '" style="background:' + st.color + '"></span>' +
         '<span class="item-body">' +
-          '<span class="item-name" title="' + esc(s.name) + ' — ' + esc(st.label) + '">' + esc(s.name) + '</span>' +
+          '<span class="item-name' + (off ? ' off' : '') + '" title="' + esc(s.name) + ' — ' + esc(st.label) + '">' + esc(s.name) + '</span>' +
         '</span>' +
         '<span class="item-acts">' +
-          (canToggle
-            ? '<button class="switch' + (off ? '' : ' on') + '" type="button" role="switch" aria-checked="' + (off ? 'false' : 'true') + '"' +
-              ' data-act="mcpToggle" data-name="' + esc(s.name) + '" data-enable="' + off + '"' +
-              ' aria-label="' + (off ? 'Enable' : 'Disable') + ' ' + esc(s.name) + '"' +
-              ' title="' + (off ? 'Enable — credentials are kept, so it reconnects without signing in again' : 'Disable for ' + scopeNote + ' — config and credentials are kept') + '"></button>'
-            : '') +
           '<button class="pill" type="button" data-act="mcpDetails" data-name="' + esc(s.name) + '">Details</button>' +
           (canReconnect
             ? '<button class="pill accent" type="button" data-act="mcpReconnect" data-name="' + esc(s.name) + '" data-target="' + esc(tgt) + '">' +
@@ -911,9 +896,17 @@ ${renderPaletteVars()}
           (canRetryLocal
             ? '<button class="pill accent" type="button" data-act="refresh" title="Re-probe this server">Retry</button>'
             : '') +
-          actionMenu(canSignOut
-            ? [menuItem('Sign out', 'data-act="mcpLogout" data-name="' + esc(s.name) + '" title="Clear stored credentials — the server returns to the signed-out state"', true)]
-            : []) +
+          actionMenu([].concat(
+            canToggle
+              ? [menuItem(off ? 'Enable' : 'Disable',
+                  'data-act="mcpToggle" data-name="' + esc(s.name) + '" data-enable="' + off + '"' +
+                  ' title="' + (off
+                    ? 'Enable — credentials are kept, so it reconnects without signing in again'
+                    : 'Disable for ' + scopeNote + ' — config and credentials are kept') + '"')]
+              : [],
+            canSignOut
+              ? [menuItem('Sign out', 'data-act="mcpLogout" data-name="' + esc(s.name) + '" title="Clear stored credentials — the server returns to the signed-out state"', true)]
+              : [])) +
         '</span>' +
         '</div>';
     }).join('');
@@ -986,13 +979,11 @@ ${renderPaletteVars()}
         const menu = btn.closest('.menu');
         if (menu) menu.open = false;
 
-        // The switch carries its own state in a class — a spinner would replace it, so flip it
-        // optimistically and lock the row until the refresh lands.
+        // Fired from inside the closed ··· menu, so a spinner would be invisible — just lock the
+        // row until the refresh lands.
         if (act === 'mcpToggle') {
-          const enable = btn.getAttribute('data-enable') === 'true';
-          btn.classList.toggle('on', enable);
           btn.closest('.item')?.querySelectorAll('button').forEach(b => b.disabled = true);
-          vscode.postMessage({ type: 'toggleMcp', mcpName: name, enable });
+          vscode.postMessage({ type: 'toggleMcp', mcpName: name, enable: btn.getAttribute('data-enable') === 'true' });
           return;
         }
 
