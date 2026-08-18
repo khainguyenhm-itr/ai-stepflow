@@ -12,6 +12,7 @@
 import * as os from 'os';
 import * as path from 'path';
 import { readFileSync, statSync } from 'fs';
+import matter from 'gray-matter';
 import { FlowRunState, FlowStep } from './types.js';
 import { StepRunner } from './claudeRunner.js';
 import { runValidator } from './validatorRunner.js';
@@ -100,13 +101,27 @@ export function readProducedArtifacts(
   return { text: parts.join('\n\n'), count: parts.length };
 }
 
-/** Load the review-kit markdown, preferring a project copy over the global default; '' if absent. */
+/**
+ * Load the review-kit markdown, preferring a project copy over the global default; '' if absent.
+ *
+ * The returned text is prepended verbatim to the reviewer's system prompt, so the file's YAML
+ * frontmatter is stripped first: it carries editor metadata (`name`, `description`, and the
+ * `aiConversation` transcript of the chat that generated the kit), none of which is a review
+ * instruction. Left in, the transcript would both inflate every review call and put user/assistant
+ * chatter inside the reviewer's own instructions.
+ */
 export function loadReviewKit(workspaceRoot: string, name = DEFAULT_REVIEW_KIT): string {
   const candidates = [path.join(workspaceRoot, '.claude', 'reviews', name), path.join(os.homedir(), '.claude', 'reviews', name)];
   for (const candidate of candidates) {
-    try { return readFileSync(candidate, 'utf8'); } catch { /* try next */ }
+    try { return stripFrontmatter(readFileSync(candidate, 'utf8')); } catch { /* try next */ }
   }
   return '';
+}
+
+/** Drop a leading HTML comment (the built-in marker) and YAML frontmatter block, if present. */
+function stripFrontmatter(raw: string): string {
+  const body = raw.replace(/^<!--[\s\S]*?-->\s*\n/, '');
+  return matter(body).content;
 }
 
 export interface ReviewOptions {

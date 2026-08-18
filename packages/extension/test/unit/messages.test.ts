@@ -128,6 +128,9 @@ test('getAdhocRuns and generateDraft constrain kind to the two library kinds', (
   assert.equal(validateMessage({ type: 'getAdhocRuns', kind: 'flow', name: 'f' }), null);
   assert.equal(validateMessage({ type: 'getAdhocRuns', kind: 'agent' }), null);
   assert.notEqual(validateMessage({ type: 'generateDraft', kind: 'agent', prompt: 'p' }), null);
+  assert.notEqual(validateMessage({ type: 'generateDraft', kind: 'skill', prompt: 'p' }), null);
+  assert.notEqual(validateMessage({ type: 'generateDraft', kind: 'review', prompt: 'p' }), null);
+  assert.equal(validateMessage({ type: 'generateDraft', kind: 'flow', prompt: 'p' }), null);
   assert.equal(validateMessage({ type: 'generateDraft', kind: 'agent' }), null);
 });
 

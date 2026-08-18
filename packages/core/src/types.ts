@@ -99,6 +99,8 @@ export interface ReviewKit {
   builtIn?: boolean;
   /** File modification time in ms since epoch. */
   modifiedAt?: number;
+  /** History of the AI conversation that generated/refined this review kit. */
+  aiConversation?: FlowAiMessage[];
 }
 
 /** Fields the create/update forms send for a review kit (a subset of ReviewKit). */
@@ -106,6 +108,7 @@ export interface ReviewKitInput {
   name: string;
   description?: string;
   content?: string;
+  aiConversation?: FlowAiMessage[];
 }
 
 export interface FlowStep {

@@ -46,6 +46,15 @@ is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `RunOrchestrator`, and host→webview messages are now a typed contract.
 
 ### Added
+- **Review kits can be generated with AI.** The New/Edit Review Kit modal now carries the same
+  *Generate with AI* section as the agent and skill modals: describe what the reviewer should
+  judge and the draft fills name, description, and prompt. The meta-prompt asks for review
+  criteria only — `reviewStepArtifacts` appends its own JSON verdict contract, so a generated kit
+  that defined its own output format would contradict it. Closing mid-generation goes through the
+  same cancel-confirm dialog as the other two.
+- **A review kit remembers the AI conversation that produced it.** `ReviewKit` now carries
+  `aiConversation`, persisted in the file's frontmatter exactly as agents and skills do, so
+  reopening a kit for Edit restores the chat instead of showing an empty log.
 - **The bundled default agents and skills now fan out to subagents.** Every default agent
   carries `Agent` in its `tools:` list (without it the `claude --agent <name>` session cannot
   dispatch one at all), and both the agents and the nine skills with genuinely independent work
@@ -75,6 +84,11 @@ is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   with `verify`, `report`, `approve`, `reject`, and `mark-done`.
 
 ### Fixed
+- **A review kit's frontmatter no longer leaks into the reviewer's prompt.** `loadReviewKit`
+  returned the raw file, so the YAML block (`name`, `description`) was prepended verbatim to the
+  reviewer's system prompt on every AI review; with the conversation transcript now stored there
+  too, the whole chat would have gone with it. The loader strips a leading built-in marker and the
+  frontmatter, and passes only the criteria body.
 - Resuming a run on reopen now restores the most recent *unfinished* run rather
   than the newest run file regardless of state.
 - `TerminalManager.dispose()` now clears each terminal's pending completion-poll timer and

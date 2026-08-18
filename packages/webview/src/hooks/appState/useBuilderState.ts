@@ -35,7 +35,7 @@ export const useBuilderState = () => {
   const [agentFormError, setAgentFormError] = useState<string | null>(null);
   const [skillFormError, setSkillFormError] = useState<string | null>(null);
   const [reviewFormError, setReviewFormError] = useState<string | null>(null);
-  const [draftLoading, setDraftLoading] = useState<'agent' | 'skill' | null>(null);
+  const [draftLoading, setDraftLoading] = useState<'agent' | 'skill' | 'review' | null>(null);
 
   return {
     editingFlow, setEditingFlow,

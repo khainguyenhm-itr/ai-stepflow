@@ -382,6 +382,7 @@ export const useAppLogic = () => {
         buildState.setDraftLoading(null);
         if (message.error) {
           if (message.kind === 'agent') buildState.setAgentFormError(`Draft failed: ${message.error}`);
+          else if (message.kind === 'review') buildState.setReviewFormError(`Draft failed: ${message.error}`);
           else buildState.setSkillFormError(`Draft failed: ${message.error}`);
           break;
         }
@@ -395,6 +396,15 @@ export const useAppLogic = () => {
           }));
           chatState.setAgentAiMessages(prev => [...prev, { role: 'assistant', content: message.reply || 'Agent generated — see below.' }]);
           buildState.setAgentFormError(null);
+        } else if (message.kind === 'review') {
+          buildState.setReviewForm(prev => ({
+            ...prev,
+            ...(message.name ? { name: message.name } : {}),
+            ...(message.description ? { description: message.description } : {}),
+            ...(message.content ? { content: message.content } : {})
+          }));
+          chatState.setReviewAiMessages(prev => [...prev, { role: 'assistant', content: message.reply || 'Review kit generated — see below.' }]);
+          buildState.setReviewFormError(null);
         } else {
           buildState.setSkillForm(prev => ({
             ...prev,
@@ -583,7 +593,8 @@ export const useAppLogic = () => {
         name: buildState.reviewForm.name.trim(),
         description: buildState.reviewForm.description || '',
         content: buildState.reviewForm.content || '',
-        sourcePath: `/preview/.claude/reviews/${buildState.reviewForm.name.trim()}`
+        sourcePath: `/preview/.claude/reviews/${buildState.reviewForm.name.trim()}`,
+        ...(chatState.reviewAiMessages.length ? { aiConversation: chatState.reviewAiMessages } : {})
       };
       libState.setReviewKits(prev => [
         ...prev.filter(item => item.name !== review.name && item.sourcePath !== buildState.editingReviewSource),
@@ -598,7 +609,8 @@ export const useAppLogic = () => {
       review: {
         name: buildState.reviewForm.name.trim(),
         description: buildState.reviewForm.description || '',
-        content: buildState.reviewForm.content || ''
+        content: buildState.reviewForm.content || '',
+        ...(chatState.reviewAiMessages.length ? { aiConversation: chatState.reviewAiMessages } : {})
       },
       originalSourcePath: buildState.editingReviewSource,
       isGlobal: buildState.reviewForm.scope === 'global'
@@ -622,6 +634,8 @@ export const useAppLogic = () => {
       buildState.setEditingReviewSource(null);
     }
     buildState.setReviewFormError(null);
+    chatState.setReviewAiPrompt('');
+    chatState.setReviewAiMessages(review?.aiConversation || []);
     buildState.setReviewModalOpen(true);
   };
 

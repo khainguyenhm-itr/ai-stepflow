@@ -12,6 +12,9 @@ export const useChatState = () => {
   const [skillAiPrompt, setSkillAiPrompt] = useState('');
   const [skillAiMessages, setSkillAiMessages] = useState<FlowAiMessage[]>([]);
 
+  const [reviewAiPrompt, setReviewAiPrompt] = useState('');
+  const [reviewAiMessages, setReviewAiMessages] = useState<FlowAiMessage[]>([]);
+
   return {
     flowAiPrompt, setFlowAiPrompt,
     flowAiMessages, setFlowAiMessages,
@@ -19,6 +22,8 @@ export const useChatState = () => {
     agentAiPrompt, setAgentAiPrompt,
     agentAiMessages, setAgentAiMessages,
     skillAiPrompt, setSkillAiPrompt,
-    skillAiMessages, setSkillAiMessages
+    skillAiMessages, setSkillAiMessages,
+    reviewAiPrompt, setReviewAiPrompt,
+    reviewAiMessages, setReviewAiMessages
   };
 };

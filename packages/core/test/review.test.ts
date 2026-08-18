@@ -161,6 +161,33 @@ test('loadReviewKit prefers a project copy, returns empty when absent', () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('loadReviewKit strips the editor frontmatter so it never reaches the reviewer prompt', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'csf-kit-fm-'));
+  try {
+    mkdirSync(path.join(dir, '.claude', 'reviews'), { recursive: true });
+    const file = [
+      '---',
+      'name: kit-with-meta',
+      'description: judges artifacts',
+      'aiConversation:',
+      '  - role: user',
+      '    content: write me a reviewer',
+      '  - role: assistant',
+      '    content: done',
+      '---',
+      '<!-- claudesteps built-in -->',
+      '',
+      'REVIEW CRITERIA BODY'
+    ].join('\n');
+    writeFileSync(path.join(dir, '.claude', 'reviews', 'meta.md'), file, 'utf8');
+    const kit = loadReviewKit(dir, 'meta.md');
+    assert.match(kit, /REVIEW CRITERIA BODY/);
+    assert.ok(!kit.includes('aiConversation'), 'transcript key leaked into the reviewer prompt');
+    assert.ok(!kit.includes('write me a reviewer'), 'chat transcript leaked into the reviewer prompt');
+    assert.ok(!kit.includes('description: judges artifacts'), 'frontmatter leaked into the reviewer prompt');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('reviewStepArtifacts surfaces LLM findings on a reject verdict', async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'csf-review-findings-'));
   try {

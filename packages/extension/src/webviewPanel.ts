@@ -542,12 +542,14 @@ export class CockpitPanel {
     return { ...outcome, why };
   }
 
-  private async _handleGenerateDraft(kind: 'agent' | 'skill', prompt: string, history?: { role: 'user' | 'assistant'; content: string }[]): Promise<void> {
+  private async _handleGenerateDraft(kind: 'agent' | 'skill' | 'review', prompt: string, history?: { role: 'user' | 'assistant'; content: string }[]): Promise<void> {
     const projectPath = this.configManager.getProjectPath() || '';
-    const contentField = kind === 'agent' ? 'systemPrompt' : 'instructions';
+    const contentField = kind === 'agent' ? 'systemPrompt' : kind === 'skill' ? 'instructions' : 'content';
     const jsonShape = kind === 'agent'
       ? '{"reply":"short summary","name":"kebab-case-name","description":"one-line description","systemPrompt":"full system prompt markdown","maxTurns":null}'
-      : '{"reply":"short summary","name":"kebab-case-name","description":"one-line description","instructions":"full skill instructions markdown"}';
+      : kind === 'skill'
+        ? '{"reply":"short summary","name":"kebab-case-name","description":"one-line description","instructions":"full skill instructions markdown"}'
+        : '{"reply":"short summary","name":"kebab-case-name","description":"one-line description","content":"full review-kit prompt markdown"}';
     const historyBlock = history?.length
       ? `Conversation so far:\n${history.map(m => `${m.role}: ${m.content}`).join('\n')}\n\n`
       : '';
@@ -555,6 +557,12 @@ export class CockpitPanel {
       `Generate a Claude Code ${kind} from the user's description.`,
       'Do NOT ask clarifying questions. Make a reasonable interpretation and return the JSON immediately.',
       ...(kind === 'skill' ? ['Do NOT generate a SKILL.md file or use YAML frontmatter. Output ONLY the JSON object below.'] : []),
+      ...(kind === 'review' ? [
+        'A review kit is the reviewer prompt the deep-review layer prepends to each artifact review.',
+        'Write review CRITERIA only: what to inspect, what passes, and the hard blockers that must reject.',
+        'Do NOT define an output/response format — the runner appends its own strict JSON verdict contract, and a second one would contradict it.',
+        'Do NOT use YAML frontmatter. Output ONLY the JSON object below.'
+      ] : []),
       '',
       historyBlock,
       `Latest user request: ${prompt}`,
@@ -564,7 +572,7 @@ export class CockpitPanel {
       'Rules:',
       '- name: lowercase, kebab-case, no spaces (e.g. code-reviewer, create-plan)',
       '- description: one sentence describing what it does',
-      `- ${contentField}: detailed ${kind === 'agent' ? 'system prompt and operating rules' : 'reusable skill instructions'} in markdown`,
+      `- ${contentField}: detailed ${kind === 'agent' ? 'system prompt and operating rules' : kind === 'skill' ? 'reusable skill instructions' : 'review criteria — what to check, pass bar, and reject-worthy blockers'} in markdown`,
       '- reply: short confirmation for the user (1-2 sentences)',
       ...(kind === 'agent' ? [
         '- maxTurns: integer or null. Set null to use the global default (6). Set a higher number (15-30) only for agents clearly doing heavy multi-file work (large refactors, full test suites, complex implementations). Set a lower number (3-5) for agents with narrow, single-step tasks (review-only, one-file edits).'
@@ -580,7 +588,7 @@ export class CockpitPanel {
       }
       try {
         const parsed = JSON.parse(extractJsonObject((result.resultText || text).trim())) as {
-          reply?: string; name?: string; description?: string; systemPrompt?: string; instructions?: string; maxTurns?: number | null;
+          reply?: string; name?: string; description?: string; systemPrompt?: string; instructions?: string; content?: string; maxTurns?: number | null;
         };
         this.postMessage({
           type: 'draftGenerated',
@@ -589,7 +597,9 @@ export class CockpitPanel {
           description: typeof parsed.description === 'string' ? parsed.description.trim() : undefined,
           content: kind === 'agent'
             ? (typeof parsed.systemPrompt === 'string' ? parsed.systemPrompt.trim() : undefined)
-            : (typeof parsed.instructions === 'string' ? parsed.instructions.trim() : undefined),
+            : kind === 'skill'
+              ? (typeof parsed.instructions === 'string' ? parsed.instructions.trim() : undefined)
+              : (typeof parsed.content === 'string' ? parsed.content.trim() : undefined),
           reply: typeof parsed.reply === 'string' ? parsed.reply.trim() : 'Generated.',
           ...(kind === 'agent' && typeof parsed.maxTurns === 'number' ? { maxTurns: parsed.maxTurns } : {})
         });

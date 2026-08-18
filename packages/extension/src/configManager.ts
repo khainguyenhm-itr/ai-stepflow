@@ -739,7 +739,8 @@ export class ConfigManager {
     const filePath = path.join(targetDir, `${this.slugify(review.name)}.md`);
     const frontmatter = matter.stringify(review.content || '', {
       name: review.name,
-      description: review.description || ''
+      description: review.description || '',
+      ...(review.aiConversation?.length ? { aiConversation: review.aiConversation } : {})
     });
 
     await fs.writeFile(filePath, frontmatter, 'utf8');
@@ -767,13 +768,15 @@ export class ConfigManager {
       // Strip leading HTML comment (e.g. built-in marker) so gray-matter can find --- frontmatter
       const stripped = content.replace(/^<!--[\s\S]*?-->\s*\n/, '');
       const { data, content: body } = matter(stripped);
+      const aiConversation = Array.isArray(data.aiConversation) ? data.aiConversation : undefined;
       return {
         name: data.name || path.basename(filePath, '.md'),
         description: data.description || '',
         content: body.trim(),
         sourcePath: filePath,
         builtIn: this.hasBuiltInMarker(content),
-        ...(stat ? { modifiedAt: stat.mtimeMs } : {})
+        ...(stat ? { modifiedAt: stat.mtimeMs } : {}),
+        ...(aiConversation ? { aiConversation } : {})
       };
     } catch (e) {
       console.error(`Error parsing review file ${filePath}:`, e);

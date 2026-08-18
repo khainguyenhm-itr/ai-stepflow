@@ -74,12 +74,14 @@ const App: React.FC = () => {
     groupBys, setGroupBys,
     agentFormError, setAgentFormError,
     skillFormError, setSkillFormError,
-    reviewFormError,
+    reviewFormError, setReviewFormError,
     draftLoading, setDraftLoading,
     agentAiPrompt, setAgentAiPrompt,
     agentAiMessages, setAgentAiMessages,
     skillAiPrompt, setSkillAiPrompt,
     skillAiMessages, setSkillAiMessages,
+    reviewAiPrompt, setReviewAiPrompt,
+    reviewAiMessages, setReviewAiMessages,
     outputEndRef,
     completedSteps, activeProgress,
     handleHostMessage, seedPreview,
@@ -95,11 +97,12 @@ const App: React.FC = () => {
 
   // Closing an AI-generate modal mid-generation is gated by a confirm popup that,
   // on confirm, cancels all related generation processes on the host.
-  const [pendingCancelGen, setPendingCancelGen] = React.useState<null | 'agent' | 'skill' | 'flow'>(null);
+  const [pendingCancelGen, setPendingCancelGen] = React.useState<null | 'agent' | 'skill' | 'review' | 'flow'>(null);
   const closeAgentModal = () => { setAgentModalOpen(false); setEditingAgentSource(null); };
   const closeSkillModal = () => { setSkillModalOpen(false); setEditingSkillSource(null); };
+  const closeReviewModal = () => { setReviewModalOpen(false); setEditingReviewSource(null); };
   const closeFlowModal = () => setEditingFlow(null);
-  const requestClose = (which: 'agent' | 'skill' | 'flow', close: () => void) => () => {
+  const requestClose = (which: 'agent' | 'skill' | 'review' | 'flow', close: () => void) => () => {
     const generating = which === 'flow' ? flowAiLoading : draftLoading === which;
     if (generating) setPendingCancelGen(which);
     else close();
@@ -447,9 +450,31 @@ const App: React.FC = () => {
         editingSource={editingReviewSource}
         form={reviewForm}
         error={reviewFormError}
-        onClose={() => { setReviewModalOpen(false); setEditingReviewSource(null); }}
+        draftLoading={draftLoading === 'review'}
+        aiPrompt={reviewAiPrompt}
+        aiMessages={reviewAiMessages}
+        onClose={requestClose('review', closeReviewModal)}
         onChange={patch => setReviewForm(prev => ({ ...prev, ...patch }))}
         onSubmit={submitReviewModal}
+        onAiPromptChange={setReviewAiPrompt}
+        onGenerateReview={() => {
+          if (!reviewAiPrompt.trim() || draftLoading) return;
+          const prompt = reviewAiPrompt.trim();
+          const prevMessages = reviewAiMessages;
+          setReviewAiMessages([...prevMessages, { role: 'user', content: prompt }]);
+          setReviewAiPrompt('');
+          setDraftLoading('review');
+          setReviewFormError(null);
+          if (!isVSCodeWebview()) {
+            window.setTimeout(() => {
+              setReviewForm(prev => ({ ...prev, name: prev.name || 'ai-review', description: 'AI-generated review kit', content: `Review the produced artifact. ${prompt}` }));
+              setReviewAiMessages(prev => [...prev, { role: 'assistant', content: 'Review kit generated — see below.' }]);
+              setDraftLoading(null);
+            }, 800);
+            return;
+          }
+          sendToVSCode('generateDraft', { kind: 'review', prompt, history: prevMessages });
+        }}
       />
 
       <ConnectMcpModal
@@ -629,6 +654,7 @@ const App: React.FC = () => {
           if (which === 'flow') { setFlowAiLoading(false); closeFlowModal(); }
           else if (which === 'agent') { setDraftLoading(null); closeAgentModal(); }
           else if (which === 'skill') { setDraftLoading(null); closeSkillModal(); }
+          else if (which === 'review') { setDraftLoading(null); closeReviewModal(); }
           setPendingCancelGen(null);
         }}
         onCancel={() => setPendingCancelGen(null)}

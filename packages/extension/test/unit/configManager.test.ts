@@ -86,6 +86,34 @@ test('a skill round-trips through disk', async () => {
   assert.equal(loaded.instructions.trim(), 'Do the thing.');
 });
 
+test('a review kit round-trips with the AI conversation that generated it', async () => {
+  const manager = cm();
+  const aiConversation = [
+    { role: 'user' as const, content: 'reject a test plan with an unmapped AC' },
+    { role: 'assistant' as const, content: 'Review kit generated.' }
+  ];
+  const filePath = await manager.saveReviewKit(
+    { name: 'ac-mapping', description: 'checks AC mapping', content: 'REVIEW CRITERIA', aiConversation },
+    false
+  );
+  const loaded = (await manager.loadReviewKits()).find(k => k.name === 'ac-mapping');
+  assert.ok(loaded, 'saved review kit was not loaded back');
+  assert.equal(loaded.description, 'checks AC mapping');
+  assert.equal(loaded.content, 'REVIEW CRITERIA');
+  assert.deepEqual(loaded.aiConversation, aiConversation);
+  // The transcript lives in frontmatter only — the body stays pure review criteria, because the
+  // body is what `loadReviewKit` feeds the reviewer.
+  const raw = readFileSync(filePath, 'utf8');
+  assert.match(raw, /^---/);
+  assert.equal(raw.split('---')[2].trim(), 'REVIEW CRITERIA');
+});
+
+test('a review kit saved without a conversation writes no aiConversation key', async () => {
+  const manager = cm();
+  const filePath = await manager.saveReviewKit({ name: 'plain', description: 'd', content: 'BODY' }, false);
+  assert.ok(!readFileSync(filePath, 'utf8').includes('aiConversation'));
+});
+
 test('a flow round-trips with its steps', async () => {
   const manager = cm();
   const flow = {

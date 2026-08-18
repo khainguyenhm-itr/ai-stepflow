@@ -56,7 +56,7 @@ export type HostMessage =
   | { type: 'fileImported'; kind: 'agent'; item: { name: string; description: string; model: string; tools: string; systemPrompt: string } }
   | { type: 'fileImported'; kind: 'skill'; item: { name: string; description: string; instructions: string }; importSourceDir?: string }
   | { type: 'fileImported'; kind: 'review'; item: { name: string; description: string; content: string } }
-  | { type: 'draftGenerated'; kind: 'agent' | 'skill'; name?: string; description?: string; content?: string; reply?: string; error?: string }
+  | { type: 'draftGenerated'; kind: 'agent' | 'skill' | 'review'; name?: string; description?: string; content?: string; reply?: string; error?: string }
   | { type: 'flowGenerated'; flow?: Flow; reply?: string; error?: string }
   | { type: 'flowSaveCancelled'; flow: Flow }
   | { type: 'navigateToTab'; tab: 'flows' | 'agents' | 'skills' | 'reviews' | 'overview' }
@@ -104,7 +104,7 @@ export type WebviewMessage =
   | { type: 'importSkillFile' }
   | { type: 'importReviewFile' }
   | { type: 'installReviewDefault'; isGlobal?: boolean }
-  | { type: 'generateDraft'; kind: 'agent' | 'skill'; prompt: string; history?: { role: 'user' | 'assistant'; content: string }[] }
+  | { type: 'generateDraft'; kind: 'agent' | 'skill' | 'review'; prompt: string; history?: { role: 'user' | 'assistant'; content: string }[] }
   | { type: 'savePref'; key: string; value: string; global?: boolean }
   | { type: 'generateFlow'; description: string; flow?: Flow; history?: { role: 'user' | 'assistant'; content: string }[] }
   | { type: 'cancelGenerate' }
@@ -185,7 +185,7 @@ const validators: Record<string, (m: Record<string, unknown>) => boolean> = {
   setAutoReview: m => typeof m.enabled === 'boolean' && (m.runId === undefined || isString(m.runId)),
   setAutoEnter: m => typeof m.enabled === 'boolean' && (m.runId === undefined || isString(m.runId)),
   editRun: m => (m.runName === undefined || isString(m.runName)) && isObject(m.inputs) && (m.runId === undefined || isString(m.runId)),
-  generateDraft: m => (m.kind === 'agent' || m.kind === 'skill') && isString(m.prompt),
+  generateDraft: m => (m.kind === 'agent' || m.kind === 'skill' || m.kind === 'review') && isString(m.prompt),
   generateFlow: m => isString(m.description) && (m.flow === undefined || isFlowLike(m.flow)),
   cancelGenerate: () => true,
   connectMcpServer: m => isObject(m.config) && isString(m.config.name) && isString(m.config.command),
